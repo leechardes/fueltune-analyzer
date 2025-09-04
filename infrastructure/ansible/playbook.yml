@@ -1,0 +1,543 @@
+# =============================================
+# FuelTune Streamlit - Ansible Playbook
+# =============================================
+# Automated deployment and configuration
+
+---
+- name: Deploy FuelTune Streamlit Application
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  
+  vars:
+    # Application Configuration
+    app_name: "fueltune"
+    app_version: "{{ app_version | default('latest') }}"
+    environment: "{{ environment | default('production') }}"
+    
+    # Kubernetes Configuration
+    kubernetes_namespace: "{{ app_name }}"
+    kubeconfig_path: "{{ kubeconfig_path | default('~/.kube/config') }}"
+    
+    # Container Registry
+    container_registry: "ghcr.io"
+    image_repository: "{{ container_registry }}/fueltune/streamlit"
+    
+    # Database Configuration
+    database_host: "{{ database_host }}"
+    database_port: "{{ database_port | default(5432) }}"
+    database_name: "{{ database_name | default('fueltune_prod') }}"
+    database_user: "{{ database_user | default('fueltune') }}"
+    
+    # Redis Configuration
+    redis_host: "{{ redis_host }}"
+    redis_port: "{{ redis_port | default(6379) }}"
+    
+    # Domain Configuration
+    app_domain: "{{ app_domain | default('fueltune.example.com') }}"
+    monitoring_domain: "{{ monitoring_domain | default('monitoring.fueltune.example.com') }}"
+    
+    # SSL/TLS
+    enable_tls: "{{ enable_tls | default(true) }}"
+    cert_issuer: "{{ cert_issuer | default('letsencrypt-prod') }}"
+    
+    # Monitoring
+    enable_monitoring: "{{ enable_monitoring | default(true) }}"
+    prometheus_retention: "{{ prometheus_retention | default('30d') }}"
+    
+    # Backup
+    enable_backups: "{{ enable_backups | default(true) }}"
+    backup_schedule: "{{ backup_schedule | default('0 2 * * *') }}"
+    
+    # Scaling
+    min_replicas: "{{ min_replicas | default(3) }}"
+    max_replicas: "{{ max_replicas | default(20) }}"
+    target_cpu_utilization: "{{ target_cpu_utilization | default(70) }}"
+
+  tasks:
+    # =============================================
+    # Pre-deployment Checks
+    # =============================================
+    - name: Check if kubectl is available
+      command: kubectl version --client
+      register: kubectl_version
+      failed_when: kubectl_version.rc != 0
+      tags: [prereq, check]
+    
+    - name: Check if helm is available
+      command: helm version
+      register: helm_version
+      failed_when: helm_version.rc != 0
+      tags: [prereq, check]
+    
+    - name: Verify cluster connectivity
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Node
+        kubeconfig: "{{ kubeconfig_path }}"
+      register: cluster_nodes
+      tags: [prereq, check]
+    
+    - name: Display cluster information
+      debug:
+        msg: "Connected to cluster with {{ cluster_nodes.resources | length }} nodes"
+      tags: [prereq, check]
+    
+    # =============================================
+    # Namespace Management
+    # =============================================
+    - name: Create namespace
+      kubernetes.core.k8s:
+        name: "{{ kubernetes_namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+        kubeconfig: "{{ kubeconfig_path }}"
+        definition:
+          metadata:
+            labels:
+              name: "{{ kubernetes_namespace }}"
+              app: "{{ app_name }}"
+              environment: "{{ environment }}"
+      tags: [namespace, setup]
+    
+    # =============================================
+    # Secret Management
+    # =============================================
+    - name: Create database secret
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ app_name }}-database-secret"
+            namespace: "{{ kubernetes_namespace }}"
+          type: Opaque
+          data:
+            database-url: "{{ ('postgresql://' + database_user + ':' + database_password + '@' + database_host + ':' + database_port | string + '/' + database_name) | b64encode }}"
+            username: "{{ database_user | b64encode }}"
+            password: "{{ database_password | b64encode }}"
+        kubeconfig: "{{ kubeconfig_path }}"
+      when: database_password is defined
+      tags: [secrets, database]
+    
+    - name: Create redis secret
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ app_name }}-redis-secret"
+            namespace: "{{ kubernetes_namespace }}"
+          type: Opaque
+          data:
+            redis-url: "{{ ('redis://' + redis_host + ':' + redis_port | string) | b64encode }}"
+            password: "{{ redis_password | default('') | b64encode }}"
+        kubeconfig: "{{ kubeconfig_path }}"
+      when: redis_host is defined
+      tags: [secrets, redis]
+    
+    - name: Create TLS secret
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ app_name }}-tls-secret"
+            namespace: "{{ kubernetes_namespace }}"
+          type: kubernetes.io/tls
+          data:
+            tls.crt: "{{ tls_cert | b64encode }}"
+            tls.key: "{{ tls_key | b64encode }}"
+        kubeconfig: "{{ kubeconfig_path }}"
+      when: enable_tls and tls_cert is defined and tls_key is defined
+      tags: [secrets, tls]
+    
+    # =============================================
+    # ConfigMap Management
+    # =============================================
+    - name: Create application configmap
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ app_name }}-config"
+            namespace: "{{ kubernetes_namespace }}"
+          data:
+            APP_NAME: "FuelTune Streamlit"
+            APP_VERSION: "{{ app_version }}"
+            APP_ENV: "{{ environment }}"
+            DEBUG: "false"
+            LOG_LEVEL: "INFO"
+            STREAMLIT_SERVER_PORT: "8501"
+            STREAMLIT_SERVER_ADDRESS: "0.0.0.0"
+            STREAMLIT_SERVER_HEADLESS: "true"
+            MAX_FILE_SIZE: "50MB"
+            ALLOWED_EXTENSIONS: "csv,xlsx,xls"
+            FUELTECH_FIELDS_COUNT: "64"
+            CACHE_EXPIRY_HOURS: "24"
+        kubeconfig: "{{ kubeconfig_path }}"
+      tags: [config, configmap]
+    
+    # =============================================
+    # Deployment
+    # =============================================
+    - name: Deploy application
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "{{ app_name }}-app"
+            namespace: "{{ kubernetes_namespace }}"
+            labels:
+              app: "{{ app_name }}"
+              component: streamlit-app
+              version: "{{ app_version }}"
+          spec:
+            replicas: "{{ min_replicas }}"
+            strategy:
+              type: RollingUpdate
+              rollingUpdate:
+                maxUnavailable: 1
+                maxSurge: 1
+            selector:
+              matchLabels:
+                app: "{{ app_name }}"
+                component: streamlit-app
+            template:
+              metadata:
+                labels:
+                  app: "{{ app_name }}"
+                  component: streamlit-app
+                  version: "{{ app_version }}"
+                annotations:
+                  prometheus.io/scrape: "true"
+                  prometheus.io/port: "8501"
+                  prometheus.io/path: "/metrics"
+              spec:
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 1000
+                  runAsGroup: 1000
+                  fsGroup: 1000
+                containers:
+                - name: "{{ app_name }}-app"
+                  image: "{{ image_repository }}:{{ app_version }}"
+                  imagePullPolicy: IfNotPresent
+                  ports:
+                  - containerPort: 8501
+                    name: http
+                  env:
+                  - name: DATABASE_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: "{{ app_name }}-database-secret"
+                        key: database-url
+                  - name: REDIS_URL
+                    valueFrom:
+                      secretKeyRef:
+                        name: "{{ app_name }}-redis-secret"
+                        key: redis-url
+                  envFrom:
+                  - configMapRef:
+                      name: "{{ app_name }}-config"
+                  resources:
+                    limits:
+                      cpu: "1000m"
+                      memory: "1Gi"
+                    requests:
+                      cpu: "500m"
+                      memory: "512Mi"
+                  livenessProbe:
+                    httpGet:
+                      path: /_stcore/health
+                      port: 8501
+                    initialDelaySeconds: 30
+                    periodSeconds: 30
+                    timeoutSeconds: 10
+                  readinessProbe:
+                    httpGet:
+                      path: /_stcore/health
+                      port: 8501
+                    initialDelaySeconds: 15
+                    periodSeconds: 10
+                    timeoutSeconds: 5
+                  securityContext:
+                    allowPrivilegeEscalation: false
+                    readOnlyRootFilesystem: true
+                    capabilities:
+                      drop:
+                        - ALL
+        kubeconfig: "{{ kubeconfig_path }}"
+      tags: [deployment, app]
+    
+    # =============================================
+    # Service Creation
+    # =============================================
+    - name: Create service
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "{{ app_name }}-service"
+            namespace: "{{ kubernetes_namespace }}"
+            labels:
+              app: "{{ app_name }}"
+              component: streamlit-app
+          spec:
+            type: ClusterIP
+            ports:
+            - port: 80
+              targetPort: 8501
+              protocol: TCP
+              name: http
+            selector:
+              app: "{{ app_name }}"
+              component: streamlit-app
+        kubeconfig: "{{ kubeconfig_path }}"
+      tags: [service, networking]
+    
+    # =============================================
+    # Ingress Configuration
+    # =============================================
+    - name: Create ingress
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: "{{ app_name }}-ingress"
+            namespace: "{{ kubernetes_namespace }}"
+            labels:
+              app: "{{ app_name }}"
+              component: ingress
+            annotations:
+              kubernetes.io/ingress.class: "nginx"
+              nginx.ingress.kubernetes.io/ssl-redirect: "true"
+              cert-manager.io/cluster-issuer: "{{ cert_issuer }}"
+              nginx.ingress.kubernetes.io/rate-limit: "100"
+              nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+          spec:
+            tls:
+            - hosts:
+              - "{{ app_domain }}"
+              secretName: "{{ app_name }}-tls-secret"
+            rules:
+            - host: "{{ app_domain }}"
+              http:
+                paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: "{{ app_name }}-service"
+                      port:
+                        number: 80
+        kubeconfig: "{{ kubeconfig_path }}"
+      tags: [ingress, networking]
+    
+    # =============================================
+    # Horizontal Pod Autoscaler
+    # =============================================
+    - name: Create HPA
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: autoscaling/v2
+          kind: HorizontalPodAutoscaler
+          metadata:
+            name: "{{ app_name }}-hpa"
+            namespace: "{{ kubernetes_namespace }}"
+          spec:
+            scaleTargetRef:
+              apiVersion: apps/v1
+              kind: Deployment
+              name: "{{ app_name }}-app"
+            minReplicas: "{{ min_replicas }}"
+            maxReplicas: "{{ max_replicas }}"
+            metrics:
+            - type: Resource
+              resource:
+                name: cpu
+                target:
+                  type: Utilization
+                  averageUtilization: "{{ target_cpu_utilization }}"
+        kubeconfig: "{{ kubeconfig_path }}"
+      tags: [autoscaling, hpa]
+    
+    # =============================================
+    # Pod Disruption Budget
+    # =============================================
+    - name: Create PDB
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: policy/v1
+          kind: PodDisruptionBudget
+          metadata:
+            name: "{{ app_name }}-pdb"
+            namespace: "{{ kubernetes_namespace }}"
+          spec:
+            minAvailable: 2
+            selector:
+              matchLabels:
+                app: "{{ app_name }}"
+                component: streamlit-app
+        kubeconfig: "{{ kubeconfig_path }}"
+      tags: [availability, pdb]
+    
+    # =============================================
+    # Monitoring Setup
+    # =============================================
+    - name: Create ServiceMonitor for Prometheus
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: monitoring.coreos.com/v1
+          kind: ServiceMonitor
+          metadata:
+            name: "{{ app_name }}-monitor"
+            namespace: "{{ kubernetes_namespace }}"
+            labels:
+              app: "{{ app_name }}"
+              component: monitoring
+          spec:
+            selector:
+              matchLabels:
+                app: "{{ app_name }}"
+                component: streamlit-app
+            endpoints:
+            - port: http
+              path: /metrics
+              interval: 30s
+        kubeconfig: "{{ kubeconfig_path }}"
+      when: enable_monitoring
+      tags: [monitoring, prometheus]
+    
+    # =============================================
+    # Backup CronJob
+    # =============================================
+    - name: Create backup cronjob
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: batch/v1
+          kind: CronJob
+          metadata:
+            name: "{{ app_name }}-backup"
+            namespace: "{{ kubernetes_namespace }}"
+          spec:
+            schedule: "{{ backup_schedule }}"
+            jobTemplate:
+              spec:
+                template:
+                  spec:
+                    restartPolicy: OnFailure
+                    containers:
+                    - name: backup
+                      image: postgres:15-alpine
+                      command:
+                      - sh
+                      - -c
+                      - |
+                        pg_dump $DATABASE_URL > /backup/backup-$(date +%Y%m%d-%H%M%S).sql
+                        echo "Backup completed successfully"
+                      env:
+                      - name: DATABASE_URL
+                        valueFrom:
+                          secretKeyRef:
+                            name: "{{ app_name }}-database-secret"
+                            key: database-url
+                      volumeMounts:
+                      - name: backup-storage
+                        mountPath: /backup
+                    volumes:
+                    - name: backup-storage
+                      persistentVolumeClaim:
+                        claimName: "{{ app_name }}-backup-pvc"
+        kubeconfig: "{{ kubeconfig_path }}"
+      when: enable_backups
+      tags: [backup, cronjob]
+    
+    # =============================================
+    # Post-deployment Verification
+    # =============================================
+    - name: Wait for deployment to be ready
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: "{{ app_name }}-app"
+        namespace: "{{ kubernetes_namespace }}"
+        wait_condition:
+          type: Available
+          status: "True"
+        wait_timeout: 600
+        kubeconfig: "{{ kubeconfig_path }}"
+      tags: [verify, deployment]
+    
+    - name: Get deployment status
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: "{{ app_name }}-app"
+        namespace: "{{ kubernetes_namespace }}"
+        kubeconfig: "{{ kubeconfig_path }}"
+      register: deployment_status
+      tags: [verify, deployment]
+    
+    - name: Display deployment information
+      debug:
+        msg: |
+          Deployment Status: {{ deployment_status.resources[0].status.conditions | selectattr('type', 'equalto', 'Available') | map(attribute='status') | first }}
+          Ready Replicas: {{ deployment_status.resources[0].status.readyReplicas | default(0) }}
+          Available Replicas: {{ deployment_status.resources[0].status.availableReplicas | default(0) }}
+      tags: [verify, deployment]
+    
+    - name: Verify service endpoints
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Endpoints
+        name: "{{ app_name }}-service"
+        namespace: "{{ kubernetes_namespace }}"
+        kubeconfig: "{{ kubeconfig_path }}"
+      register: service_endpoints
+      tags: [verify, service]
+    
+    - name: Check if ingress is ready
+      kubernetes.core.k8s_info:
+        api_version: networking.k8s.io/v1
+        kind: Ingress
+        name: "{{ app_name }}-ingress"
+        namespace: "{{ kubernetes_namespace }}"
+        kubeconfig: "{{ kubeconfig_path }}"
+      register: ingress_status
+      tags: [verify, ingress]
+    
+    # =============================================
+    # Health Check
+    # =============================================
+    - name: Perform health check
+      uri:
+        url: "https://{{ app_domain }}/_stcore/health"
+        method: GET
+        validate_certs: yes
+        timeout: 30
+      register: health_check
+      retries: 10
+      delay: 30
+      until: health_check.status == 200
+      when: enable_tls
+      tags: [verify, health]
+    
+    - name: Display final status
+      debug:
+        msg: |
+          🎉 Deployment completed successfully!
+          
+          Application URL: https://{{ app_domain }}
+          Monitoring URL: https://{{ monitoring_domain }}
+          
+          Namespace: {{ kubernetes_namespace }}
+          Replicas: {{ deployment_status.resources[0].status.readyReplicas | default(0) }}
+          
+          Health Check: {{ 'PASSED' if health_check.status == 200 else 'FAILED' }}
+      tags: [verify, summary]

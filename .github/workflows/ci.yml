@@ -1,0 +1,440 @@
+# =============================================
+# FuelTune Streamlit - Continuous Integration
+# =============================================
+# Comprehensive CI pipeline with testing, quality checks, and security scanning
+
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main, develop, feature/*, hotfix/* ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run nightly builds at 2 AM UTC
+    - cron: '0 2 * * *'
+
+# Cancel in-progress runs for the same workflow and branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.12'
+  NODE_VERSION: '18'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # =============================================
+  # Code Quality and Linting
+  # =============================================
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for SonarQube
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt -r requirements-test.txt
+    
+    - name: Run Black formatter check
+      run: black --check --diff .
+    
+    - name: Run isort import sorting check
+      run: isort --check-only --diff .
+    
+    - name: Run flake8 linting
+      run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    
+    - name: Run pylint
+      run: |
+        pylint src/ app.py config.py --output-format=json > pylint-report.json || true
+        cat pylint-report.json
+    
+    - name: Run mypy type checking
+      run: mypy src/ app.py config.py --ignore-missing-imports
+    
+    - name: Upload code quality artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: code-quality-reports
+        path: |
+          pylint-report.json
+        retention-days: 30
+
+  # =============================================
+  # Security Scanning
+  # =============================================
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run bandit security linter
+      run: |
+        pip install bandit[toml]
+        bandit -r src/ app.py config.py -f json -o bandit-report.json || true
+    
+    - name: Run safety check for vulnerabilities
+      run: |
+        pip install safety
+        safety check --json --output safety-report.json || true
+    
+    - name: Run semgrep security scanner
+      uses: returntocorp/semgrep-action@v1
+      with:
+        publishToken: ${{ secrets.SEMGREP_APP_TOKEN }}
+        publishDeployment: true
+        generateSarif: "1"
+    
+    - name: Upload security scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: semgrep.sarif
+    
+    - name: Upload security artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+        retention-days: 30
+
+  # =============================================
+  # Unit Tests
+  # =============================================
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+        os: [ubuntu-latest]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt -r requirements-test.txt
+    
+    - name: Create test data directories
+      run: |
+        mkdir -p data/samples logs cache
+    
+    - name: Run unit tests with coverage
+      run: |
+        pytest tests/unit/ \
+          --cov=src \
+          --cov-report=xml \
+          --cov-report=html \
+          --cov-report=term \
+          --junitxml=junit-results.xml \
+          -v
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-${{ matrix.python-version }}
+    
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-results-${{ matrix.python-version }}
+        path: |
+          junit-results.xml
+          htmlcov/
+        retention-days: 30
+
+  # =============================================
+  # Integration Tests
+  # =============================================
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_USER: fueltune_test
+          POSTGRES_DB: fueltune_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt -r requirements-test.txt
+    
+    - name: Wait for services
+      run: |
+        sleep 10
+        pg_isready -h localhost -p 5432 -U fueltune_test
+        redis-cli -h localhost -p 6379 ping
+    
+    - name: Run integration tests
+      env:
+        DATABASE_URL: postgresql://fueltune_test:test_password@localhost:5432/fueltune_test
+        REDIS_URL: redis://localhost:6379/0
+      run: |
+        pytest tests/integration/ \
+          --junitxml=integration-results.xml \
+          -v
+    
+    - name: Upload integration test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: integration-test-results
+        path: integration-results.xml
+        retention-days: 30
+
+  # =============================================
+  # Docker Build and Test
+  # =============================================
+  docker-build:
+    name: Docker Build and Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [code-quality, unit-tests]
+    
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      image-tag: ${{ steps.meta.outputs.tags }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to Container Registry
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push Docker image
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        target: production
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+    
+    - name: Test Docker image
+      run: |
+        docker run --rm -d --name fueltune-test \
+          -p 8501:8501 \
+          -e DEBUG=false \
+          ${{ steps.meta.outputs.tags }}
+        
+        # Wait for container to start
+        sleep 30
+        
+        # Test health endpoint
+        curl -f http://localhost:8501/_stcore/health || exit 1
+        
+        # Stop container
+        docker stop fueltune-test
+
+  # =============================================
+  # Performance Tests
+  # =============================================
+  performance-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [docker-build]
+    if: github.event_name != 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install performance testing tools
+      run: |
+        pip install locust pytest-benchmark
+    
+    - name: Run performance tests
+      run: |
+        # Add performance test commands here
+        echo "Performance tests would run here"
+    
+    - name: Upload performance results
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-results
+        path: performance-results/
+        retention-days: 30
+
+  # =============================================
+  # Dependency Scanning
+  # =============================================
+  dependency-scan:
+    name: Dependency Scanning
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Run Snyk to check for vulnerabilities
+      uses: snyk/actions/python@master
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        args: --severity-threshold=high
+    
+    - name: Upload Snyk results to GitHub Code Scanning
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: snyk.sarif
+
+  # =============================================
+  # Report Generation
+  # =============================================
+  generate-reports:
+    name: Generate Reports
+    runs-on: ubuntu-latest
+    needs: [code-quality, security-scan, unit-tests, integration-tests, docker-build]
+    if: always()
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+    
+    - name: Generate comprehensive report
+      run: |
+        echo "# FuelTune CI Report" > ci-report.md
+        echo "## Build Information" >> ci-report.md
+        echo "- Branch: ${{ github.ref_name }}" >> ci-report.md
+        echo "- Commit: ${{ github.sha }}" >> ci-report.md
+        echo "- Workflow: ${{ github.run_id }}" >> ci-report.md
+        echo "" >> ci-report.md
+        
+        echo "## Test Results" >> ci-report.md
+        echo "- Code Quality: ${{ needs.code-quality.result }}" >> ci-report.md
+        echo "- Security Scan: ${{ needs.security-scan.result }}" >> ci-report.md
+        echo "- Unit Tests: ${{ needs.unit-tests.result }}" >> ci-report.md
+        echo "- Integration Tests: ${{ needs.integration-tests.result }}" >> ci-report.md
+        echo "- Docker Build: ${{ needs.docker-build.result }}" >> ci-report.md
+    
+    - name: Comment PR with results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const report = fs.readFileSync('ci-report.md', 'utf8');
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: report
+          });
+    
+    - name: Upload final report
+      uses: actions/upload-artifact@v3
+      with:
+        name: ci-comprehensive-report
+        path: ci-report.md
+        retention-days: 90

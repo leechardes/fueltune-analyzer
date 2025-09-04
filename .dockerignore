@@ -1,0 +1,219 @@
+# =============================================
+# FuelTune Streamlit - Docker Ignore
+# =============================================
+# Optimize build context and reduce image size
+
+# =============================================
+# Development & Build Tools
+# =============================================
+.git/
+.github/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# =============================================
+# Python
+# =============================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# =============================================
+# Virtual Environments
+# =============================================
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# =============================================
+# Testing & Coverage
+# =============================================
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+htmlcov/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# =============================================
+# Documentation
+# =============================================
+docs/_build/
+docs/.doctrees/
+.sphinx/
+*.pdf
+*.docx
+
+# =============================================
+# IDEs and Editors
+# =============================================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.spyderproject
+.spyproject
+.ropeproject
+
+# =============================================
+# OS Generated Files
+# =============================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# =============================================
+# Logs
+# =============================================
+logs/
+*.log
+log/
+
+# =============================================
+# Temporary Files
+# =============================================
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# =============================================
+# Database Files
+# =============================================
+*.db
+*.sqlite
+*.sqlite3
+test.db
+:memory:
+
+# =============================================
+# Environment Variables
+# =============================================
+.env
+.env.local
+.env.development
+.env.staging
+.env.production
+.env.test
+
+# =============================================
+# Cache Directories
+# =============================================
+cache/
+.cache/
+node_modules/
+npm-debug.log*
+
+# =============================================
+# Jupyter Notebooks
+# =============================================
+.ipynb_checkpoints/
+
+# =============================================
+# Data Files (Large)
+# =============================================
+data/samples/
+data/uploads/
+data/processed/
+*.csv
+*.xlsx
+*.xls
+*.parquet
+
+# =============================================
+# Docker & Kubernetes
+# =============================================
+Dockerfile*
+docker-compose*.yml
+k8s/
+.dockerignore
+
+# =============================================
+# CI/CD
+# =============================================
+.github/
+.gitlab-ci.yml
+Jenkinsfile
+.travis.yml
+.circleci/
+
+# =============================================
+# Deployment
+# =============================================
+infrastructure/
+scripts/deploy*.sh
+scripts/rollback*.sh
+helm/
+terraform/
+ansible/
+
+# =============================================
+# Monitoring
+# =============================================
+monitoring/
+prometheus/
+grafana/
+
+# =============================================
+# Security
+# =============================================
+*.key
+*.pem
+*.crt
+*.p12
+secrets/
+
+# =============================================
+# Project Specific
+# =============================================
+agents/
+invalid:/
+pylint_*.json
+tox.ini
+.pre-commit-config.yaml
+requirements-test.txt
+
+# =============================================
+# Documentation & Markdown
+# =============================================
+*.md
+!README.md
+ARCHITECTURE.md
+TECHNICAL-*.md
+*-AGENT-*.md
+PROJECT-*.md

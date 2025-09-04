@@ -1,0 +1,38 @@
+# Testing dependencies for FuelTune Streamlit
+# =============================================
+
+# Core testing frameworks
+pytest>=8.4.0
+pytest-cov>=6.2.0
+pytest-mock>=3.14.0
+pytest-asyncio>=1.1.0
+pytest-timeout>=2.3.0
+pytest-xdist>=3.6.0  # For parallel test execution
+
+# Test data generation
+faker>=37.0.0
+factory-boy>=3.3.0
+
+# Mocking and fixtures
+responses>=0.25.0  # For mocking HTTP requests
+freezegun>=1.5.0   # For mocking datetime
+
+# Code quality
+black>=24.0.0
+isort>=5.13.0
+flake8>=7.0.0
+mypy>=1.10.0
+pylint>=3.2.0
+
+# Performance testing
+pytest-benchmark>=4.0.0
+memory-profiler>=0.61.0
+
+# Test reporting
+pytest-html>=4.1.0
+coverage>=7.5.0
+coverage-badge>=1.1.0
+
+# Utilities
+hypothesis>=6.100.0  # Property-based testing
+tox>=4.15.0         # Test environment management

@@ -1,0 +1,189 @@
+# =============================================
+# FuelTune Streamlit - Kubernetes Ingress
+# =============================================
+# NGINX Ingress with SSL termination and rate limiting
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fueltune-ingress
+  namespace: fueltune
+  labels:
+    app: fueltune
+    component: ingress
+  annotations:
+    # NGINX Ingress Controller
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    
+    # SSL Configuration
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+    nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"
+    
+    # Rate Limiting
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    nginx.ingress.kubernetes.io/rate-limit-burst: "50"
+    
+    # Connection Limiting
+    nginx.ingress.kubernetes.io/limit-connections: "20"
+    
+    # Request Size Limiting
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    
+    # Timeouts
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    
+    # Security Headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Content-Type-Options nosniff always;
+      add_header X-Frame-Options DENY always;
+      add_header X-XSS-Protection "1; mode=block" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+      add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' wss: https:;" always;
+      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    
+    # Whitelist (if needed)
+    # nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+    
+    # Monitoring
+    nginx.ingress.kubernetes.io/enable-access-log: "true"
+    
+spec:
+  tls:
+  - hosts:
+    - fueltune.example.com
+    - www.fueltune.example.com
+    secretName: fueltune-tls-secret
+  
+  rules:
+  - host: fueltune.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: fueltune-service
+            port:
+              number: 80
+  
+  - host: www.fueltune.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: fueltune-service
+            port:
+              number: 80
+
+---
+# =============================================
+# Monitoring Ingress
+# =============================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fueltune-monitoring-ingress
+  namespace: fueltune
+  labels:
+    app: fueltune
+    component: monitoring-ingress
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    
+    # Basic Auth for monitoring endpoints
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: monitoring-auth
+    nginx.ingress.kubernetes.io/auth-realm: "FuelTune Monitoring"
+    
+    # Rate limiting for monitoring
+    nginx.ingress.kubernetes.io/rate-limit: "20"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    
+spec:
+  tls:
+  - hosts:
+    - monitoring.fueltune.example.com
+    secretName: fueltune-monitoring-tls-secret
+  
+  rules:
+  - host: monitoring.fueltune.example.com
+    http:
+      paths:
+      # Grafana
+      - path: /grafana
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana-service
+            port:
+              number: 3000
+      
+      # Prometheus
+      - path: /prometheus
+        pathType: Prefix
+        backend:
+          service:
+            name: prometheus-service
+            port:
+              number: 9090
+
+---
+# =============================================
+# API Ingress (for health checks and metrics)
+# =============================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fueltune-api-ingress
+  namespace: fueltune
+  labels:
+    app: fueltune
+    component: api-ingress
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    
+    # No rate limiting for health checks
+    nginx.ingress.kubernetes.io/rate-limit: "1000"
+    
+    # Shorter timeouts for API endpoints
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+    
+spec:
+  tls:
+  - hosts:
+    - api.fueltune.example.com
+    secretName: fueltune-api-tls-secret
+  
+  rules:
+  - host: api.fueltune.example.com
+    http:
+      paths:
+      # Health check endpoint
+      - path: /health
+        pathType: Exact
+        backend:
+          service:
+            name: fueltune-internal-service
+            port:
+              number: 8501
+      
+      # Metrics endpoint
+      - path: /metrics
+        pathType: Exact
+        backend:
+          service:
+            name: fueltune-internal-service
+            port:
+              number: 8501

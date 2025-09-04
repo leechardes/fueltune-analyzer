@@ -1,0 +1,158 @@
+# MANIFEST.in - Specify additional files to include in the package
+
+# Include metadata files
+include *.txt
+include *.md
+include *.rst
+include *.yml
+include *.yaml
+include LICENSE
+include CHANGELOG.md
+include CONTRIBUTING.md
+include SECURITY.md
+include AUTHORS.md
+
+# Include configuration files
+include pyproject.toml
+include setup.py
+include *.ini
+include *.cfg
+include .env.example
+
+# Include version information
+include VERSION
+
+# Include documentation
+recursive-include docs *.md
+recursive-include docs *.rst
+recursive-include docs *.txt
+recursive-include docs *.yml
+recursive-include docs *.yaml
+recursive-include docs *.html
+recursive-include docs *.css
+recursive-include docs *.js
+recursive-include docs *.png
+recursive-include docs *.jpg
+recursive-include docs *.svg
+
+# Include source code
+recursive-include src *.py
+recursive-include src *.pyi
+recursive-include src *.txt
+recursive-include src *.md
+recursive-include src *.yml
+recursive-include src *.yaml
+recursive-include src *.json
+recursive-include src *.sql
+recursive-include src *.html
+recursive-include src *.css
+recursive-include src *.js
+
+# Include templates and static files
+recursive-include src/templates *.html
+recursive-include src/templates *.css
+recursive-include src/templates *.js
+recursive-include src/static *.css
+recursive-include src/static *.js
+recursive-include src/static *.png
+recursive-include src/static *.jpg
+recursive-include src/static *.svg
+
+# Include test fixtures and data
+recursive-include tests *.py
+recursive-include tests *.txt
+recursive-include tests *.json
+recursive-include tests *.csv
+recursive-include tests *.yml
+recursive-include tests *.yaml
+recursive-include tests/fixtures *.py
+recursive-include tests/fixtures *.json
+recursive-include tests/fixtures *.csv
+recursive-include tests/fixtures/data *
+
+# Include data files
+recursive-include data *.csv
+recursive-include data *.json
+recursive-include data *.sql
+recursive-include data/samples *.csv
+
+# Include configuration and script files
+recursive-include config *.py
+recursive-include config *.yml
+recursive-include config *.yaml
+recursive-include config *.json
+recursive-include scripts *.sh
+recursive-include scripts *.py
+
+# Include infrastructure files
+recursive-include infrastructure *.yml
+recursive-include infrastructure *.yaml
+recursive-include infrastructure *.tf
+recursive-include infrastructure *.json
+include Dockerfile
+include docker-compose.yml
+include docker-compose.prod.yml
+include .dockerignore
+
+# Include monitoring and deployment files
+recursive-include monitoring *.yml
+recursive-include monitoring *.yaml
+recursive-include monitoring *.json
+recursive-include k8s *.yml
+recursive-include k8s *.yaml
+recursive-include environments *.yml
+recursive-include environments *.yaml
+
+# Include GitHub workflows
+recursive-include .github *.yml
+recursive-include .github *.yaml
+recursive-include .github *.md
+
+# Exclude development and build files
+exclude *.log
+exclude *.db
+exclude *.sqlite
+exclude .env
+exclude .coverage
+exclude coverage.xml
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *~
+global-exclude *.bak
+global-exclude *.swp
+global-exclude *.tmp
+global-exclude .DS_Store
+global-exclude Thumbs.db
+
+# Exclude cache and temporary directories
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * .pytest_cache
+recursive-exclude * .mypy_cache
+recursive-exclude * .coverage
+recursive-exclude * htmlcov
+recursive-exclude * .tox
+recursive-exclude * .nox
+recursive-exclude * venv
+recursive-exclude * .venv
+recursive-exclude * env
+recursive-exclude * .env
+recursive-exclude * build
+recursive-exclude * dist
+recursive-exclude * *.egg-info
+recursive-exclude * .git
+recursive-exclude * .svn
+recursive-exclude * .hg
+recursive-exclude * .bzr
+
+# Exclude IDE files
+recursive-exclude * .vscode
+recursive-exclude * .idea
+recursive-exclude * *.sublime-*
+recursive-exclude * .settings
+
+# Exclude logs and temporary data
+recursive-exclude logs *
+recursive-exclude cache *
+recursive-exclude tmp *
+recursive-exclude temp *

@@ -1,0 +1,413 @@
+# =============================================
+# FuelTune Streamlit - Prometheus Alert Rules
+# =============================================
+# Comprehensive alerting for production monitoring
+
+groups:
+  # =============================================
+  # Application Level Alerts
+  # =============================================
+  - name: fueltune-application
+    rules:
+      # Application Down
+      - alert: FuelTuneApplicationDown
+        expr: up{job="fueltune-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: application
+          runbook: https://docs.fueltune.com/runbooks/app-down
+        annotations:
+          summary: "FuelTune application is down"
+          description: "FuelTune application {{ $labels.pod }} has been down for more than 1 minute"
+          dashboard: "https://monitoring.fueltune.example.com/d/fueltune-app"
+
+      # High Response Time
+      - alert: FuelTuneHighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="fueltune-app"}[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "FuelTune application high response time"
+          description: "95th percentile response time is {{ $value }}s for {{ $labels.pod }}"
+
+      # High Error Rate
+      - alert: FuelTuneHighErrorRate
+        expr: rate(http_requests_total{job="fueltune-app",status=~"5.."}[5m]) / rate(http_requests_total{job="fueltune-app"}[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          component: application
+        annotations:
+          summary: "FuelTune high error rate"
+          description: "Error rate is {{ $value | humanizePercentage }} for {{ $labels.pod }}"
+
+      # Low Request Rate (possible issue)
+      - alert: FuelTuneLowRequestRate
+        expr: rate(http_requests_total{job="fueltune-app"}[10m]) < 0.1
+        for: 10m
+        labels:
+          severity: warning
+          component: traffic
+        annotations:
+          summary: "FuelTune unusually low request rate"
+          description: "Request rate is {{ $value }} requests/sec, which may indicate an issue"
+
+      # Memory Usage High
+      - alert: FuelTuneHighMemoryUsage
+        expr: (container_memory_working_set_bytes{pod=~"fueltune-app-.*"} / container_spec_memory_limit_bytes{pod=~"fueltune-app-.*"}) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: resources
+        annotations:
+          summary: "FuelTune high memory usage"
+          description: "Memory usage is {{ $value }}% for pod {{ $labels.pod }}"
+
+      # CPU Usage High
+      - alert: FuelTuneHighCPUUsage
+        expr: (rate(container_cpu_usage_seconds_total{pod=~"fueltune-app-.*"}[5m]) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: resources
+        annotations:
+          summary: "FuelTune high CPU usage"
+          description: "CPU usage is {{ $value }}% for pod {{ $labels.pod }}"
+
+      # Disk Space Low
+      - alert: FuelTuneLowDiskSpace
+        expr: (node_filesystem_avail_bytes{mountpoint="/app/data"} / node_filesystem_size_bytes{mountpoint="/app/data"}) * 100 < 20
+        for: 5m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "FuelTune low disk space"
+          description: "Available disk space is {{ $value }}% on {{ $labels.instance }}"
+
+  # =============================================
+  # Database Alerts
+  # =============================================
+  - name: fueltune-database
+    rules:
+      # Database Down
+      - alert: FuelTuneDatabaseDown
+        expr: up{job="postgresql"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+          runbook: https://docs.fueltune.com/runbooks/db-down
+        annotations:
+          summary: "FuelTune database is down"
+          description: "PostgreSQL database is not responding"
+
+      # High Database Connections
+      - alert: FuelTuneHighDatabaseConnections
+        expr: pg_stat_database_numbackends{datname="fueltune_prod"} > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "FuelTune high database connections"
+          description: "Database has {{ $value }} active connections"
+
+      # Database Slow Queries
+      - alert: FuelTuneDatabaseSlowQueries
+        expr: pg_stat_activity_max_tx_duration{datname="fueltune_prod"} > 300
+        for: 2m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "FuelTune database has slow running queries"
+          description: "Longest running query is {{ $value }}s"
+
+      # Database Deadlocks
+      - alert: FuelTuneDatabaseDeadlocks
+        expr: increase(pg_stat_database_deadlocks{datname="fueltune_prod"}[10m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "FuelTune database deadlocks detected"
+          description: "{{ $value }} deadlocks detected in the last 10 minutes"
+
+      # Database Disk Usage
+      - alert: FuelTuneDatabaseHighDiskUsage
+        expr: pg_database_size_bytes{datname="fueltune_prod"} > 50000000000  # 50GB
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "FuelTune database size is large"
+          description: "Database size is {{ $value | humanizeBytes }}"
+
+  # =============================================
+  # Cache (Redis) Alerts
+  # =============================================
+  - name: fueltune-cache
+    rules:
+      # Redis Down
+      - alert: FuelTuneRedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "FuelTune Redis cache is down"
+          description: "Redis cache is not responding"
+
+      # High Redis Memory Usage
+      - alert: FuelTuneRedisHighMemoryUsage
+        expr: (redis_memory_used_bytes / redis_memory_max_bytes) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "FuelTune Redis high memory usage"
+          description: "Redis memory usage is {{ $value }}%"
+
+      # High Cache Miss Rate
+      - alert: FuelTuneHighCacheMissRate
+        expr: (redis_keyspace_misses_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)) * 100 > 50
+        for: 10m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "FuelTune high cache miss rate"
+          description: "Cache miss rate is {{ $value }}%"
+
+  # =============================================
+  # Infrastructure Alerts
+  # =============================================
+  - name: fueltune-infrastructure
+    rules:
+      # Node Down
+      - alert: FuelTuneNodeDown
+        expr: up{job="kubernetes-nodes"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          component: infrastructure
+          runbook: https://docs.fueltune.com/runbooks/node-down
+        annotations:
+          summary: "Kubernetes node is down"
+          description: "Node {{ $labels.instance }} has been down for more than 3 minutes"
+
+      # High Node CPU
+      - alert: FuelTuneNodeHighCPU
+        expr: (1 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])))) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High CPU usage on node"
+          description: "CPU usage is {{ $value }}% on node {{ $labels.instance }}"
+
+      # High Node Memory
+      - alert: FuelTuneNodeHighMemory
+        expr: ((node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High memory usage on node"
+          description: "Memory usage is {{ $value }}% on node {{ $labels.instance }}"
+
+      # Node Disk Space Low
+      - alert: FuelTuneNodeLowDiskSpace
+        expr: ((node_filesystem_size_bytes - node_filesystem_avail_bytes) / node_filesystem_size_bytes) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "Low disk space on node"
+          description: "Disk usage is {{ $value }}% on {{ $labels.instance }} ({{ $labels.mountpoint }})"
+
+      # Pod Crash Looping
+      - alert: FuelTunePodCrashLooping
+        expr: rate(kube_pod_container_status_restarts_total{namespace="fueltune"}[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "Pod is crash looping"
+          description: "Pod {{ $labels.pod }} is restarting frequently"
+
+      # Pod Not Ready
+      - alert: FuelTunePodNotReady
+        expr: kube_pod_status_ready{namespace="fueltune",condition="false"} == 1
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "Pod is not ready"
+          description: "Pod {{ $labels.pod }} has been not ready for more than 5 minutes"
+
+  # =============================================
+  # Network and Ingress Alerts
+  # =============================================
+  - name: fueltune-network
+    rules:
+      # Ingress High Response Time
+      - alert: FuelTuneIngressHighResponseTime
+        expr: histogram_quantile(0.95, sum(rate(nginx_ingress_controller_request_duration_seconds_bucket{ingress="fueltune-ingress"}[5m])) by (le)) > 3
+        for: 5m
+        labels:
+          severity: warning
+          component: networking
+        annotations:
+          summary: "High response time through ingress"
+          description: "95th percentile response time through ingress is {{ $value }}s"
+
+      # Ingress High Error Rate
+      - alert: FuelTuneIngressHighErrorRate
+        expr: sum(rate(nginx_ingress_controller_requests{ingress="fueltune-ingress",status=~"5.."}[5m])) / sum(rate(nginx_ingress_controller_requests{ingress="fueltune-ingress"}[5m])) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          component: networking
+        annotations:
+          summary: "High error rate through ingress"
+          description: "Error rate through ingress is {{ $value | humanizePercentage }}"
+
+      # SSL Certificate Expiring
+      - alert: FuelTuneSSLCertificateExpiring
+        expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 30  # 30 days
+        for: 1h
+        labels:
+          severity: warning
+          component: security
+        annotations:
+          summary: "SSL certificate expiring soon"
+          description: "SSL certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+
+      # Website Down
+      - alert: FuelTuneWebsiteDown
+        expr: probe_success{job="blackbox-http"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: availability
+          runbook: https://docs.fueltune.com/runbooks/website-down
+        annotations:
+          summary: "FuelTune website is down"
+          description: "{{ $labels.instance }} is not responding to HTTP probes"
+
+  # =============================================
+  # Security Alerts
+  # =============================================
+  - name: fueltune-security
+    rules:
+      # Unusual Request Pattern
+      - alert: FuelTuneUnusualRequestPattern
+        expr: rate(nginx_ingress_controller_requests{ingress="fueltune-ingress"}[1m]) > 100
+        for: 2m
+        labels:
+          severity: warning
+          component: security
+        annotations:
+          summary: "Unusual request pattern detected"
+          description: "Request rate is {{ $value }} requests/min, which is unusually high"
+
+      # High 4xx Error Rate (potential attacks)
+      - alert: FuelTuneHigh4xxErrorRate
+        expr: sum(rate(nginx_ingress_controller_requests{ingress="fueltune-ingress",status=~"4.."}[5m])) / sum(rate(nginx_ingress_controller_requests{ingress="fueltune-ingress"}[5m])) > 0.20
+        for: 5m
+        labels:
+          severity: warning
+          component: security
+        annotations:
+          summary: "High rate of 4xx errors"
+          description: "4xx error rate is {{ $value | humanizePercentage }}, potential security issue"
+
+  # =============================================
+  # Business Logic Alerts
+  # =============================================
+  - name: fueltune-business
+    rules:
+      # Low Data Processing Rate
+      - alert: FuelTuneLowDataProcessingRate
+        expr: rate(fueltune_data_files_processed_total[10m]) < 0.01
+        for: 30m
+        labels:
+          severity: info
+          component: business
+        annotations:
+          summary: "Low data processing rate"
+          description: "Data files are being processed at {{ $value }} files/sec"
+
+      # Failed Data Processing
+      - alert: FuelTuneFailedDataProcessing
+        expr: rate(fueltune_data_processing_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: business
+        annotations:
+          summary: "Data processing failures detected"
+          description: "Data processing is failing at {{ $value }} failures/sec"
+
+      # Large File Upload
+      - alert: FuelTuneLargeFileUpload
+        expr: fueltune_upload_file_size_bytes > 104857600  # 100MB
+        for: 1m
+        labels:
+          severity: info
+          component: business
+        annotations:
+          summary: "Large file uploaded"
+          description: "File of size {{ $value | humanizeBytes }} was uploaded"
+
+  # =============================================
+  # Monitoring System Alerts
+  # =============================================
+  - name: fueltune-monitoring
+    rules:
+      # Prometheus Target Down
+      - alert: FuelTunePrometheusTargetDown
+        expr: up == 0
+        for: 3m
+        labels:
+          severity: warning
+          component: monitoring
+        annotations:
+          summary: "Prometheus target is down"
+          description: "Target {{ $labels.job }}/{{ $labels.instance }} is down"
+
+      # High Prometheus Memory Usage
+      - alert: FuelTunePrometheusHighMemoryUsage
+        expr: (prometheus_tsdb_symbol_table_size_bytes + prometheus_tsdb_head_series * 8000) / 1024 / 1024 / 1024 > 8
+        for: 10m
+        labels:
+          severity: warning
+          component: monitoring
+        annotations:
+          summary: "Prometheus high memory usage"
+          description: "Prometheus memory usage is {{ $value }}GB"
+
+      # Prometheus TSDB Corruption
+      - alert: FuelTunePrometheusTSDBCorruption
+        expr: prometheus_tsdb_compactions_failed_total > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: monitoring
+        annotations:
+          summary: "Prometheus TSDB corruption detected"
+          description: "Prometheus TSDB compaction failures: {{ $value }}"

@@ -1,0 +1,320 @@
+name: Documentation
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'docs/**'
+      - 'src/**'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'docs/**'
+      - 'src/**'
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.11]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          pandoc \
+          texlive-latex-recommended \
+          texlive-fonts-recommended \
+          texlive-latex-extra \
+          latexmk
+
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-docs-${{ hashFiles('docs/requirements-docs.txt', 'requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-docs-
+          ${{ runner.os }}-pip-
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip wheel setuptools
+        pip install -r requirements.txt
+        pip install -r docs/requirements-docs.txt
+
+    - name: Validate documentation syntax
+      run: |
+        cd docs
+        python build_docs.py --validate
+
+    - name: Build HTML documentation
+      run: |
+        cd docs
+        python build_docs.py --html
+
+    - name: Build PDF documentation
+      run: |
+        cd docs
+        python build_docs.py --pdf
+      continue-on-error: true  # PDF build can fail due to LaTeX issues
+
+    - name: Check for broken links
+      run: |
+        cd docs
+        sphinx-build -b linkcheck . _build/linkcheck
+      continue-on-error: true  # Don't fail on external link issues
+
+    - name: Generate coverage report
+      run: |
+        cd docs
+        sphinx-build -b coverage . _build/coverage
+        cat _build/coverage/python.txt
+
+    - name: Upload documentation artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: documentation-${{ github.sha }}
+        path: |
+          docs/_build/html/
+          docs/_build/latex/*.pdf
+        retention-days: 30
+
+    - name: Deploy to GitHub Pages (main branch only)
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./docs/_build/html
+        publish_branch: gh-pages
+        force_orphan: true
+        user_name: 'github-actions[bot]'
+        user_email: 'github-actions[bot]@users.noreply.github.com'
+        commit_message: 'Deploy documentation ${{ github.sha }}'
+
+  link-checker:
+    runs-on: ubuntu-latest
+    needs: build-docs
+    if: github.event_name == 'pull_request'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+
+    - name: Install dependencies
+      run: |
+        pip install -r docs/requirements-docs.txt
+
+    - name: Run comprehensive link check
+      run: |
+        cd docs
+        sphinx-build -b linkcheck . _build/linkcheck -W
+
+    - name: Comment PR with link check results
+      if: failure()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const path = './docs/_build/linkcheck/output.txt';
+          
+          if (fs.existsSync(path)) {
+            const linkCheckOutput = fs.readFileSync(path, 'utf8');
+            const brokenLinks = linkCheckOutput
+              .split('\n')
+              .filter(line => line.includes('broken'))
+              .slice(0, 10); // Limit to first 10 broken links
+            
+            if (brokenLinks.length > 0) {
+              const comment = `## 🔗 Link Check Results\n\n` +
+                `Found ${brokenLinks.length} broken links:\n\n` +
+                brokenLinks.map(link => `- ${link}`).join('\n') +
+                `\n\nPlease fix these links before merging.`;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            }
+          }
+
+  docs-quality:
+    runs-on: ubuntu-latest
+    needs: build-docs
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install -r docs/requirements-docs.txt
+        pip install doc8 rstcheck
+
+    - name: Check RST syntax
+      run: |
+        rstcheck --recursive docs/
+
+    - name: Check documentation style
+      run: |
+        doc8 --ignore-path docs/_build docs/
+
+    - name: Generate and check documentation coverage
+      run: |
+        cd docs
+        sphinx-build -b coverage . _build/coverage
+        
+        # Parse coverage results
+        COVERAGE_FILE="_build/coverage/python.txt"
+        if [ -f "$COVERAGE_FILE" ]; then
+          UNDOC_COUNT=$(grep -c "undocumented" "$COVERAGE_FILE" || echo "0")
+          TOTAL_LINES=$(wc -l < "$COVERAGE_FILE")
+          
+          if [ "$TOTAL_LINES" -gt 0 ]; then
+            COVERAGE_PCT=$(echo "scale=1; (($TOTAL_LINES - $UNDOC_COUNT) * 100) / $TOTAL_LINES" | bc -l)
+            echo "Documentation coverage: ${COVERAGE_PCT}%"
+            
+            # Fail if coverage is too low
+            if (( $(echo "$COVERAGE_PCT < 80.0" | bc -l) )); then
+              echo "❌ Documentation coverage is below 80%"
+              exit 1
+            else
+              echo "✅ Documentation coverage is adequate"
+            fi
+          fi
+        fi
+
+    - name: Validate API documentation completeness
+      run: |
+        cd docs
+        python -c "
+        import sys
+        sys.path.insert(0, '../src')
+        
+        # Check if all major modules have documentation
+        required_docs = [
+            'api/modules/data.rst',
+            'api/modules/analysis.rst', 
+            'api/modules/ui.rst',
+            'api/modules/integration.rst'
+        ]
+        
+        missing_docs = []
+        for doc in required_docs:
+            import os
+            if not os.path.exists(doc):
+                missing_docs.append(doc)
+        
+        if missing_docs:
+            print(f'❌ Missing API documentation: {missing_docs}')
+            sys.exit(1)
+        else:
+            print('✅ All API documentation present')
+        "
+
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Bandit security scan on docs scripts
+      run: |
+        pip install bandit[toml]
+        bandit -r docs/ -f json -o bandit-report.json || true
+        
+        # Check if any high/medium severity issues
+        if [ -f bandit-report.json ]; then
+          HIGH_ISSUES=$(jq '.results[] | select(.issue_severity=="HIGH")' bandit-report.json | wc -l)
+          MEDIUM_ISSUES=$(jq '.results[] | select(.issue_severity=="MEDIUM")' bandit-report.json | wc -l)
+          
+          if [ "$HIGH_ISSUES" -gt 0 ] || [ "$MEDIUM_ISSUES" -gt 2 ]; then
+            echo "❌ Security issues found in documentation scripts"
+            jq '.results[]' bandit-report.json
+            exit 1
+          else
+            echo "✅ No significant security issues found"
+          fi
+        fi
+
+  performance-test:
+    runs-on: ubuntu-latest
+    needs: build-docs
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+
+    - name: Install dependencies
+      run: |
+        pip install -r docs/requirements-docs.txt
+
+    - name: Benchmark documentation build time
+      run: |
+        cd docs
+        
+        echo "🕒 Benchmarking documentation build..."
+        START_TIME=$(date +%s)
+        
+        python build_docs.py --html --skip-deps
+        
+        END_TIME=$(date +%s)
+        BUILD_TIME=$((END_TIME - START_TIME))
+        
+        echo "📊 Build completed in ${BUILD_TIME} seconds"
+        
+        # Fail if build takes too long (over 5 minutes)
+        if [ "$BUILD_TIME" -gt 300 ]; then
+          echo "❌ Documentation build is too slow (> 5 minutes)"
+          exit 1
+        else
+          echo "✅ Build time is acceptable"
+        fi
+
+    - name: Check output size
+      run: |
+        cd docs/_build/html
+        
+        TOTAL_SIZE=$(du -sh . | cut -f1)
+        SIZE_MB=$(du -sm . | cut -f1)
+        
+        echo "📦 Total documentation size: $TOTAL_SIZE"
+        
+        # Warn if documentation is very large (>100MB)
+        if [ "$SIZE_MB" -gt 100 ]; then
+          echo "⚠️ Documentation size is large (${TOTAL_SIZE})"
+        else
+          echo "✅ Documentation size is reasonable"
+        fi

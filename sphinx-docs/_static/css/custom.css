@@ -1,0 +1,262 @@
+/* Custom CSS for FuelTune Analyzer Documentation */
+
+/* Brand colors and styling */
+:root {
+  --fueltune-primary: #336790;
+  --fueltune-secondary: #E5B62F;
+  --fueltune-success: #28a745;
+  --fueltune-warning: #ffc107;
+  --fueltune-danger: #dc3545;
+  --fueltune-info: #17a2b8;
+  --fueltune-light: #f8f9fa;
+  --fueltune-dark: #343a40;
+}
+
+/* Custom admonitions styling */
+.admonition {
+  border-left: 4px solid var(--fueltune-primary);
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  margin: 1rem 0;
+}
+
+.admonition.note {
+  border-left-color: var(--fueltune-info);
+}
+
+.admonition.warning {
+  border-left-color: var(--fueltune-warning);
+}
+
+.admonition.danger,
+.admonition.error {
+  border-left-color: var(--fueltune-danger);
+}
+
+.admonition.tip,
+.admonition.hint {
+  border-left-color: var(--fueltune-success);
+}
+
+/* Code blocks styling */
+.highlight {
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+pre {
+  padding: 1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+/* API documentation styling */
+.py.class > dt,
+.py.function > dt,
+.py.method > dt {
+  background-color: var(--color-api-background, #f8f9fa);
+  border-left: 4px solid var(--fueltune-primary);
+  padding: 0.5rem;
+  border-radius: 4px;
+}
+
+/* Mermaid diagram styling */
+.mermaid {
+  text-align: center;
+  margin: 1rem 0;
+}
+
+/* Table styling */
+.table-wrapper {
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+
+table.docutils {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+}
+
+table.docutils th,
+table.docutils td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+table.docutils th {
+  background-color: var(--fueltune-primary);
+  color: white;
+  font-weight: bold;
+}
+
+table.docutils tr:nth-child(even) {
+  background-color: #f2f2f2;
+}
+
+/* Navigation improvements */
+.toctree-wrapper {
+  margin: 1rem 0;
+}
+
+.toctree-wrapper ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.toctree-wrapper li {
+  margin: 0.5rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid transparent;
+}
+
+.toctree-wrapper li:hover {
+  border-left-color: var(--fueltune-secondary);
+}
+
+/* Badge styling */
+.badge {
+  display: inline-block;
+  padding: 0.25em 0.4em;
+  font-size: 75%;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: baseline;
+  border-radius: 0.25rem;
+  margin: 0.1rem;
+}
+
+.badge-primary {
+  color: #fff;
+  background-color: var(--fueltune-primary);
+}
+
+.badge-secondary {
+  color: #212529;
+  background-color: var(--fueltune-secondary);
+}
+
+.badge-success {
+  color: #fff;
+  background-color: var(--fueltune-success);
+}
+
+.badge-warning {
+  color: #212529;
+  background-color: var(--fueltune-warning);
+}
+
+.badge-danger {
+  color: #fff;
+  background-color: var(--fueltune-danger);
+}
+
+/* Version badges */
+.version-badges {
+  margin: 1rem 0;
+  text-align: center;
+}
+
+.version-badges img {
+  margin: 0.2rem;
+}
+
+/* Feature grid */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+  margin: 2rem 0;
+}
+
+.feature-card {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1.5rem;
+  background: white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: box-shadow 0.3s ease;
+}
+
+.feature-card:hover {
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.feature-card h3 {
+  color: var(--fueltune-primary);
+  margin-top: 0;
+}
+
+/* Code example styling */
+.code-example {
+  margin: 1rem 0;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.code-example-header {
+  background-color: var(--fueltune-primary);
+  color: white;
+  padding: 0.5rem 1rem;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.code-example-body {
+  background-color: #f8f9fa;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .feature-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .table-wrapper {
+    font-size: 0.9rem;
+  }
+  
+  pre {
+    font-size: 0.8rem;
+    padding: 0.5rem;
+  }
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .feature-card {
+    background: #2d3748;
+    border-color: #4a5568;
+  }
+  
+  .code-example-body {
+    background-color: #2d3748;
+  }
+  
+  table.docutils tr:nth-child(even) {
+    background-color: #2d3748;
+  }
+}
+
+/* Print styles */
+@media print {
+  .sidebar {
+    display: none !important;
+  }
+  
+  .content {
+    margin-left: 0 !important;
+  }
+  
+  .mermaid {
+    break-inside: avoid;
+  }
+  
+  .code-example {
+    break-inside: avoid;
+  }
+}

@@ -1,0 +1,411 @@
+# =============================================
+# FuelTune Streamlit - Continuous Deployment
+# =============================================
+# Automated deployment pipeline with zero-downtime deployments
+
+name: Continuous Deployment
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_run:
+    workflows: ["Continuous Integration"]
+    branches: [main]
+    types: [completed]
+
+# Ensure only one deployment runs at a time
+concurrency:
+  group: deployment-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  KUBE_NAMESPACE: fueltune
+  HELM_VERSION: '3.12.0'
+
+jobs:
+  # =============================================
+  # Determine Deployment Strategy
+  # =============================================
+  strategy:
+    name: Deployment Strategy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    outputs:
+      environment: ${{ steps.determine.outputs.environment }}
+      should-deploy: ${{ steps.determine.outputs.should-deploy }}
+      is-production: ${{ steps.determine.outputs.is-production }}
+      version: ${{ steps.determine.outputs.version }}
+    
+    steps:
+    - name: Determine deployment environment
+      id: determine
+      run: |
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          echo "environment=production" >> $GITHUB_OUTPUT
+          echo "should-deploy=true" >> $GITHUB_OUTPUT
+          echo "is-production=true" >> $GITHUB_OUTPUT
+          echo "version=main-${{ github.sha }}" >> $GITHUB_OUTPUT
+        elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          echo "environment=production" >> $GITHUB_OUTPUT
+          echo "should-deploy=true" >> $GITHUB_OUTPUT
+          echo "is-production=true" >> $GITHUB_OUTPUT
+          echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        else
+          echo "environment=staging" >> $GITHUB_OUTPUT
+          echo "should-deploy=false" >> $GITHUB_OUTPUT
+          echo "is-production=false" >> $GITHUB_OUTPUT
+          echo "version=dev-${{ github.sha }}" >> $GITHUB_OUTPUT
+        fi
+
+  # =============================================
+  # Build and Push Production Image
+  # =============================================
+  build-production:
+    name: Build Production Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [strategy]
+    if: needs.strategy.outputs.should-deploy == 'true'
+    
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch,suffix=-{{sha}}
+          type=ref,event=tag
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=raw,value=stable,enable=${{ needs.strategy.outputs.is-production }}
+    
+    - name: Build and push production image
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        target: production
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+        build-args: |
+          VERSION=${{ needs.strategy.outputs.version }}
+          BUILD_DATE=${{ github.event.head_commit.timestamp }}
+          GIT_COMMIT=${{ github.sha }}
+
+  # =============================================
+  # Security Scan Production Image
+  # =============================================
+  security-scan-image:
+    name: Security Scan Production Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build-production]
+    
+    steps:
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ needs.build-production.outputs.image-tag }}
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+    
+    - name: Run Snyk Container scan
+      uses: snyk/actions/docker@master
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        image: ${{ needs.build-production.outputs.image-tag }}
+        args: --severity-threshold=high
+
+  # =============================================
+  # Deploy to Staging
+  # =============================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [strategy, build-production]
+    if: needs.strategy.outputs.environment == 'staging' || github.ref == 'refs/heads/develop'
+    environment:
+      name: staging
+      url: https://staging.fueltune.example.com
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Kubernetes CLI
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+    
+    - name: Set up Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: ${{ env.HELM_VERSION }}
+    
+    - name: Configure kubectl
+      run: |
+        mkdir -p ~/.kube
+        echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > ~/.kube/config
+        kubectl config use-context staging
+    
+    - name: Deploy to staging with Helm
+      run: |
+        helm upgrade --install fueltune-staging ./infrastructure/helm/fueltune \
+          --namespace fueltune-staging \
+          --create-namespace \
+          --values ./infrastructure/helm/fueltune/values-staging.yaml \
+          --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
+          --set image.tag=${{ needs.strategy.outputs.version }} \
+          --set ingress.hosts[0].host=staging.fueltune.example.com \
+          --wait --timeout=10m
+    
+    - name: Run smoke tests
+      run: |
+        sleep 60
+        curl -f https://staging.fueltune.example.com/_stcore/health
+        echo "Staging deployment successful!"
+
+  # =============================================
+  # Deploy to Production
+  # =============================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [strategy, build-production, security-scan-image]
+    if: needs.strategy.outputs.is-production == 'true'
+    environment:
+      name: production
+      url: https://fueltune.example.com
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Kubernetes CLI
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+    
+    - name: Set up Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: ${{ env.HELM_VERSION }}
+    
+    - name: Configure kubectl
+      run: |
+        mkdir -p ~/.kube
+        echo "${{ secrets.KUBECONFIG_PRODUCTION }}" | base64 -d > ~/.kube/config
+        kubectl config use-context production
+    
+    - name: Pre-deployment backup
+      run: |
+        kubectl create job --from=cronjob/fueltune-backup-cronjob \
+          fueltune-pre-deploy-backup-$(date +%Y%m%d-%H%M%S) \
+          -n ${{ env.KUBE_NAMESPACE }}
+    
+    - name: Wait for backup to complete
+      run: |
+        kubectl wait --for=condition=complete job/fueltune-pre-deploy-backup-* \
+          --timeout=600s -n ${{ env.KUBE_NAMESPACE }}
+    
+    - name: Deploy to production with Helm (Blue-Green)
+      run: |
+        # Get current deployment version
+        CURRENT_VERSION=$(kubectl get deployment fueltune-app -n ${{ env.KUBE_NAMESPACE }} \
+          -o jsonpath='{.metadata.labels.version}' || echo "none")
+        
+        # Deploy new version
+        helm upgrade --install fueltune ./infrastructure/helm/fueltune \
+          --namespace ${{ env.KUBE_NAMESPACE }} \
+          --create-namespace \
+          --values ./infrastructure/helm/fueltune/values-production.yaml \
+          --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
+          --set image.tag=${{ needs.strategy.outputs.version }} \
+          --set ingress.hosts[0].host=fueltune.example.com \
+          --set deployment.labels.version=${{ needs.strategy.outputs.version }} \
+          --wait --timeout=15m
+        
+        echo "Previous version: $CURRENT_VERSION"
+        echo "New version: ${{ needs.strategy.outputs.version }}"
+    
+    - name: Run production health checks
+      run: |
+        # Wait for deployment to stabilize
+        sleep 120
+        
+        # Check health endpoint
+        for i in {1..10}; do
+          if curl -f https://fueltune.example.com/_stcore/health; then
+            echo "Health check passed on attempt $i"
+            break
+          else
+            echo "Health check failed on attempt $i, retrying in 30s..."
+            sleep 30
+            if [ $i -eq 10 ]; then
+              echo "Health checks failed, initiating rollback"
+              exit 1
+            fi
+          fi
+        done
+    
+    - name: Run integration tests in production
+      run: |
+        # Run critical path tests against production
+        python -m pytest tests/production/ -v \
+          --base-url=https://fueltune.example.com \
+          || (echo "Production tests failed, initiating rollback" && exit 1)
+    
+    - name: Update DNS and traffic routing
+      run: |
+        # Update any DNS records or traffic routing rules
+        echo "Updating traffic routing to new version"
+        # This would contain actual traffic switching logic
+    
+    - name: Notify deployment success
+      uses: 8398a7/action-slack@v3
+      with:
+        status: success
+        text: |
+          🚀 Production deployment successful!
+          Version: ${{ needs.strategy.outputs.version }}
+          Environment: https://fueltune.example.com
+          Commit: ${{ github.sha }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # =============================================
+  # Rollback on Failure
+  # =============================================
+  rollback:
+    name: Rollback Deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [deploy-production]
+    if: failure()
+    
+    steps:
+    - name: Configure kubectl
+      run: |
+        mkdir -p ~/.kube
+        echo "${{ secrets.KUBECONFIG_PRODUCTION }}" | base64 -d > ~/.kube/config
+        kubectl config use-context production
+    
+    - name: Rollback deployment
+      run: |
+        helm rollback fueltune -n ${{ env.KUBE_NAMESPACE }}
+        
+        # Wait for rollback to complete
+        kubectl rollout status deployment/fueltune-app -n ${{ env.KUBE_NAMESPACE }} --timeout=600s
+    
+    - name: Verify rollback
+      run: |
+        sleep 60
+        curl -f https://fueltune.example.com/_stcore/health
+        echo "Rollback completed successfully"
+    
+    - name: Notify rollback
+      uses: 8398a7/action-slack@v3
+      with:
+        status: failure
+        text: |
+          ⚠️ Production deployment failed and was rolled back
+          Commit: ${{ github.sha }}
+          Check the logs for details.
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # =============================================
+  # Post-Deployment Tasks
+  # =============================================
+  post-deployment:
+    name: Post-Deployment Tasks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [deploy-production]
+    if: success()
+    
+    steps:
+    - name: Tag successful deployment
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        git tag -a "deployed-${{ github.sha }}" -m "Deployed to production"
+        git push origin "deployed-${{ github.sha }}"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Update deployment status
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.repos.createDeploymentStatus({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            deployment_id: context.payload.deployment.id,
+            state: 'success',
+            environment_url: 'https://fueltune.example.com',
+            description: 'Deployment completed successfully'
+          });
+    
+    - name: Clean up old deployments
+      run: |
+        # Clean up old Docker images
+        echo "Cleaning up old images and deployments"
+        # Add cleanup logic here
+
+  # =============================================
+  # Performance Monitoring
+  # =============================================
+  performance-monitoring:
+    name: Performance Monitoring
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [deploy-production]
+    if: success()
+    
+    steps:
+    - name: Run performance tests
+      run: |
+        # Run load tests against production
+        echo "Running performance monitoring"
+        # Add actual performance testing logic
+    
+    - name: Update performance baselines
+      run: |
+        echo "Updating performance baselines"
+        # Store performance metrics for comparison

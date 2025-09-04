@@ -1,0 +1,292 @@
+# =============================================
+# FuelTune Streamlit - Horizontal Pod Autoscaler
+# =============================================
+# Auto-scaling configuration for dynamic load handling
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fueltune-app-hpa
+  namespace: fueltune
+  labels:
+    app: fueltune
+    component: hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fueltune-app
+  
+  # =============================================
+  # Scaling Configuration
+  # =============================================
+  minReplicas: 3
+  maxReplicas: 20
+  
+  # =============================================
+  # Scaling Behavior
+  # =============================================
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # 5 minutes
+      policies:
+      - type: Percent
+        value: 25  # Scale down by max 25% of current replicas
+        periodSeconds: 60
+      - type: Pods
+        value: 2   # Or max 2 pods at a time
+        periodSeconds: 60
+      selectPolicy: Min  # Use the policy that results in fewer changes
+    
+    scaleUp:
+      stabilizationWindowSeconds: 60   # 1 minute
+      policies:
+      - type: Percent
+        value: 50  # Scale up by max 50% of current replicas
+        periodSeconds: 60
+      - type: Pods
+        value: 4   # Or max 4 pods at a time
+        periodSeconds: 60
+      selectPolicy: Max  # Use the policy that results in more changes
+  
+  # =============================================
+  # Scaling Metrics
+  # =============================================
+  metrics:
+  
+  # CPU Utilization
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70  # Scale when CPU > 70%
+  
+  # Memory Utilization
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80  # Scale when Memory > 80%
+  
+  # Custom Metrics (if metrics server is available)
+  - type: Pods
+    pods:
+      metric:
+        name: requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "100"  # Scale when RPS > 100 per pod
+  
+  # External Metrics (if external metrics are available)
+  - type: External
+    external:
+      metric:
+        name: nginx.ingress.controller.requests.rate
+        selector:
+          matchLabels:
+            ingress: fueltune-ingress
+      target:
+        type: AverageValue
+        averageValue: "500"  # Scale when overall RPS > 500
+
+---
+# =============================================
+# Vertical Pod Autoscaler (VPA)
+# =============================================
+# Automatically adjusts resource requests/limits
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: fueltune-app-vpa
+  namespace: fueltune
+  labels:
+    app: fueltune
+    component: vpa
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fueltune-app
+  
+  updatePolicy:
+    updateMode: "Auto"  # Options: Off, Initial, Recreation, Auto
+    
+  resourcePolicy:
+    containerPolicies:
+    - containerName: fueltune-app
+      minAllowed:
+        cpu: 100m
+        memory: 128Mi
+      maxAllowed:
+        cpu: 2000m
+        memory: 2Gi
+      controlledResources:
+      - cpu
+      - memory
+
+---
+# =============================================
+# Pod Disruption Budget
+# =============================================
+# Ensures minimum availability during disruptions
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: fueltune-app-pdb
+  namespace: fueltune
+  labels:
+    app: fueltune
+    component: pdb
+spec:
+  selector:
+    matchLabels:
+      app: fueltune
+      component: streamlit-app
+  
+  # Either minAvailable or maxUnavailable, not both
+  minAvailable: 2  # Always keep at least 2 pods running
+  # maxUnavailable: 1  # Alternative: allow max 1 pod to be unavailable
+
+---
+# =============================================
+# Custom Resource Definitions for Advanced Scaling
+# =============================================
+# ScaledObject for KEDA (if KEDA is installed)
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: fueltune-app-scaled-object
+  namespace: fueltune
+  labels:
+    app: fueltune
+    component: keda-scaler
+spec:
+  scaleTargetRef:
+    name: fueltune-app
+  
+  minReplicaCount: 3
+  maxReplicaCount: 50
+  
+  # Cooldown periods
+  cooldownPeriod: 300   # 5 minutes
+  pollingInterval: 30   # 30 seconds
+  
+  triggers:
+  # HTTP requests trigger
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus-service:9090
+      metricName: http_requests_per_second
+      threshold: "100"
+      query: sum(rate(nginx_ingress_controller_requests[2m]){ingress="fueltune-ingress"})
+  
+  # Redis queue trigger (if using queues)
+  - type: redis
+    metadata:
+      address: redis-service:6379
+      listName: task_queue
+      listLength: "10"
+    authenticationRef:
+      name: redis-auth
+  
+  # CPU trigger (alternative to standard HPA)
+  - type: cpu
+    metadata:
+      type: Utilization
+      value: "70"
+
+---
+# =============================================
+# Priority Class for Pod Scheduling
+# =============================================
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: fueltune-high-priority
+  labels:
+    app: fueltune
+    component: priority-class
+value: 1000000  # High priority value
+globalDefault: false
+description: "High priority class for FuelTune application pods"
+
+---
+# =============================================
+# Resource Quota for Namespace
+# =============================================
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: fueltune-resource-quota
+  namespace: fueltune
+  labels:
+    app: fueltune
+    component: resource-quota
+spec:
+  hard:
+    # Compute resources
+    requests.cpu: "10"      # Total CPU requests
+    requests.memory: "20Gi"  # Total memory requests
+    limits.cpu: "20"        # Total CPU limits
+    limits.memory: "40Gi"   # Total memory limits
+    
+    # Storage resources
+    requests.storage: "100Gi"
+    persistentvolumeclaims: "10"
+    
+    # Object counts
+    pods: "50"
+    services: "20"
+    secrets: "20"
+    configmaps: "20"
+    
+    # Load balancers
+    services.loadbalancers: "5"
+    services.nodeports: "10"
+
+---
+# =============================================
+# Limit Range for Default Resource Limits
+# =============================================
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: fueltune-limit-range
+  namespace: fueltune
+  labels:
+    app: fueltune
+    component: limit-range
+spec:
+  limits:
+  # Container limits
+  - type: Container
+    default:
+      cpu: "1000m"
+      memory: "1Gi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "128Mi"
+    max:
+      cpu: "4000m"
+      memory: "8Gi"
+    min:
+      cpu: "50m"
+      memory: "64Mi"
+  
+  # Pod limits
+  - type: Pod
+    max:
+      cpu: "8000m"
+      memory: "16Gi"
+    min:
+      cpu: "100m"
+      memory: "128Mi"
+  
+  # PVC limits
+  - type: PersistentVolumeClaim
+    max:
+      storage: "100Gi"
+    min:
+      storage: "1Gi"

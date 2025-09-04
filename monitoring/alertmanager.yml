@@ -1,0 +1,464 @@
+# =============================================
+# FuelTune Streamlit - AlertManager Configuration
+# =============================================
+# Comprehensive alerting and notification routing
+
+global:
+  smtp_smarthost: 'smtp.fueltune.com:587'
+  smtp_from: 'alerts@fueltune.com'
+  smtp_auth_username: 'alerts@fueltune.com'
+  smtp_auth_password: 'smtp_password_from_secret'
+  smtp_require_tls: true
+
+# Templates for notifications
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Routing configuration
+route:
+  # Default settings
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 12h
+  receiver: 'default-notifications'
+  
+  # Routing tree
+  routes:
+    # Critical alerts - immediate notification
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 10s
+      group_interval: 2m
+      repeat_interval: 5m
+      routes:
+        # Application down - page immediately
+        - match:
+            alertname: FuelTuneApplicationDown
+          receiver: 'application-down-alerts'
+          group_wait: 0s
+          repeat_interval: 2m
+        
+        # Database down - page immediately
+        - match:
+            alertname: FuelTuneDatabaseDown
+          receiver: 'database-down-alerts'
+          group_wait: 0s
+          repeat_interval: 2m
+        
+        # Website down - page immediately
+        - match:
+            alertname: FuelTuneWebsiteDown
+          receiver: 'website-down-alerts'
+          group_wait: 0s
+          repeat_interval: 2m
+    
+    # Warning alerts - standard notification
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+      group_wait: 2m
+      group_interval: 10m
+      repeat_interval: 2h
+    
+    # Info alerts - low priority
+    - match:
+        severity: info
+      receiver: 'info-alerts'
+      group_wait: 5m
+      group_interval: 30m
+      repeat_interval: 24h
+    
+    # Business alerts - business team notification
+    - match:
+        component: business
+      receiver: 'business-alerts'
+      group_wait: 1m
+      group_interval: 15m
+      repeat_interval: 4h
+    
+    # Security alerts - security team notification
+    - match:
+        component: security
+      receiver: 'security-alerts'
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 1h
+    
+    # Infrastructure alerts - ops team
+    - match:
+        component: infrastructure
+      receiver: 'infrastructure-alerts'
+      group_wait: 1m
+      group_interval: 10m
+      repeat_interval: 2h
+    
+    # Monitoring system alerts - platform team
+    - match:
+        component: monitoring
+      receiver: 'monitoring-alerts'
+      group_wait: 5m
+      group_interval: 30m
+      repeat_interval: 12h
+    
+    # Development environment - reduced noise
+    - match:
+        environment: development
+      receiver: 'dev-alerts'
+      group_wait: 10m
+      group_interval: 1h
+      repeat_interval: 24h
+    
+    # Staging environment - moderate priority
+    - match:
+        environment: staging
+      receiver: 'staging-alerts'
+      group_wait: 5m
+      group_interval: 30m
+      repeat_interval: 6h
+
+# Inhibition rules to reduce alert noise
+inhibit_rules:
+  # If application is down, don't alert on high response times
+  - source_match:
+      alertname: FuelTuneApplicationDown
+    target_match:
+      alertname: FuelTuneHighResponseTime
+    equal: ['pod']
+  
+  # If node is down, don't alert on pod issues on that node
+  - source_match:
+      alertname: FuelTuneNodeDown
+    target_match_re:
+      alertname: FuelTunePod.*
+    equal: ['instance']
+  
+  # If database is down, don't alert on connection issues
+  - source_match:
+      alertname: FuelTuneDatabaseDown
+    target_match:
+      alertname: FuelTuneHighDatabaseConnections
+  
+  # If website is down, don't alert on ingress issues
+  - source_match:
+      alertname: FuelTuneWebsiteDown
+    target_match_re:
+      alertname: FuelTuneIngress.*
+
+# Notification receivers
+receivers:
+  # =============================================
+  # Default Notifications
+  # =============================================
+  - name: 'default-notifications'
+    slack_configs:
+      - api_url: 'slack_webhook_url_from_secret'
+        channel: '#fueltune-alerts'
+        username: 'AlertManager'
+        color: 'warning'
+        title: 'FuelTune Alert'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Severity:* {{ .Labels.severity }}
+          *Component:* {{ .Labels.component }}
+          {{ end }}
+    
+    email_configs:
+      - to: 'team@fueltune.com'
+        subject: 'FuelTune Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Severity: {{ .Labels.severity }}
+          Component: {{ .Labels.component }}
+          Runbook: {{ .Annotations.runbook }}
+          Dashboard: {{ .Annotations.dashboard }}
+          {{ end }}
+
+  # =============================================
+  # Critical Alerts
+  # =============================================
+  - name: 'critical-alerts'
+    slack_configs:
+      - api_url: 'slack_webhook_url_from_secret'
+        channel: '#fueltune-critical'
+        username: 'AlertManager'
+        color: 'danger'
+        title: '🚨 CRITICAL: FuelTune Alert'
+        text: |
+          <!channel>
+          {{ range .Alerts }}
+          *CRITICAL ALERT:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Runbook:* {{ .Annotations.runbook }}
+          *Dashboard:* {{ .Annotations.dashboard }}
+          {{ end }}
+    
+    pagerduty_configs:
+      - routing_key: 'pagerduty_routing_key_from_secret'
+        description: '{{ .GroupLabels.alertname }}: {{ .Annotations.summary }}'
+        severity: 'critical'
+        client: 'FuelTune AlertManager'
+        client_url: 'https://monitoring.fueltune.example.com'
+        details:
+          component: '{{ .Labels.component }}'
+          environment: '{{ .Labels.environment }}'
+    
+    email_configs:
+      - to: 'oncall@fueltune.com'
+        subject: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+        body: |
+          CRITICAL ALERT TRIGGERED
+          
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Severity: {{ .Labels.severity }}
+          Component: {{ .Labels.component }}
+          Runbook: {{ .Annotations.runbook }}
+          Dashboard: {{ .Annotations.dashboard }}
+          
+          Time: {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+          {{ end }}
+
+  # =============================================
+  # Application Down Alerts
+  # =============================================
+  - name: 'application-down-alerts'
+    slack_configs:
+      - api_url: 'slack_webhook_url_from_secret'
+        channel: '#fueltune-critical'
+        username: 'AlertManager'
+        color: 'danger'
+        title: '🔴 APPLICATION DOWN'
+        text: |
+          <!channel> 
+          🚨 *FuelTune Application is DOWN!* 🚨
+          
+          This requires IMMEDIATE attention!
+          
+          {{ range .Alerts }}
+          *Pod:* {{ .Labels.pod }}
+          *Description:* {{ .Annotations.description }}
+          *Runbook:* {{ .Annotations.runbook }}
+          {{ end }}
+    
+    pagerduty_configs:
+      - routing_key: 'pagerduty_routing_key_from_secret'
+        description: 'FuelTune Application Down: {{ .Annotations.summary }}'
+        severity: 'critical'
+    
+    webhook_configs:
+      - url: 'https://hooks.microsoft.com/teams_webhook_from_secret'
+        send_resolved: true
+        title: 'FuelTune Application Down'
+        text: |
+          {{ range .Alerts }}
+          **CRITICAL:** FuelTune application is down
+          
+          **Pod:** {{ .Labels.pod }}
+          **Description:** {{ .Annotations.description }}
+          **Time:** {{ .StartsAt.Format "15:04:05" }}
+          {{ end }}
+
+  # =============================================
+  # Database Down Alerts
+  # =============================================
+  - name: 'database-down-alerts'
+    slack_configs:
+      - api_url: 'slack_webhook_url_from_secret'
+        channel: '#fueltune-critical'
+        username: 'AlertManager'
+        color: 'danger'
+        title: '🔴 DATABASE DOWN'
+        text: |
+          <!channel>
+          🚨 *FuelTune Database is DOWN!* 🚨
+          
+          {{ range .Alerts }}
+          *Description:* {{ .Annotations.description }}
+          *Runbook:* {{ .Annotations.runbook }}
+          {{ end }}
+    
+    pagerduty_configs:
+      - routing_key: 'pagerduty_routing_key_from_secret'
+        description: 'FuelTune Database Down'
+        severity: 'critical'
+
+  # =============================================
+  # Website Down Alerts
+  # =============================================
+  - name: 'website-down-alerts'
+    slack_configs:
+      - api_url: 'slack_webhook_url_from_secret'
+        channel: '#fueltune-critical'
+        username: 'AlertManager'
+        color: 'danger'
+        title: '🔴 WEBSITE DOWN'
+        text: |
+          <!channel>
+          🚨 *FuelTune Website is DOWN!* 🚨
+          
+          {{ range .Alerts }}
+          *URL:* {{ .Labels.instance }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+
+  # =============================================
+  # Warning Alerts
+  # =============================================
+  - name: 'warning-alerts'
+    slack_configs:
+      - api_url: 'slack_webhook_url_from_secret'
+        channel: '#fueltune-alerts'
+        username: 'AlertManager'
+        color: 'warning'
+        title: '⚠️ FuelTune Warning'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Component:* {{ .Labels.component }}
+          {{ end }}
+
+  # =============================================
+  # Info Alerts
+  # =============================================
+  - name: 'info-alerts'
+    slack_configs:
+      - api_url: 'slack_webhook_url_from_secret'
+        channel: '#fueltune-info'
+        username: 'AlertManager'
+        color: 'good'
+        title: 'ℹ️ FuelTune Info'
+        text: |
+          {{ range .Alerts }}
+          *Info:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+
+  # =============================================
+  # Business Alerts
+  # =============================================
+  - name: 'business-alerts'
+    slack_configs:
+      - api_url: 'slack_webhook_url_from_secret'
+        channel: '#fueltune-business'
+        username: 'AlertManager'
+        color: 'warning'
+        title: '📊 FuelTune Business Alert'
+        text: |
+          {{ range .Alerts }}
+          *Business Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+    
+    email_configs:
+      - to: 'business@fueltune.com'
+        subject: 'FuelTune Business Alert: {{ .GroupLabels.alertname }}'
+
+  # =============================================
+  # Security Alerts
+  # =============================================
+  - name: 'security-alerts'
+    slack_configs:
+      - api_url: 'slack_webhook_url_from_secret'
+        channel: '#fueltune-security'
+        username: 'AlertManager'
+        color: 'danger'
+        title: '🛡️ FuelTune Security Alert'
+        text: |
+          {{ range .Alerts }}
+          *Security Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Severity:* {{ .Labels.severity }}
+          {{ end }}
+    
+    email_configs:
+      - to: 'security@fueltune.com'
+        subject: '🛡️ SECURITY: {{ .GroupLabels.alertname }}'
+
+  # =============================================
+  # Infrastructure Alerts
+  # =============================================
+  - name: 'infrastructure-alerts'
+    slack_configs:
+      - api_url: 'slack_webhook_url_from_secret'
+        channel: '#fueltune-infrastructure'
+        username: 'AlertManager'
+        color: 'warning'
+        title: '🏗️ FuelTune Infrastructure Alert'
+        text: |
+          {{ range .Alerts }}
+          *Infrastructure Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Node:* {{ .Labels.instance }}
+          {{ end }}
+
+  # =============================================
+  # Monitoring Alerts
+  # =============================================
+  - name: 'monitoring-alerts'
+    slack_configs:
+      - api_url: 'slack_webhook_url_from_secret'
+        channel: '#fueltune-platform'
+        username: 'AlertManager'
+        color: 'warning'
+        title: '📊 FuelTune Monitoring Alert'
+        text: |
+          {{ range .Alerts }}
+          *Monitoring Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+
+  # =============================================
+  # Development Environment
+  # =============================================
+  - name: 'dev-alerts'
+    slack_configs:
+      - api_url: 'slack_webhook_url_from_secret'
+        channel: '#fueltune-dev'
+        username: 'AlertManager'
+        color: 'good'
+        title: '🔧 FuelTune Dev Alert'
+        text: |
+          {{ range .Alerts }}
+          *Dev Alert:* {{ .Annotations.summary }}
+          {{ end }}
+
+  # =============================================
+  # Staging Environment
+  # =============================================
+  - name: 'staging-alerts'
+    slack_configs:
+      - api_url: 'slack_webhook_url_from_secret'
+        channel: '#fueltune-staging'
+        username: 'AlertManager'
+        color: 'warning'
+        title: '🎭 FuelTune Staging Alert'
+        text: |
+          {{ range .Alerts }}
+          *Staging Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+
+# Time intervals for muting alerts
+time_intervals:
+  - name: 'business-hours'
+    time_intervals:
+      - times:
+          - start_time: '09:00'
+            end_time: '17:00'
+        weekdays: ['monday:friday']
+        location: 'UTC'
+  
+  - name: 'maintenance-window'
+    time_intervals:
+      - times:
+          - start_time: '02:00'
+            end_time: '04:00'
+        location: 'UTC'

@@ -1,0 +1,257 @@
+# =============================================
+# FuelTune Streamlit - Kubernetes ConfigMaps
+# =============================================
+# Application configuration and environment settings
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fueltune-config
+  namespace: fueltune
+  labels:
+    app: fueltune
+    component: config
+data:
+  # =============================================
+  # Application Configuration
+  # =============================================
+  APP_NAME: "FuelTune Streamlit"
+  APP_VERSION: "1.0.0"
+  APP_ENV: "production"
+  DEBUG: "false"
+  LOG_LEVEL: "INFO"
+  
+  # =============================================
+  # Streamlit Configuration
+  # =============================================
+  STREAMLIT_SERVER_PORT: "8501"
+  STREAMLIT_SERVER_ADDRESS: "0.0.0.0"
+  STREAMLIT_SERVER_HEADLESS: "true"
+  STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+  STREAMLIT_THEME_BASE: "light"
+  STREAMLIT_SERVER_MAX_UPLOAD_SIZE: "50"
+  STREAMLIT_SERVER_MAX_MESSAGE_SIZE: "200"
+  STREAMLIT_SERVER_ENABLE_CORS: "false"
+  STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION: "true"
+  
+  # =============================================
+  # Data Processing Configuration
+  # =============================================
+  MAX_FILE_SIZE: "50MB"
+  ALLOWED_EXTENSIONS: "csv,xlsx,xls"
+  FUELTECH_FIELDS_COUNT: "64"
+  CACHE_EXPIRY_HOURS: "24"
+  
+  # =============================================
+  # Database Configuration
+  # =============================================
+  DB_POOL_SIZE: "10"
+  DB_MAX_OVERFLOW: "20"
+  DB_POOL_TIMEOUT: "30"
+  DB_POOL_RECYCLE: "3600"
+  
+  # =============================================
+  # Redis Configuration
+  # =============================================
+  REDIS_MAX_CONNECTIONS: "50"
+  REDIS_SOCKET_TIMEOUT: "5"
+  REDIS_CONNECTION_POOL_KWARGS: '{"retry_on_timeout": true, "health_check_interval": 30}'
+  
+  # =============================================
+  # Security Configuration
+  # =============================================
+  SECURITY_HEADERS_ENABLED: "true"
+  CORS_ENABLED: "false"
+  RATE_LIMIT_ENABLED: "true"
+  RATE_LIMIT_PER_MINUTE: "100"
+  
+  # =============================================
+  # Monitoring Configuration
+  # =============================================
+  METRICS_ENABLED: "true"
+  METRICS_PORT: "8501"
+  METRICS_PATH: "/metrics"
+  HEALTH_CHECK_PATH: "/_stcore/health"
+  
+  # =============================================
+  # Logging Configuration
+  # =============================================
+  LOG_FORMAT: "json"
+  LOG_DATEFORMAT: "%Y-%m-%d %H:%M:%S"
+  LOG_MAX_BYTES: "10485760"
+  LOG_BACKUP_COUNT: "5"
+
+---
+# =============================================
+# NGINX Configuration
+# =============================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: fueltune
+  labels:
+    app: fueltune
+    component: nginx-config
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    error_log /var/log/nginx/error.log warn;
+    pid /var/run/nginx.pid;
+    
+    events {
+        worker_connections 1024;
+        use epoll;
+        multi_accept on;
+    }
+    
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+        
+        # Logging
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                        '$status $body_bytes_sent "$http_referer" '
+                        '"$http_user_agent" "$http_x_forwarded_for"';
+        
+        access_log /var/log/nginx/access.log main;
+        
+        # Basic Settings
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 65;
+        types_hash_max_size 2048;
+        server_tokens off;
+        
+        # Rate Limiting
+        limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+        limit_req_zone $binary_remote_addr zone=app:10m rate=1r/s;
+        
+        # Connection Limiting
+        limit_conn_zone $binary_remote_addr zone=conn_limit_per_ip:10m;
+        
+        # Gzip
+        gzip on;
+        gzip_vary on;
+        gzip_proxied any;
+        gzip_comp_level 6;
+        gzip_types
+            text/plain
+            text/css
+            text/xml
+            text/javascript
+            application/json
+            application/javascript
+            application/xml+rss
+            application/atom+xml
+            image/svg+xml;
+        
+        # Security Headers
+        add_header X-Frame-Options DENY always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        
+        # Upstream
+        upstream fueltune_backend {
+            least_conn;
+            server fueltune-internal-service:8501 max_fails=3 fail_timeout=30s;
+            keepalive 32;
+        }
+        
+        server {
+            listen 80;
+            server_name _;
+            
+            # Rate limiting
+            limit_req zone=app burst=5 nodelay;
+            limit_conn conn_limit_per_ip 10;
+            
+            # Client max body size
+            client_max_body_size 50m;
+            
+            location / {
+                proxy_pass http://fueltune_backend;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection 'upgrade';
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_cache_bypass $http_upgrade;
+                
+                # Timeouts
+                proxy_connect_timeout 60s;
+                proxy_send_timeout 60s;
+                proxy_read_timeout 60s;
+            }
+            
+            # Health check
+            location /health {
+                proxy_pass http://fueltune_backend/_stcore/health;
+                access_log off;
+            }
+        }
+    }
+
+---
+# =============================================
+# Prometheus Configuration
+# =============================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: fueltune
+  labels:
+    app: fueltune
+    component: prometheus-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    
+    rule_files:
+      - "/etc/prometheus/rules/*.yml"
+    
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+              - alertmanager-service:9093
+    
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+      
+      - job_name: 'fueltune-app'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: fueltune
+          - source_labels: [__meta_kubernetes_pod_label_component]
+            action: keep
+            regex: streamlit-app
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            target_label: __address__
+            regex: (.+)
+            replacement: ${1}:8501
+      
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true

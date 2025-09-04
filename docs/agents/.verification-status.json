@@ -1,0 +1,995 @@
+{
+  "project_path": "/home/lee/projects/fueltune-streamlit",
+  "last_scan": "2025-09-04T12:57:49+00:00",
+  "files": {
+    "agents/A02-DATA-PANDAS.md": {
+      "size": 35194,
+      "modified": "2025-09-02T14:25:47+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "md"
+    }
+,
+    "agents/MASTER-AGENT-STREAMLIT.md": {
+      "size": 16493,
+      "modified": "2025-09-02T14:19:09+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "md"
+    }
+,
+    "agents/A01-SETUP-PYTHON.md": {
+      "size": 18432,
+      "modified": "2025-09-02T14:22:56+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "md"
+    }
+,
+    "agents/AGENTS-SUMMARY.md": {
+      "size": 6035,
+      "modified": "2025-09-02T14:26:22+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "md"
+    }
+,
+    "agents/QA-AGENT-PYTHON.md": {
+      "size": 19707,
+      "modified": "2025-09-02T14:21:21+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "md"
+    }
+,
+    "main.py": {
+      "size": 18087,
+      "modified": "2025-09-03T13:44:03+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "docker-compose.yml": {
+      "size": 4902,
+      "modified": "2025-09-03T03:11:32+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "yml"
+    }
+,
+    "config.py": {
+      "size": 2610,
+      "modified": "2025-09-03T04:28:47+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "infrastructure/helm/fueltune/Chart.yaml": {
+      "size": 1331,
+      "modified": "2025-09-03T03:22:57+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "yaml"
+    }
+,
+    "infrastructure/helm/fueltune/templates/deployment.yaml": {
+      "size": 9081,
+      "modified": "2025-09-03T03:24:08+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "yaml"
+    }
+,
+    "infrastructure/helm/fueltune/values.yaml": {
+      "size": 9910,
+      "modified": "2025-09-03T03:23:38+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "yaml"
+    }
+,
+    "infrastructure/ansible/playbook.yml": {
+      "size": 18818,
+      "modified": "2025-09-03T03:22:42+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "yml"
+    }
+,
+    "AUTHORS.md": {
+      "size": 10672,
+      "modified": "2025-09-03T03:49:24+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "md"
+    }
+,
+    "README.md": {
+      "size": 10437,
+      "modified": "2025-09-03T03:06:23+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "md"
+    }
+,
+    "EMOJI_TO_MATERIAL_ICONS_MAP.py": {
+      "size": 4468,
+      "modified": "2025-09-04T11:02:08+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "app/README.md": {
+      "size": 3725,
+      "modified": "2025-09-02T14:27:45+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "md"
+    }
+,
+    "RELEASE_NOTES_v1.0.0.md": {
+      "size": 14499,
+      "modified": "2025-09-03T03:55:07+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "md"
+    }
+,
+    "CHANGELOG.md": {
+      "size": 8050,
+      "modified": "2025-09-03T03:46:09+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "md"
+    }
+,
+    "tests/integration/test_integration_system.py": {
+      "size": 24184,
+      "modified": "2025-09-03T04:28:46+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/integration/test_workflow_integration.py": {
+      "size": 34401,
+      "modified": "2025-09-03T04:28:46+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/ui/__init__.py": {
+      "size": 137,
+      "modified": "2025-09-03T04:28:45+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/conftest.py": {
+      "size": 3753,
+      "modified": "2025-09-03T04:28:45+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/__init__.py": {
+      "size": 0,
+      "modified": "2025-09-02T23:19:38+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/fixtures/mocks.py": {
+      "size": 15436,
+      "modified": "2025-09-03T04:28:46+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/fixtures/data.py": {
+      "size": 11577,
+      "modified": "2025-09-03T04:28:46+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/fixtures/__init__.py": {
+      "size": 149,
+      "modified": "2025-09-03T04:28:45+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/unit/test_ui_components.py": {
+      "size": 7769,
+      "modified": "2025-09-03T16:08:46+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/unit/test_pipeline.py": {
+      "size": 9641,
+      "modified": "2025-09-03T04:28:47+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/unit/test_analysis_modules.py": {
+      "size": 30357,
+      "modified": "2025-09-03T04:28:47+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/unit/test_models.py": {
+      "size": 30916,
+      "modified": "2025-09-03T16:08:55+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/unit/test_normalizer.py": {
+      "size": 34975,
+      "modified": "2025-09-03T04:28:48+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/unit/test_cache.py": {
+      "size": 22727,
+      "modified": "2025-09-03T04:28:46+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/unit/test_config.py": {
+      "size": 3928,
+      "modified": "2025-09-03T04:28:46+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/unit/test_core_utils.py": {
+      "size": 13926,
+      "modified": "2025-09-03T04:28:47+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/unit/test_csv_parser.py": {
+      "size": 16369,
+      "modified": "2025-09-03T04:28:47+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/unit/test_logger.py": {
+      "size": 5710,
+      "modified": "2025-09-03T04:28:47+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/unit/test_data_quality.py": {
+      "size": 21982,
+      "modified": "2025-09-03T04:28:47+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/unit/test_integration_modules.py": {
+      "size": 38416,
+      "modified": "2025-09-03T04:28:47+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/unit/test_validators.py": {
+      "size": 22015,
+      "modified": "2025-09-03T04:28:47+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/unit/test_analysis.py": {
+      "size": 16368,
+      "modified": "2025-09-03T04:28:46+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/unit/test_data_parser.py": {
+      "size": 20405,
+      "modified": "2025-09-03T04:28:47+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "tests/unit/test_database.py": {
+      "size": 27203,
+      "modified": "2025-09-03T04:28:47+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "MASTER-AGENT-STREAMLIT.md": {
+      "size": 8863,
+      "modified": "2025-09-02T14:52:34+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "md"
+    }
+,
+    "CONTRIBUTING.md": {
+      "size": 13509,
+      "modified": "2025-09-03T03:47:16+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "md"
+    }
+,
+    "PROJETO_COMPLETO_SUMMARY.md": {
+      "size": 20119,
+      "modified": "2025-09-03T03:57:02+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "md"
+    }
+,
+    "monitoring/grafana-dashboard.json": {
+      "size": 12409,
+      "modified": "2025-09-03T03:32:14+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "json"
+    }
+,
+    "monitoring/alerts.yml": {
+      "size": 15288,
+      "modified": "2025-09-03T03:31:28+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "yml"
+    }
+,
+    "monitoring/alertmanager.yml": {
+      "size": 14425,
+      "modified": "2025-09-03T03:33:05+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "yml"
+    }
+,
+    "monitoring/prometheus.yml": {
+      "size": 9987,
+      "modified": "2025-09-03T03:30:33+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "yml"
+    }
+,
+    "docker-compose.prod.yml": {
+      "size": 9251,
+      "modified": "2025-09-03T03:12:11+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "yml"
+    }
+,
+    "app_backup_sidebar.py": {
+      "size": 66779,
+      "modified": "2025-09-03T14:53:31+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "scripts/dev-server.sh": {
+      "size": 5436,
+      "modified": "2025-09-03T04:25:21+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "sh"
+    }
+,
+    "scripts/validate-makefile.sh": {
+      "size": 5951,
+      "modified": "2025-09-03T04:25:56+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "sh"
+    }
+,
+    "scripts/deploy.sh": {
+      "size": 13210,
+      "modified": "2025-09-03T03:25:12+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "sh"
+    }
+,
+    "scripts/rollback.sh": {
+      "size": 13451,
+      "modified": "2025-09-03T03:26:08+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "sh"
+    }
+,
+    "scripts/clean.sh": {
+      "size": 14271,
+      "modified": "2025-09-03T03:43:32+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "sh"
+    }
+,
+    "scripts/test.sh": {
+      "size": 18492,
+      "modified": "2025-09-03T03:42:39+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "sh"
+    }
+,
+    "scripts/setup.sh": {
+      "size": 9985,
+      "modified": "2025-09-03T03:40:51+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "sh"
+    }
+,
+    "scripts/health_check.sh": {
+      "size": 18778,
+      "modified": "2025-09-03T03:27:21+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "sh"
+    }
+,
+    "scripts/makefile-demo.sh": {
+      "size": 4081,
+      "modified": "2025-09-03T04:24:48+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "sh"
+    }
+,
+    "scripts/run.sh": {
+      "size": 10351,
+      "modified": "2025-09-03T03:41:29+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "sh"
+    }
+,
+    "setup.py": {
+      "size": 379,
+      "modified": "2025-09-03T04:28:47+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "SECURITY.md": {
+      "size": 13308,
+      "modified": "2025-09-03T03:48:17+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "md"
+    }
+,
+    "QA-AGENT-PYTHON.md": {
+      "size": 9703,
+      "modified": "2025-09-02T14:51:22+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "md"
+    }
+,
+    "src/integration/plugins.py": {
+      "size": 28781,
+      "modified": "2025-09-03T04:28:45+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/integration/clipboard.py": {
+      "size": 19246,
+      "modified": "2025-09-03T04:28:44+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/integration/notifications.py": {
+      "size": 28565,
+      "modified": "2025-09-03T04:28:44+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/integration/pipeline.py": {
+      "size": 23513,
+      "modified": "2025-09-03T04:28:44+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/integration/export_import.py": {
+      "size": 31699,
+      "modified": "2025-09-03T04:28:44+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/integration/integration_manager.py": {
+      "size": 28146,
+      "modified": "2025-09-03T04:56:28+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/integration/__init__.py": {
+      "size": 1758,
+      "modified": "2025-09-03T04:28:43+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/integration/events.py": {
+      "size": 19584,
+      "modified": "2025-09-03T04:28:44+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/integration/background.py": {
+      "size": 28920,
+      "modified": "2025-09-03T04:28:44+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/integration/workflow.py": {
+      "size": 17913,
+      "modified": "2025-09-03T04:28:44+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/ui/components/session_selector.py": {
+      "size": 18009,
+      "modified": "2025-09-04T11:40:57+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/ui/components/metric_card.py": {
+      "size": 10644,
+      "modified": "2025-09-04T11:17:07+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/ui/components/session_state_manager.py": {
+      "size": 17150,
+      "modified": "2025-09-03T13:45:59+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/ui/components/__init__.py": {
+      "size": 727,
+      "modified": "2025-09-02T23:19:38+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/ui/components/chart_builder.py": {
+      "size": 17264,
+      "modified": "2025-09-03T04:28:44+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/ui/theme_config.py": {
+      "size": 16009,
+      "modified": "2025-09-04T11:24:49+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/ui/pages/imu.py": {
+      "size": 34387,
+      "modified": "2025-09-04T11:16:52+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/ui/pages/analysis.py": {
+      "size": 29507,
+      "modified": "2025-09-04T11:16:13+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/ui/pages/performance.py": {
+      "size": 20862,
+      "modified": "2025-09-04T11:16:26+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/ui/pages/dashboard.py": {
+      "size": 23194,
+      "modified": "2025-09-04T11:27:28+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/ui/pages/reports.py": {
+      "size": 19821,
+      "modified": "2025-09-04T11:15:37+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/ui/pages/__init__.py": {
+      "size": 747,
+      "modified": "2025-09-02T23:19:38+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/ui/pages/consumption.py": {
+      "size": 33750,
+      "modified": "2025-09-04T11:16:39+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/ui/pages/upload.py": {
+      "size": 30873,
+      "modified": "2025-09-04T11:48:55+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/ui/__init__.py": {
+      "size": 0,
+      "modified": "2025-09-02T23:19:38+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/data/normalizer.py": {
+      "size": 22197,
+      "modified": "2025-09-03T04:28:43+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/data/csv_parser.py": {
+      "size": 29047,
+      "modified": "2025-09-03T21:22:50+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/data/cache.py": {
+      "size": 26146,
+      "modified": "2025-09-03T04:28:43+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/data/validators.py": {
+      "size": 32177,
+      "modified": "2025-09-03T04:28:44+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/data/quality.py": {
+      "size": 28996,
+      "modified": "2025-09-03T13:45:37+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/data/database.py": {
+      "size": 23402,
+      "modified": "2025-09-03T21:29:43+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/data/__init__.py": {
+      "size": 0,
+      "modified": "2025-09-02T23:19:39+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/data/models.py": {
+      "size": 20907,
+      "modified": "2025-09-03T21:26:57+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/utils/logger.py": {
+      "size": 3366,
+      "modified": "2025-09-03T04:28:45+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/utils/logging_config.py": {
+      "size": 3418,
+      "modified": "2025-09-03T04:28:45+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/utils/__init__.py": {
+      "size": 0,
+      "modified": "2025-09-02T23:19:39+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/analysis/predictive.py": {
+      "size": 28684,
+      "modified": "2025-09-03T04:28:42+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/analysis/correlation.py": {
+      "size": 30394,
+      "modified": "2025-09-03T04:28:42+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/analysis/fuel_efficiency.py": {
+      "size": 44444,
+      "modified": "2025-09-03T04:28:42+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/analysis/statistics.py": {
+      "size": 24484,
+      "modified": "2025-09-03T04:28:42+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/analysis/time_series.py": {
+      "size": 29542,
+      "modified": "2025-09-03T04:28:43+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/analysis/anomaly.py": {
+      "size": 35888,
+      "modified": "2025-09-03T04:28:42+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/analysis/analysis.py": {
+      "size": 8402,
+      "modified": "2025-09-03T04:28:41+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/analysis/performance.py": {
+      "size": 41779,
+      "modified": "2025-09-03T04:28:43+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/analysis/dynamics.py": {
+      "size": 33406,
+      "modified": "2025-09-03T04:28:42+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/analysis/reports.py": {
+      "size": 28882,
+      "modified": "2025-09-03T04:28:42+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/analysis/__init__.py": {
+      "size": 1283,
+      "modified": "2025-09-03T04:28:41+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "src/__init__.py": {
+      "size": 0,
+      "modified": "2025-09-02T23:19:39+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "app.py": {
+      "size": 10688,
+      "modified": "2025-09-04T11:25:29+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "test_professional_theme.py": {
+      "size": 5163,
+      "modified": "2025-09-03T13:48:08+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "py"
+    }
+,
+    "pylint_revalidation.json": {
+      "size": 112878,
+      "modified": "2025-09-02T22:16:31+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "json"
+    }
+,
+    "pylint_results.json": {
+      "size": 277535,
+      "modified": "2025-09-02T21:52:07+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "json"
+    }
+,
+    "k8s/ingress.yaml": {
+      "size": 5546,
+      "modified": "2025-09-03T03:13:48+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "yaml"
+    }
+,
+    "k8s/configmap.yaml": {
+      "size": 7653,
+      "modified": "2025-09-03T03:14:15+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "yaml"
+    }
+,
+    "k8s/service.yaml": {
+      "size": 3279,
+      "modified": "2025-09-03T03:13:24+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "yaml"
+    }
+,
+    "k8s/pvc.yaml": {
+      "size": 7430,
+      "modified": "2025-09-03T03:15:41+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "yaml"
+    }
+,
+    "k8s/deployment.yaml": {
+      "size": 7032,
+      "modified": "2025-09-03T03:13:12+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "yaml"
+    }
+,
+    "k8s/hpa.yaml": {
+      "size": 7054,
+      "modified": "2025-09-03T03:15:13+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "yaml"
+    }
+,
+    "k8s/secret.yaml": {
+      "size": 6251,
+      "modified": "2025-09-03T03:14:40+00:00",
+      "verified": false,
+      "verified_at": null,
+      "type": "yaml"
+    }
+
+  },
+  "statistics": {
+    "total_files": 123,
+    "verified_files": 0,
+    "pending_files": 123
+  }
+}
