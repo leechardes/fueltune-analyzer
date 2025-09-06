@@ -888,7 +888,7 @@ class TestGlobalDatabaseManager:
         manager = get_database()
 
         assert isinstance(manager, DatabaseManager)
-        assert manager.database_url == "sqlite:///fueltech_data.db"
+        assert manager.database_url == "sqlite:///data/fueltech_data.db"
 
 
 class TestModelValidation:

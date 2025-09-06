@@ -47,7 +47,7 @@ class FuelTechDatabase:
     - Data quality tracking
     """
 
-    def __init__(self, db_path: str = "fueltech_data.db", create_tables: bool = True):
+    def __init__(self, db_path: str = "data/fueltech_data.db", create_tables: bool = True):
         """
         Initialize FuelTech database.
 
@@ -633,7 +633,7 @@ class FuelTechDatabase:
 _db_instance = None
 
 
-def get_database(db_path: str = "fueltech_data.db") -> FuelTechDatabase:
+def get_database(db_path: str = "data/fueltech_data.db") -> FuelTechDatabase:
     """Get the global database instance."""
     global _db_instance
 

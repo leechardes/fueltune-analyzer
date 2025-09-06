@@ -293,7 +293,7 @@ class DatabaseManager:
     Handles connection, table creation, and basic operations.
     """
 
-    def __init__(self, database_url: str = "sqlite:///fueltech_data.db"):
+    def __init__(self, database_url: str = "sqlite:///data/fueltech_data.db"):
         """
         Initialize database manager.
 
