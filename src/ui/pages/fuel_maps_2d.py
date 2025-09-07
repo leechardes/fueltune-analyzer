@@ -16,6 +16,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Tuple, Any
+from pathlib import Path
 import plotly.graph_objects as go
 import json
 
@@ -167,25 +168,61 @@ def load_vehicles() -> List[Dict[str, Any]]:
 
 def save_map_data(vehicle_id: str, map_type: str, bank_id: str, 
                   axis_values: List[float], map_values: List[float]) -> bool:
-    """Salva dados do mapa no banco de dados (dummy por enquanto)."""
+    """Salva dados do mapa em arquivo JSON persistente."""
     try:
-        # Aqui seria implementada a integração real com o banco
-        st.session_state[f"saved_map_{vehicle_id}_{map_type}_{bank_id}"] = {
+        # Criar diretório de dados se não existir
+        data_dir = Path("data/fuel_maps")
+        data_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Nome do arquivo baseado nos parâmetros
+        filename = data_dir / f"map_{vehicle_id}_{map_type}_{bank_id}.json"
+        
+        # Dados a salvar
+        data = {
+            "vehicle_id": vehicle_id,
+            "map_type": map_type,
+            "bank_id": bank_id,
             "axis_values": axis_values,
             "map_values": map_values,
-            "timestamp": pd.Timestamp.now()
+            "timestamp": pd.Timestamp.now().isoformat(),
+            "version": "1.0"
         }
+        
+        # Salvar em arquivo JSON
+        with open(filename, 'w') as f:
+            json.dump(data, f, indent=2)
+        
+        # Também salvar no session_state para acesso rápido
+        st.session_state[f"saved_map_{vehicle_id}_{map_type}_{bank_id}"] = data
+        
         return True
     except Exception as e:
         st.error(f"Erro ao salvar: {str(e)}")
         return False
 
 def load_map_data(vehicle_id: str, map_type: str, bank_id: str) -> Optional[Dict]:
-    """Carrega dados do mapa do banco de dados (dummy por enquanto)."""
+    """Carrega dados do mapa de arquivo JSON persistente."""
     try:
+        # Primeiro tentar do session_state (cache)
         key = f"saved_map_{vehicle_id}_{map_type}_{bank_id}"
-        return st.session_state.get(key, None)
-    except:
+        if key in st.session_state:
+            return st.session_state[key]
+        
+        # Se não estiver em cache, tentar carregar do arquivo
+        data_dir = Path("data/fuel_maps")
+        filename = data_dir / f"map_{vehicle_id}_{map_type}_{bank_id}.json"
+        
+        if filename.exists():
+            with open(filename, 'r') as f:
+                data = json.load(f)
+            
+            # Salvar no session_state para cache
+            st.session_state[key] = data
+            return data
+        
+        return None
+    except Exception as e:
+        print(f"Erro ao carregar mapa: {e}")
         return None
 
 # Configurações no topo
