@@ -188,18 +188,19 @@ def load_map_data(vehicle_id: str, map_type: str, bank_id: str) -> Optional[Dict
     except:
         return None
 
-# Layout principal
-col1, col2 = st.columns([1, 3])
+# Configurações no topo
+st.subheader("Configuração do Mapa")
 
-with col1:
-    st.subheader("Configuração")
-    
+# Layout de configurações em colunas
+config_col1, config_col2, config_col3, config_col4 = st.columns([2, 2, 1, 1])
+
+with config_col1:
     # Seleção de veículo
     vehicles = load_vehicles()
     if vehicles:
         vehicle_options = {v["id"]: f"{v['name']} ({v['nickname']})" for v in vehicles}
         selected_vehicle_id = st.selectbox(
-            "Selecione o Veículo",
+            "Veículo",
             options=list(vehicle_options.keys()),
             format_func=lambda x: vehicle_options[x],
             key="vehicle_selector"
@@ -207,7 +208,8 @@ with col1:
     else:
         st.error("Nenhum veículo encontrado no banco de dados")
         st.stop()
-    
+
+with config_col2:
     # Seleção de tipo de mapa
     selected_map_type = st.selectbox(
         "Tipo de Mapa 2D",
@@ -215,484 +217,549 @@ with col1:
         format_func=lambda x: MAP_TYPES_2D[x]["name"],
         key="map_type_selector"
     )
-    
-    # Informações do mapa selecionado
-    map_info = MAP_TYPES_2D[selected_map_type]
-    st.info(f"**Posições:** {map_info['positions']}")
-    st.info(f"**Eixo X:** {map_info['axis_type']}")
-    st.info(f"**Unidade:** {map_info['unit']}")
-    st.caption(map_info["description"])
-    
+
+with config_col3:
     # Seleção de bancada (se aplicável)
     if "main_fuel" in selected_map_type:
         selected_bank = st.radio(
             "Bancada",
             options=["A", "B"],
-            key="bank_selector"
+            key="bank_selector",
+            horizontal=True
         )
     else:
         selected_bank = None
-        st.caption("Mapa compartilhado entre bancadas")
+        st.info("Compartilhado")
 
-with col2:
-    st.subheader("Editor de Mapa")
+with config_col4:
+    # Informações do mapa
+    map_info = MAP_TYPES_2D[selected_map_type]
+    st.metric("Posições", map_info['positions'])
+    st.caption(f"{map_info['axis_type']} / {map_info['unit']}")
+
+# Linha divisória
+st.divider()
+
+# Editor de Mapa embaixo
+st.subheader("Editor de Mapa")
+
+# Sistema de abas
+tab1, tab2, tab3 = st.tabs(["Editar", "Visualizar", "Importar/Exportar"])
     
-    # Sistema de abas
-    tab1, tab2, tab3 = st.tabs(["Editar", "Visualizar", "Importar/Exportar"])
+with tab1:
+    st.caption("Editor de dados do mapa")
+        
+    # Inicializar dados se não existirem
+    session_key = f"map_data_{selected_vehicle_id}_{selected_map_type}_{selected_bank}"
     
-    with tab1:
-        st.caption("Editor de dados do mapa")
+    if session_key not in st.session_state:
+        # Tentar carregar dados salvos
+        loaded_data = load_map_data(selected_vehicle_id, selected_map_type, selected_bank)
+        if loaded_data:
+            st.session_state[session_key] = {
+                "axis_values": loaded_data["axis_values"],
+                "map_values": loaded_data["map_values"]
+            }
+        else:
+            # Criar dados padrão
+            st.session_state[session_key] = {
+                "axis_values": get_default_axis_values(
+                    map_info["axis_type"], 
+                    map_info["positions"]
+                ),
+                "map_values": get_default_map_values(
+                    selected_map_type, 
+                    map_info["positions"]
+                )
+            }
+    
+    current_data = st.session_state[session_key]
+    
+    # Expander para editar valores do eixo X
+    with st.expander("⚙️ Configurar Eixo X"):
+        st.write(f"**Editar valores do eixo X** ({map_info['axis_type']})")
+        st.caption("Deixe vazio ou coloque 0 para desabilitar uma posição")
         
-        # Inicializar dados se não existirem
-        session_key = f"map_data_{selected_vehicle_id}_{selected_map_type}_{selected_bank}"
+        # Criar colunas para os inputs
+        num_cols = min(4, map_info["positions"])  # Máximo 4 colunas por linha
+        cols = st.columns(num_cols)
         
-        if session_key not in st.session_state:
-            # Tentar carregar dados salvos
-            loaded_data = load_map_data(selected_vehicle_id, selected_map_type, selected_bank)
-            if loaded_data:
-                st.session_state[session_key] = {
-                    "axis_values": loaded_data["axis_values"],
-                    "map_values": loaded_data["map_values"]
-                }
-            else:
-                # Criar dados padrão
-                st.session_state[session_key] = {
-                    "axis_values": get_default_axis_values(
-                        map_info["axis_type"], 
-                        map_info["positions"]
-                    ),
-                    "map_values": get_default_map_values(
-                        selected_map_type, 
-                        map_info["positions"]
+        new_axis_values = []
+        enabled_positions = []
+        
+        for i in range(map_info["positions"]):
+            col_idx = i % num_cols
+            with cols[col_idx]:
+                # Container para cada posição
+                container = st.container()
+                with container:
+                    # Checkbox para habilitar/desabilitar
+                    current_value = current_data["axis_values"][i] if i < len(current_data["axis_values"]) else None
+                    is_enabled = st.checkbox(
+                        f"Pos {i+1}",
+                        value=(current_value is not None and current_value != 0),
+                        key=f"enable_{session_key}_{i}"
                     )
-                }
-        
-        current_data = st.session_state[session_key]
-        
-        # Expander para editar valores do eixo X
-        with st.expander("⚙️ Configurar Eixo X"):
-            st.write(f"**Editar valores do eixo X** ({map_info['axis_type']})")
-            st.caption("Deixe vazio ou coloque 0 para desabilitar uma posição")
-            
-            # Criar colunas para os inputs
-            num_cols = min(4, map_info["positions"])  # Máximo 4 colunas por linha
-            cols = st.columns(num_cols)
-            
-            new_axis_values = []
-            enabled_positions = []
-            
-            for i in range(map_info["positions"]):
-                col_idx = i % num_cols
-                with cols[col_idx]:
-                    # Container para cada posição
-                    container = st.container()
-                    with container:
-                        # Checkbox para habilitar/desabilitar
-                        current_value = current_data["axis_values"][i] if i < len(current_data["axis_values"]) else None
-                        is_enabled = st.checkbox(
-                            f"Pos {i+1}",
-                            value=(current_value is not None and current_value != 0),
-                            key=f"enable_{session_key}_{i}"
+                    
+                    if is_enabled:
+                        value = st.number_input(
+                            f"Valor",
+                            value=float(current_value) if current_value else 0.0,
+                            step=0.1 if map_info["axis_type"] in ["MAP", "VOLTAGE"] else 1.0,
+                            key=f"axis_input_{session_key}_{i}",
+                            label_visibility="collapsed"
                         )
-                        
-                        if is_enabled:
-                            value = st.number_input(
-                                f"Valor",
-                                value=float(current_value) if current_value else 0.0,
-                                step=0.1 if map_info["axis_type"] in ["MAP", "VOLTAGE"] else 1.0,
-                                key=f"axis_input_{session_key}_{i}",
-                                label_visibility="collapsed"
-                            )
-                            new_axis_values.append(value)
-                            enabled_positions.append(i)
-                        else:
-                            # Posição desabilitada
-                            st.caption("Desabilitado")
-            
-            # Botão para aplicar e ordenar
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Aplicar e Ordenar", key=f"apply_axis_{session_key}", use_container_width=True):
-                    if new_axis_values:  # Só processar se houver valores habilitados
-                        # Pegar apenas os valores correspondentes às posições habilitadas
-                        enabled_map_values = [current_data["map_values"][i] for i in enabled_positions 
-                                            if i < len(current_data["map_values"])]
-                        
-                        # Criar pares (eixo, valor) para manter correspondência
-                        pairs = list(zip(new_axis_values, enabled_map_values))
-                        # Ordenar por valores do eixo X
-                        pairs.sort(key=lambda x: x[0])
-                        # Separar novamente
-                        sorted_axis = [p[0] for p in pairs]
-                        sorted_values = [p[1] for p in pairs]
-                        # Atualizar session state com apenas valores habilitados
-                        st.session_state[session_key]["axis_values"] = sorted_axis
-                        st.session_state[session_key]["map_values"] = sorted_values
-                        st.rerun()
+                        new_axis_values.append(value)
+                        enabled_positions.append(i)
                     else:
-                        st.warning("Habilite pelo menos uma posição!")
-            
-            with col2:
-                if st.button("Restaurar Todas", key=f"restore_all_{session_key}", use_container_width=True):
-                    # Restaurar valores padrão completos
-                    st.session_state[session_key]["axis_values"] = get_default_axis_values(
-                        map_info["axis_type"], 
-                        map_info["positions"]
-                    )
-                    st.session_state[session_key]["map_values"] = get_default_map_values(
-                        selected_map_type, 
-                        map_info["positions"]
-                    )
+                        # Posição desabilitada
+                        st.caption("Desabilitado")
+        
+        # Botão para aplicar e ordenar
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Aplicar e Ordenar", key=f"apply_axis_{session_key}", use_container_width=True):
+                if new_axis_values:  # Só processar se houver valores habilitados
+                    # Pegar apenas os valores correspondentes às posições habilitadas
+                    enabled_map_values = [current_data["map_values"][i] for i in enabled_positions 
+                                        if i < len(current_data["map_values"])]
+                    
+                    # Criar pares (eixo, valor) para manter correspondência
+                    pairs = list(zip(new_axis_values, enabled_map_values))
+                    # Ordenar por valores do eixo X
+                    pairs.sort(key=lambda x: x[0])
+                    # Separar novamente
+                    sorted_axis = [p[0] for p in pairs]
+                    sorted_values = [p[1] for p in pairs]
+                    # Atualizar session state com apenas valores habilitados
+                    st.session_state[session_key]["axis_values"] = sorted_axis
+                    st.session_state[session_key]["map_values"] = sorted_values
                     st.rerun()
-        
-        # Criar DataFrame horizontal - os valores do eixo X como colunas
-        # Criar dicionário com os valores do eixo X como chaves
-        data_dict = {}
-        for i, axis_val in enumerate(current_data["axis_values"]):
-            # Usar string formatada como nome da coluna
-            col_name = f"{axis_val:.1f}" if axis_val % 1 != 0 else str(int(axis_val))
-            data_dict[col_name] = [current_data["map_values"][i]]
-        
-        # Criar DataFrame horizontal com uma única linha de valores
-        df = pd.DataFrame(data_dict)
-        
-        # Configurar colunas dinamicamente com formato apropriado
-        column_config = {}
-        # Definir formato baseado no tipo de dado
-        if map_info["unit"] == "ms":  # Tempo de injeção
-            value_format = "%.3f"  # Máximo 3 casas decimais
-        elif map_info["unit"] == "%":  # Percentual (TPS, compensações)
-            value_format = "%.1f"  # 1 casa decimal
-        else:
-            value_format = "%.2f"  # Padrão 2 casas
-            
-        for col in df.columns:
-            column_config[col] = st.column_config.NumberColumn(
-                col,  # O nome da coluna é o valor do eixo X
-                format=value_format,
-                min_value=map_info["min_value"],
-                max_value=map_info["max_value"],
-                help=f"{map_info['axis_type']}: {col}, Valor em {map_info['unit']}"
-            )
-        
-        # Editor de tabela horizontal com gradiente de cores
-        st.write(f"**Editar valores do mapa** ({map_info['unit']})")
-        st.caption(f"Eixo X: {map_info['axis_type']}")
-        
-        # Aplicar formatação de decimais ao DataFrame para exibição
-        formatted_df = df.copy()
-        for col in formatted_df.columns:
-            if map_info["unit"] == "ms":  # Tempo de injeção
-                formatted_df[col] = formatted_df[col].apply(lambda x: round(x, 3))
-            elif map_info["unit"] == "%":  # Percentual
-                formatted_df[col] = formatted_df[col].apply(lambda x: round(x, 1))
-            else:
-                formatted_df[col] = formatted_df[col].apply(lambda x: round(x, 2))
-        
-        # Aplicar estilo com gradiente de cores na linha de valores
-        styled_df = formatted_df.style.background_gradient(
-            cmap='RdYlBu',  # Red-Yellow-Blue (vermelho para valores baixos, azul para altos)
-            axis=1,  # Aplicar gradiente ao longo das colunas (horizontal)
-            vmin=min(formatted_df.iloc[0].values),  # Usar valores reais do DataFrame
-            vmax=max(formatted_df.iloc[0].values),  # Usar valores reais do DataFrame
-            subset=None  # Aplicar a todas as células
-        )
-        
-        # Adicionar formato de exibição
-        if map_info["unit"] == "ms":
-            styled_df = styled_df.format("{:.3f}")
-        elif map_info["unit"] == "%":
-            styled_df = styled_df.format("{:.1f}")
-        else:
-            styled_df = styled_df.format("{:.2f}")
-        
-        # Usar st.dataframe com estilo para mostrar cores
-        st.dataframe(styled_df, use_container_width=True, hide_index=True)
-        
-        # Editor de dados (sem cores mas funcional)
-        st.caption("Clique nos valores abaixo para editar:")
-        edited_df = st.data_editor(
-            df,
-            num_rows="fixed",
-            use_container_width=True,
-            column_config=column_config,
-            key=f"data_editor_{session_key}",
-            hide_index=True
-        )
-        
-        # Atualizar dados na sessão
-        # Manter os valores do eixo X originais (não editáveis nesta versão)
-        st.session_state[session_key]["axis_values"] = current_data["axis_values"]
-        # Extrair os valores editados do mapa
-        new_values = []
-        for col in df.columns:
-            new_values.append(edited_df[col].iloc[0])
-        st.session_state[session_key]["map_values"] = new_values
-        
-        # Validações
-        axis_valid, axis_msg = validate_map_values(
-            current_data["axis_values"], 
-            -1000, 10000  # Validação genérica ampla
-        )
-        values_valid, values_msg = validate_map_values(
-            new_values,
-            map_info["min_value"],
-            map_info["max_value"]
-        )
-        
-        if not axis_valid:
-            st.error(f"Eixo X: {axis_msg}")
-        if not values_valid:
-            st.error(f"Valores: {values_msg}")
-        
-        # Formulário para salvar
-        with st.form(f"save_form_{session_key}"):
-            st.subheader("Salvar Alterações")
-            
-            save_description = st.text_area(
-                "Descrição das alterações",
-                placeholder="Descreva as modificações realizadas no mapa...",
-                key=f"save_desc_{session_key}"
-            )
-            
-            col_save1, col_save2 = st.columns(2)
-            
-            with col_save1:
-                save_button = st.form_submit_button(
-                    "Salvar Mapa",
-                    type="primary",
-                    use_container_width=True
-                )
-            
-            with col_save2:
-                reset_button = st.form_submit_button(
-                    "Restaurar Padrão",
-                    use_container_width=True
-                )
-            
-            if save_button:
-                if axis_valid and values_valid:
-                    success = save_map_data(
-                        selected_vehicle_id,
-                        selected_map_type,
-                        selected_bank or "shared",
-                        edited_df["Eixo X"].tolist(),
-                        edited_df["Valor"].tolist()
-                    )
-                    if success:
-                        st.success("Mapa salvo com sucesso!")
-                        st.rerun()
-                    else:
-                        st.error("Erro ao salvar o mapa")
                 else:
-                    st.error("Corrija os erros de validação antes de salvar")
-            
-            if reset_button:
-                # Restaurar valores padrão
-                st.session_state[session_key] = {
-                    "axis_values": get_default_axis_values(
-                        map_info["axis_type"], 
-                        map_info["positions"]
-                    ),
-                    "map_values": get_default_map_values(
-                        selected_map_type, 
-                        map_info["positions"]
-                    )
-                }
-                st.success("Valores padrão restaurados!")
+                    st.warning("Habilite pelo menos uma posição!")
+        
+        with col2:
+            if st.button("Restaurar Todas", key=f"restore_all_{session_key}", use_container_width=True):
+                # Restaurar valores padrão completos
+                st.session_state[session_key]["axis_values"] = get_default_axis_values(
+                    map_info["axis_type"], 
+                    map_info["positions"]
+                )
+                st.session_state[session_key]["map_values"] = get_default_map_values(
+                    selected_map_type, 
+                    map_info["positions"]
+                )
                 st.rerun()
     
-    with tab2:
-        st.caption("Visualização gráfica do mapa")
+    # Criar DataFrame horizontal - os valores do eixo X como colunas
+    # Criar dicionário com os valores do eixo X como chaves
+    data_dict = {}
+    for i, axis_val in enumerate(current_data["axis_values"]):
+        # Usar string formatada como nome da coluna
+        col_name = f"{axis_val:.1f}" if axis_val % 1 != 0 else str(int(axis_val))
+        data_dict[col_name] = [current_data["map_values"][i]]
+    
+    # Criar DataFrame horizontal com uma única linha de valores
+    df = pd.DataFrame(data_dict)
+    
+    # Configurar colunas dinamicamente com formato apropriado
+    column_config = {}
+    # Definir formato baseado no tipo de dado
+    if map_info["unit"] == "ms":  # Tempo de injeção
+        value_format = "%.3f"  # Máximo 3 casas decimais
+    elif map_info["unit"] == "%":  # Percentual (TPS, compensações)
+        value_format = "%.1f"  # 1 casa decimal
+    else:
+        value_format = "%.2f"  # Padrão 2 casas
+        
+    for col in df.columns:
+        column_config[col] = st.column_config.NumberColumn(
+            col,  # O nome da coluna é o valor do eixo X
+            format=value_format,
+            min_value=map_info["min_value"],
+            max_value=map_info["max_value"],
+            help=f"{map_info['axis_type']}: {col}, Valor em {map_info['unit']}"
+        )
+    
+    # Editor de tabela horizontal com gradiente de cores
+    st.write(f"**Editar valores do mapa** ({map_info['unit']})")
+    st.caption(f"Eixo X: {map_info['axis_type']}")
+    
+    # Aplicar formatação de decimais ao DataFrame para exibição
+    formatted_df = df.copy()
+    for col in formatted_df.columns:
+        if map_info["unit"] == "ms":  # Tempo de injeção
+            formatted_df[col] = formatted_df[col].apply(lambda x: round(x, 3))
+        elif map_info["unit"] == "%":  # Percentual
+            formatted_df[col] = formatted_df[col].apply(lambda x: round(x, 1))
+        else:
+            formatted_df[col] = formatted_df[col].apply(lambda x: round(x, 2))
+    
+    # Aplicar estilo com gradiente de cores na linha de valores
+    styled_df = formatted_df.style.background_gradient(
+        cmap='RdYlBu',  # Red-Yellow-Blue (vermelho para valores baixos, azul para altos)
+        axis=1,  # Aplicar gradiente ao longo das colunas (horizontal)
+        vmin=min(formatted_df.iloc[0].values),  # Usar valores reais do DataFrame
+        vmax=max(formatted_df.iloc[0].values),  # Usar valores reais do DataFrame
+        subset=None  # Aplicar a todas as células
+    )
+    
+    # Adicionar formato de exibição
+    if map_info["unit"] == "ms":
+        styled_df = styled_df.format("{:.3f}")
+    elif map_info["unit"] == "%":
+        styled_df = styled_df.format("{:.1f}")
+    else:
+        styled_df = styled_df.format("{:.2f}")
+    
+    # Usar st.dataframe com estilo para mostrar cores
+    st.dataframe(styled_df, use_container_width=True, hide_index=True)
+    
+    # Botões de copiar/colar compatível com FTManager
+    col_copy_paste1, col_copy_paste2 = st.columns(2)
+    
+    with col_copy_paste1:
+        # Gerar string para copiar (formato FTManager)
+        ftm_values = []
+        for val in current_data["map_values"]:
+            # Formatar valor com vírgula como separador decimal
+            if map_info["unit"] == "ms":
+                formatted = f"{val:.3f}".replace('.', ',')
+            elif map_info["unit"] == "%":
+                formatted = f"{val:.1f}".replace('.', ',')
+            else:
+                formatted = f"{val:.2f}".replace('.', ',')
+            ftm_values.append(formatted)
+        
+        # Criar string com espaçamento consistente (4 espaços entre valores)
+        ftm_string = "    ".join(ftm_values)
+        
+        # Área de texto para copiar
+        st.text_area(
+            "Copiar para FTManager",
+            value=ftm_string,
+            height=60,
+            key=f"copy_ftm_{session_key}",
+            help="Selecione todo o texto (Ctrl+A) e copie (Ctrl+C) para colar no FTManager"
+        )
+    
+    with col_copy_paste2:
+        # Área para colar valores do FTManager
+        paste_text = st.text_area(
+            "Colar do FTManager",
+            placeholder="Cole aqui os valores copiados do FTManager...",
+            height=60,
+            key=f"paste_ftm_{session_key}",
+            help="Cole valores separados por espaços com vírgula decimal"
+        )
+        
+        if st.button("Aplicar Valores Colados", key=f"apply_paste_{session_key}"):
+            if paste_text:
+                try:
+                    # Processar valores colados
+                    # Remover espaços extras e dividir por espaços
+                    values_str = paste_text.strip().split()
+                    # Converter vírgulas para pontos e para float
+                    new_values = [float(v.replace(',', '.')) for v in values_str]
+                    
+                    # Verificar quantidade de valores
+                    current_positions = len(current_data["axis_values"])
+                    if len(new_values) == current_positions:
+                        # Aplicar valores
+                        st.session_state[session_key]["map_values"] = new_values
+                        st.success(f"Aplicados {len(new_values)} valores com sucesso!")
+                        st.rerun()
+                    else:
+                        st.error(f"Esperados {current_positions} valores, mas foram colados {len(new_values)}")
+                except Exception as e:
+                    st.error(f"Erro ao processar valores: {e}")
+    
+    st.divider()
+    
+    # Editor de dados (sem cores mas funcional)
+    st.caption("Clique nos valores abaixo para editar:")
+    edited_df = st.data_editor(
+        df,
+        num_rows="fixed",
+        use_container_width=True,
+        column_config=column_config,
+        key=f"data_editor_{session_key}",
+        hide_index=True
+    )
+    
+    # Atualizar dados na sessão
+    # Manter os valores do eixo X originais (não editáveis nesta versão)
+    st.session_state[session_key]["axis_values"] = current_data["axis_values"]
+    # Extrair os valores editados do mapa
+    new_values = []
+    for col in df.columns:
+        new_values.append(edited_df[col].iloc[0])
+    st.session_state[session_key]["map_values"] = new_values
+    
+    # Validações
+    axis_valid, axis_msg = validate_map_values(
+        current_data["axis_values"], 
+        -1000, 10000  # Validação genérica ampla
+    )
+    values_valid, values_msg = validate_map_values(
+        new_values,
+        map_info["min_value"],
+        map_info["max_value"]
+    )
+    
+    if not axis_valid:
+        st.error(f"Eixo X: {axis_msg}")
+    if not values_valid:
+        st.error(f"Valores: {values_msg}")
+    
+    # Formulário para salvar
+    with st.form(f"save_form_{session_key}"):
+        st.subheader("Salvar Alterações")
+        
+        save_description = st.text_area(
+            "Descrição das alterações",
+            placeholder="Descreva as modificações realizadas no mapa...",
+            key=f"save_desc_{session_key}"
+        )
+        
+        col_save1, col_save2 = st.columns(2)
+        
+        with col_save1:
+            save_button = st.form_submit_button(
+                "Salvar Mapa",
+                type="primary",
+                use_container_width=True
+            )
+        
+        with col_save2:
+            reset_button = st.form_submit_button(
+                "Restaurar Padrão",
+                use_container_width=True
+            )
+        
+        if save_button:
+            if axis_valid and values_valid:
+                success = save_map_data(
+                    selected_vehicle_id,
+                    selected_map_type,
+                    selected_bank or "shared",
+                    current_data["axis_values"],
+                    new_values
+                )
+                if success:
+                    st.success("Mapa salvo com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("Erro ao salvar o mapa")
+            else:
+                st.error("Corrija os erros de validação antes de salvar")
+        
+        if reset_button:
+            # Restaurar valores padrão
+            st.session_state[session_key] = {
+                "axis_values": get_default_axis_values(
+                    map_info["axis_type"], 
+                    map_info["positions"]
+                ),
+                "map_values": get_default_map_values(
+                    selected_map_type, 
+                    map_info["positions"]
+                )
+            }
+            st.success("Valores padrão restaurados!")
+            st.rerun()
+    
+with tab2:
+    st.caption("Visualização gráfica do mapa")
+    
+    if session_key in st.session_state:
+        current_data = st.session_state[session_key]
+        axis_values = current_data["axis_values"]
+        map_values = current_data["map_values"]
+        
+        # Criar gráfico com gradiente de cores
+        fig = go.Figure()
+        
+        # Normalizar valores para escala de cores
+        min_val = min(map_values)
+        max_val = max(map_values)
+        norm_values = [(v - min_val) / (max_val - min_val) if max_val > min_val else 0.5 
+                      for v in map_values]
+        
+        fig.add_trace(go.Scatter(
+            x=axis_values,
+            y=map_values,
+            mode='lines+markers',
+            name='Mapa',
+            line=dict(
+                width=3,
+                color='rgba(100, 100, 100, 0.7)'  # Linha cinza semi-transparente
+            ),
+            marker=dict(
+                size=10,
+                color=map_values,  # Usar valores para colorir
+                colorscale='RdYlBu',  # Red-Yellow-Blue (vermelho para baixo, azul para alto)
+                cmin=min(map_values),  # Usar valores reais
+                cmax=max(map_values),  # Usar valores reais
+                showscale=True,
+                colorbar=dict(
+                    title=map_info["unit"],
+                    tickmode='linear',
+                    tick0=map_info["min_value"],
+                    dtick=(map_info["max_value"] - map_info["min_value"]) / 10
+                ),
+                line=dict(width=1, color='white')
+            )
+        ))
+        
+        fig.update_layout(
+            title=f"Visualização - {map_info['name']}",
+            xaxis_title=f"Eixo X ({map_info['axis_type']})",
+            yaxis_title=f"Valor ({map_info['unit']})",
+            height=500,
+            showlegend=False,
+            hovermode='closest'
+        )
+        
+        # Configurar grid
+        fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Estatísticas do mapa
+        col_stats1, col_stats2, col_stats3 = st.columns(3)
+        
+        # Formatação de decimais baseada no tipo de unidade
+        if map_info["unit"] == "ms":
+            decimal_places = 3
+        elif map_info["unit"] == "%":
+            decimal_places = 1
+        else:
+            decimal_places = 2
+        
+        with col_stats1:
+            st.metric(
+                "Valor Mínimo",
+                f"{min(map_values):.{decimal_places}f} {map_info['unit']}"
+            )
+        
+        with col_stats2:
+            st.metric(
+                "Valor Máximo",
+                f"{max(map_values):.{decimal_places}f} {map_info['unit']}"
+            )
+        
+        with col_stats3:
+            st.metric(
+                "Valor Médio",
+                f"{np.mean(map_values):.{decimal_places}f} {map_info['unit']}"
+            )
+    
+    else:
+        st.info("Configure o mapa na aba 'Editar' para ver a visualização")
+    
+with tab3:
+    st.caption("Importar e exportar dados do mapa")
+    
+    col_import, col_export = st.columns(2)
+    
+    with col_import:
+        st.subheader("Importar Dados")
+        
+        # Upload de arquivo
+        uploaded_file = st.file_uploader(
+            "Arquivo de mapa",
+            type=['json', 'csv'],
+            help="Formatos suportados: JSON, CSV",
+            key=f"upload_{session_key}"
+        )
+        
+        if uploaded_file is not None:
+            try:
+                if uploaded_file.name.endswith('.json'):
+                    data = json.loads(uploaded_file.read())
+                    if "axis_values" in data and "map_values" in data:
+                        if (len(data["axis_values"]) == map_info["positions"] and 
+                            len(data["map_values"]) == map_info["positions"]):
+                            
+                            if st.button("Importar JSON", key=f"import_json_{session_key}"):
+                                st.session_state[session_key] = {
+                                    "axis_values": data["axis_values"],
+                                    "map_values": data["map_values"]
+                                }
+                                st.success("Dados importados com sucesso!")
+                                st.rerun()
+                        else:
+                            st.error(f"Arquivo deve conter {map_info['positions']} valores")
+                    else:
+                        st.error("Formato JSON inválido")
+                
+                elif uploaded_file.name.endswith('.csv'):
+                    df_import = pd.read_csv(uploaded_file)
+                    if len(df_import) == map_info["positions"]:
+                        required_cols = ["axis_x", "value"]
+                        if all(col in df_import.columns for col in required_cols):
+                            if st.button("Importar CSV", key=f"import_csv_{session_key}"):
+                                st.session_state[session_key] = {
+                                    "axis_values": df_import["axis_x"].tolist(),
+                                    "map_values": df_import["value"].tolist()
+                                }
+                                st.success("Dados importados com sucesso!")
+                                st.rerun()
+                        else:
+                            st.error("CSV deve ter colunas: axis_x, value")
+                    else:
+                        st.error(f"CSV deve ter {map_info['positions']} linhas")
+            
+            except Exception as e:
+                st.error(f"Erro ao processar arquivo: {str(e)}")
+        
+    with col_export:
+        st.subheader("Exportar Dados")
         
         if session_key in st.session_state:
             current_data = st.session_state[session_key]
-            axis_values = current_data["axis_values"]
-            map_values = current_data["map_values"]
             
-            # Criar gráfico com gradiente de cores
-            fig = go.Figure()
+            # Exportar JSON
+            export_data = {
+                "vehicle_id": selected_vehicle_id,
+                "map_type": selected_map_type,
+                "bank_id": selected_bank,
+                "map_info": map_info,
+                "axis_values": current_data["axis_values"],
+                "map_values": current_data["map_values"],
+                "exported_at": pd.Timestamp.now().isoformat()
+            }
             
-            # Normalizar valores para escala de cores
-            min_val = min(map_values)
-            max_val = max(map_values)
-            norm_values = [(v - min_val) / (max_val - min_val) if max_val > min_val else 0.5 
-                          for v in map_values]
-            
-            fig.add_trace(go.Scatter(
-                x=axis_values,
-                y=map_values,
-                mode='lines+markers',
-                name='Mapa',
-                line=dict(
-                    width=3,
-                    color='rgba(100, 100, 100, 0.7)'  # Linha cinza semi-transparente
-                ),
-                marker=dict(
-                    size=10,
-                    color=map_values,  # Usar valores para colorir
-                    colorscale='RdYlBu',  # Red-Yellow-Blue (vermelho para baixo, azul para alto)
-                    cmin=min(map_values),  # Usar valores reais
-                    cmax=max(map_values),  # Usar valores reais
-                    showscale=True,
-                    colorbar=dict(
-                        title=map_info["unit"],
-                        tickmode='linear',
-                        tick0=map_info["min_value"],
-                        dtick=(map_info["max_value"] - map_info["min_value"]) / 10
-                    ),
-                    line=dict(width=1, color='white')
-                )
-            ))
-            
-            fig.update_layout(
-                title=f"Visualização - {map_info['name']}",
-                xaxis_title=f"Eixo X ({map_info['axis_type']})",
-                yaxis_title=f"Valor ({map_info['unit']})",
-                height=500,
-                showlegend=False,
-                hovermode='closest'
+            st.download_button(
+                "Exportar JSON",
+                data=json.dumps(export_data, indent=2),
+                file_name=f"mapa_2d_{selected_map_type}_{selected_vehicle_id}.json",
+                mime="application/json",
+                use_container_width=True,
+                key=f"export_json_{session_key}"
             )
             
-            # Configurar grid
-            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
-            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+            # Exportar CSV - usar apenas o tamanho real dos dados habilitados
+            num_values = len(current_data["axis_values"])
+            export_df = pd.DataFrame({
+                "posicao": range(1, num_values + 1),
+                "axis_x": current_data["axis_values"][:num_values],
+                "value": current_data["map_values"][:num_values]
+            })
             
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Estatísticas do mapa
-            col_stats1, col_stats2, col_stats3 = st.columns(3)
-            
-            # Formatação de decimais baseada no tipo de unidade
-            if map_info["unit"] == "ms":
-                decimal_places = 3
-            elif map_info["unit"] == "%":
-                decimal_places = 1
-            else:
-                decimal_places = 2
-            
-            with col_stats1:
-                st.metric(
-                    "Valor Mínimo",
-                    f"{min(map_values):.{decimal_places}f} {map_info['unit']}"
-                )
-            
-            with col_stats2:
-                st.metric(
-                    "Valor Máximo",
-                    f"{max(map_values):.{decimal_places}f} {map_info['unit']}"
-                )
-            
-            with col_stats3:
-                st.metric(
-                    "Valor Médio",
-                    f"{np.mean(map_values):.{decimal_places}f} {map_info['unit']}"
-                )
+            st.download_button(
+                "Exportar CSV",
+                data=export_df.to_csv(index=False),
+                file_name=f"mapa_2d_{selected_map_type}_{selected_vehicle_id}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key=f"export_csv_{session_key}"
+            )
         
         else:
-            st.info("Configure o mapa na aba 'Editar' para ver a visualização")
-    
-    with tab3:
-        st.caption("Importar e exportar dados do mapa")
-        
-        col_import, col_export = st.columns(2)
-        
-        with col_import:
-            st.subheader("Importar Dados")
-            
-            # Upload de arquivo
-            uploaded_file = st.file_uploader(
-                "Arquivo de mapa",
-                type=['json', 'csv'],
-                help="Formatos suportados: JSON, CSV",
-                key=f"upload_{session_key}"
-            )
-            
-            if uploaded_file is not None:
-                try:
-                    if uploaded_file.name.endswith('.json'):
-                        data = json.loads(uploaded_file.read())
-                        if "axis_values" in data and "map_values" in data:
-                            if (len(data["axis_values"]) == map_info["positions"] and 
-                                len(data["map_values"]) == map_info["positions"]):
-                                
-                                if st.button("Importar JSON", key=f"import_json_{session_key}"):
-                                    st.session_state[session_key] = {
-                                        "axis_values": data["axis_values"],
-                                        "map_values": data["map_values"]
-                                    }
-                                    st.success("Dados importados com sucesso!")
-                                    st.rerun()
-                            else:
-                                st.error(f"Arquivo deve conter {map_info['positions']} valores")
-                        else:
-                            st.error("Formato JSON inválido")
-                    
-                    elif uploaded_file.name.endswith('.csv'):
-                        df_import = pd.read_csv(uploaded_file)
-                        if len(df_import) == map_info["positions"]:
-                            required_cols = ["axis_x", "value"]
-                            if all(col in df_import.columns for col in required_cols):
-                                if st.button("Importar CSV", key=f"import_csv_{session_key}"):
-                                    st.session_state[session_key] = {
-                                        "axis_values": df_import["axis_x"].tolist(),
-                                        "map_values": df_import["value"].tolist()
-                                    }
-                                    st.success("Dados importados com sucesso!")
-                                    st.rerun()
-                            else:
-                                st.error("CSV deve ter colunas: axis_x, value")
-                        else:
-                            st.error(f"CSV deve ter {map_info['positions']} linhas")
-                
-                except Exception as e:
-                    st.error(f"Erro ao processar arquivo: {str(e)}")
-        
-        with col_export:
-            st.subheader("Exportar Dados")
-            
-            if session_key in st.session_state:
-                current_data = st.session_state[session_key]
-                
-                # Exportar JSON
-                export_data = {
-                    "vehicle_id": selected_vehicle_id,
-                    "map_type": selected_map_type,
-                    "bank_id": selected_bank,
-                    "map_info": map_info,
-                    "axis_values": current_data["axis_values"],
-                    "map_values": current_data["map_values"],
-                    "exported_at": pd.Timestamp.now().isoformat()
-                }
-                
-                st.download_button(
-                    "Exportar JSON",
-                    data=json.dumps(export_data, indent=2),
-                    file_name=f"mapa_2d_{selected_map_type}_{selected_vehicle_id}.json",
-                    mime="application/json",
-                    use_container_width=True,
-                    key=f"export_json_{session_key}"
-                )
-                
-                # Exportar CSV - usar apenas o tamanho real dos dados habilitados
-                num_values = len(current_data["axis_values"])
-                export_df = pd.DataFrame({
-                    "posicao": range(1, num_values + 1),
-                    "axis_x": current_data["axis_values"][:num_values],
-                    "value": current_data["map_values"][:num_values]
-                })
-                
-                st.download_button(
-                    "Exportar CSV",
-                    data=export_df.to_csv(index=False),
-                    file_name=f"mapa_2d_{selected_map_type}_{selected_vehicle_id}.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                    key=f"export_csv_{session_key}"
-                )
-            
-            else:
-                st.info("Configure o mapa na aba 'Editar' para exportar")
+            st.info("Configure o mapa na aba 'Editar' para exportar")
 
 # Rodapé com informações
 st.markdown("---")
