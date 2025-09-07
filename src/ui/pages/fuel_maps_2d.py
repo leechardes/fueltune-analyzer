@@ -391,7 +391,7 @@ with col2:
         
         # Aplicar estilo com gradiente de cores na linha de valores
         styled_df = formatted_df.style.background_gradient(
-            cmap='RdYlBu_r',  # Red-Yellow-Blue reversed (vermelho para baixo, azul para alto)
+            cmap='RdYlBu',  # Red-Yellow-Blue (vermelho para valores baixos, azul para altos)
             axis=1,  # Aplicar gradiente ao longo das colunas (horizontal)
             vmin=min(formatted_df.iloc[0].values),  # Usar valores reais do DataFrame
             vmax=max(formatted_df.iloc[0].values),  # Usar valores reais do DataFrame
@@ -531,9 +531,9 @@ with col2:
                 marker=dict(
                     size=10,
                     color=map_values,  # Usar valores para colorir
-                    colorscale='RdYlBu_r',  # Mesma escala da tabela
-                    cmin=map_info["min_value"],
-                    cmax=map_info["max_value"],
+                    colorscale='RdYlBu',  # Red-Yellow-Blue (vermelho para baixo, azul para alto)
+                    cmin=min(map_values),  # Usar valores reais
+                    cmax=max(map_values),  # Usar valores reais
                     showscale=True,
                     colorbar=dict(
                         title=map_info["unit"],
