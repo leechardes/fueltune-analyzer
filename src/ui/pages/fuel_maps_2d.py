@@ -374,7 +374,7 @@ with tab1:
             with axis_cols[0]:
                 enabled = st.checkbox(
                     "", 
-                    value=current_data["axis_enabled"][i] if i < len(current_data["axis_enabled"]) else False,
+                    value=current_data.get("axis_enabled", [True] * 32)[i] if i < len(current_data.get("axis_enabled", [True] * 32)) else False,
                     key=f"axis_en_{session_key}_{i}"
                 )
                 new_axis_enabled.append(enabled)

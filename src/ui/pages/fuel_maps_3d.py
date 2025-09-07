@@ -329,9 +329,9 @@ with tab1:
     with edit_tab1:
         st.caption("Edite os valores da matriz 3D")
         
-        # Obter apenas valores ativos
-        rpm_enabled = current_data["rpm_enabled"]
-        map_enabled = current_data["map_enabled"]
+        # Obter apenas valores ativos (com compatibilidade para dados antigos)
+        rpm_enabled = current_data.get("rpm_enabled", [True] * 32)
+        map_enabled = current_data.get("map_enabled", [True] * 32)
         active_rpm_values = get_active_axis_values(current_data["rpm_axis"], rpm_enabled)
         active_map_values = get_active_axis_values(current_data["map_axis"], map_enabled)
         
@@ -443,7 +443,7 @@ with tab1:
                 with rpm_cols[0]:
                     enabled = st.checkbox(
                         "", 
-                        value=current_data["rpm_enabled"][i] if i < len(current_data["rpm_enabled"]) else False,
+                        value=current_data.get("rpm_enabled", [True] * 32)[i] if i < len(current_data.get("rpm_enabled", [True] * 32)) else False,
                         key=f"rpm_en_{session_key}_{i}"
                     )
                     new_rpm_enabled.append(enabled)
@@ -486,7 +486,7 @@ with tab1:
                 with map_cols[0]:
                     enabled = st.checkbox(
                         "", 
-                        value=current_data["map_enabled"][i] if i < len(current_data["map_enabled"]) else False,
+                        value=current_data.get("map_enabled", [True] * 32)[i] if i < len(current_data.get("map_enabled", [True] * 32)) else False,
                         key=f"map_en_{session_key}_{i}"
                     )
                     new_map_enabled.append(enabled)
@@ -552,8 +552,8 @@ with tab1:
                     selected_bank or "shared",
                     current_data["rpm_axis"],
                     current_data["map_axis"],
-                    current_data["rpm_enabled"],
-                    current_data["map_enabled"],
+                    current_data.get("rpm_enabled", [True] * 32),
+                    current_data.get("map_enabled", [True] * 32),
                     current_data["values_matrix"]
                 )
                 if success:
@@ -582,8 +582,8 @@ with tab2:
     if session_key in st.session_state:
         current_data = st.session_state[session_key]
         # Usar apenas valores ativos dos eixos
-        rpm_enabled = current_data["rpm_enabled"]
-        map_enabled = current_data["map_enabled"]
+        rpm_enabled = current_data.get("rpm_enabled", [True] * 32)
+        map_enabled = current_data.get("map_enabled", [True] * 32)
         active_rpm_values = get_active_axis_values(current_data["rpm_axis"], rpm_enabled)
         active_map_values = get_active_axis_values(current_data["map_axis"], map_enabled)
         values_matrix = current_data["values_matrix"]
@@ -829,8 +829,8 @@ with tab3:
                 "map_info": map_info,
                 "rpm_axis": current_data["rpm_axis"],
                 "map_axis": current_data["map_axis"],
-                "rpm_enabled": current_data["rpm_enabled"],
-                "map_enabled": current_data["map_enabled"],
+                "rpm_enabled": current_data.get("rpm_enabled", [True] * 32),
+                "map_enabled": current_data.get("map_enabled", [True] * 32),
                 "values_matrix": current_data["values_matrix"].tolist(),
                 "exported_at": pd.Timestamp.now().isoformat()
             }
@@ -850,8 +850,8 @@ with tab3:
             values_matrix = current_data["values_matrix"]
             
             # Converter matriz para formato CSV usando apenas valores ativos
-            active_rpm_values = get_active_axis_values(current_data["rpm_axis"], current_data["rpm_enabled"])
-            active_map_values = get_active_axis_values(current_data["map_axis"], current_data["map_enabled"])
+            active_rpm_values = get_active_axis_values(current_data["rpm_axis"], current_data.get("rpm_enabled", [True] * 32))
+            active_map_values = get_active_axis_values(current_data["map_axis"], current_data.get("map_enabled", [True] * 32))
             csv_data = []
             for i, map_val in enumerate(active_map_values):
                 for j, rpm_val in enumerate(active_rpm_values):
