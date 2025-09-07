@@ -436,7 +436,11 @@ with tab1:
             with rpm_cols[2]:
                 st.caption("Posição")
             
-            new_rpm_axis = current_data["rpm_axis"].copy()
+            # Garantir que temos 32 posições
+            rpm_axis_temp = current_data["rpm_axis"].copy()
+            new_rpm_axis = [0.0] * 32  # Inicializar com 32 zeros
+            for i in range(min(len(rpm_axis_temp), 32)):
+                new_rpm_axis[i] = rpm_axis_temp[i]
             new_rpm_enabled = []
             
             for i in range(32):
@@ -458,7 +462,7 @@ with tab1:
                         key=f"rpm_val_{session_key}_{i}",
                         label_visibility="collapsed"
                     )
-                    new_rpm_axis[i] = value if i < len(new_rpm_axis) else 0
+                    new_rpm_axis[i] = value
                 
                 with rpm_cols[2]:
                     st.text(f"Pos {i+1}")
@@ -479,7 +483,11 @@ with tab1:
             with map_cols[2]:
                 st.caption("Posição")
             
-            new_map_axis = current_data["map_axis"].copy()
+            # Garantir que temos 32 posições
+            map_axis_temp = current_data["map_axis"].copy()
+            new_map_axis = [0.0] * 32  # Inicializar com 32 zeros
+            for i in range(min(len(map_axis_temp), 32)):
+                new_map_axis[i] = map_axis_temp[i]
             new_map_enabled = []
             
             for i in range(32):
@@ -501,7 +509,7 @@ with tab1:
                         key=f"map_val_{session_key}_{i}",
                         label_visibility="collapsed"
                     )
-                    new_map_axis[i] = value if i < len(new_map_axis) else 0.0
+                    new_map_axis[i] = value.0
                 
                 with map_cols[2]:
                     st.text(f"Pos {i+1}")

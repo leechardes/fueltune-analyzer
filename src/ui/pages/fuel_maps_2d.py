@@ -363,7 +363,11 @@ with tab1:
         with axis_cols[2]:
             st.caption("Posição")
         
-        new_axis_values = current_data["axis_values"].copy()
+        # Garantir que temos 32 posições
+        axis_values_temp = current_data["axis_values"].copy()
+        new_axis_values = [0.0] * 32  # Inicializar com 32 zeros
+        for i in range(min(len(axis_values_temp), 32)):
+            new_axis_values[i] = axis_values_temp[i]
         new_axis_enabled = []
         
         # Garantir que temos dados para todas as posições
