@@ -13,6 +13,7 @@ Created: 2025-01-07
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Tuple, Any
@@ -453,9 +454,12 @@ with tab1:
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
     
     # Botões de copiar/colar compatível com FTManager
+    st.write("**Integração com FTManager**")
     col_copy_paste1, col_copy_paste2 = st.columns(2)
     
     with col_copy_paste1:
+        st.caption("Copiar valores para FTManager")
+        
         # Gerar string para copiar (formato FTManager)
         ftm_values = []
         for val in current_data["map_values"]:
@@ -468,48 +472,84 @@ with tab1:
                 formatted = f"{val:.2f}".replace('.', ',')
             ftm_values.append(formatted)
         
-        # Criar string com espaçamento consistente (4 espaços entre valores)
-        ftm_string = "    ".join(ftm_values)
+        # Criar string com TAB entre valores (formato FTManager)
+        ftm_string = "\t".join(ftm_values)
         
         # Área de texto para copiar
-        st.text_area(
-            "Copiar para FTManager",
+        text_area_copy = st.text_area(
+            "Valores formatados",
             value=ftm_string,
             height=60,
             key=f"copy_ftm_{session_key}",
-            help="Selecione todo o texto (Ctrl+A) e copie (Ctrl+C) para colar no FTManager"
+            help="Valores separados por TAB, prontos para FTManager",
+            label_visibility="collapsed"
         )
+        
+        # Botão para copiar para área de transferência
+        if st.button("📋 Copiar para Área de Transferência", key=f"copy_clipboard_{session_key}", use_container_width=True):
+            # Usar componente HTML com JavaScript para copiar
+            components.html(
+                f"""
+                <script>
+                const text = `{ftm_string}`;
+                navigator.clipboard.writeText(text).then(function() {{
+                    console.log('Copiado para área de transferência');
+                }}, function(err) {{
+                    console.error('Erro ao copiar: ', err);
+                }});
+                </script>
+                """,
+                height=0
+            )
+            st.success("✅ Valores copiados para a área de transferência!")
     
     with col_copy_paste2:
+        st.caption("Colar valores do FTManager")
+        
         # Área para colar valores do FTManager
         paste_text = st.text_area(
-            "Colar do FTManager",
+            "Cole os valores aqui",
             placeholder="Cole aqui os valores copiados do FTManager...",
             height=60,
             key=f"paste_ftm_{session_key}",
-            help="Cole valores separados por espaços com vírgula decimal"
+            help="Aceita valores separados por TAB, espaços ou ponto-e-vírgula",
+            label_visibility="collapsed"
         )
         
-        if st.button("Aplicar Valores Colados", key=f"apply_paste_{session_key}"):
-            if paste_text:
-                try:
-                    # Processar valores colados
-                    # Remover espaços extras e dividir por espaços
-                    values_str = paste_text.strip().split()
-                    # Converter vírgulas para pontos e para float
-                    new_values = [float(v.replace(',', '.')) for v in values_str]
-                    
-                    # Verificar quantidade de valores
-                    current_positions = len(current_data["axis_values"])
-                    if len(new_values) == current_positions:
-                        # Aplicar valores
-                        st.session_state[session_key]["map_values"] = new_values
-                        st.success(f"Aplicados {len(new_values)} valores com sucesso!")
-                        st.rerun()
-                    else:
-                        st.error(f"Esperados {current_positions} valores, mas foram colados {len(new_values)}")
-                except Exception as e:
-                    st.error(f"Erro ao processar valores: {e}")
+        # Botões em duas colunas
+        btn_col1, btn_col2 = st.columns(2)
+        
+        with btn_col1:
+            if st.button("✅ Aplicar Valores", key=f"apply_paste_{session_key}", use_container_width=True):
+                if paste_text:
+                    try:
+                        # Processar valores colados - aceitar TAB, espaços ou ponto-e-vírgula
+                        # Substituir tabs e ponto-e-vírgula por espaços
+                        normalized_text = paste_text.replace('\t', ' ').replace(';', ' ')
+                        # Remover espaços extras e dividir
+                        values_str = normalized_text.strip().split()
+                        # Converter vírgulas para pontos e para float
+                        new_values = [float(v.replace(',', '.')) for v in values_str]
+                        
+                        # Verificar quantidade de valores
+                        current_positions = len(current_data["axis_values"])
+                        if len(new_values) == current_positions:
+                            # Aplicar valores
+                            st.session_state[session_key]["map_values"] = new_values
+                            st.success(f"Aplicados {len(new_values)} valores com sucesso!")
+                            st.rerun()
+                        else:
+                            st.error(f"Esperados {current_positions} valores, mas foram colados {len(new_values)}")
+                    except Exception as e:
+                        st.error(f"Erro ao processar valores: {e}")
+                else:
+                    st.warning("Cole os valores primeiro")
+        
+        with btn_col2:
+            if st.button("🗑️ Limpar", key=f"clear_paste_{session_key}", use_container_width=True):
+                # Limpar a área de texto
+                st.session_state[f"paste_ftm_{session_key}"] = ""
+                st.rerun()
     
     st.divider()
     
