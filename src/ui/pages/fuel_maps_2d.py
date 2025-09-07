@@ -486,12 +486,14 @@ with tab1:
         )
         
         # Botão para copiar para área de transferência
-        if st.button("📋 Copiar para Área de Transferência", key=f"copy_clipboard_{session_key}", use_container_width=True):
+        if st.button(":material/content_copy: Copiar para Área de Transferência", key=f"copy_clipboard_{session_key}", use_container_width=True):
             # Usar componente HTML com JavaScript para copiar
+            # Escapar tabs para JavaScript
+            ftm_string_js = ftm_string.replace('\\', '\\\\').replace('\t', '\\t').replace('`', '\\`')
             components.html(
                 f"""
                 <script>
-                const text = `{ftm_string}`;
+                const text = "{ftm_string_js}";
                 navigator.clipboard.writeText(text).then(function() {{
                     console.log('Copiado para área de transferência');
                 }}, function(err) {{
@@ -501,7 +503,7 @@ with tab1:
                 """,
                 height=0
             )
-            st.success("✅ Valores copiados para a área de transferência!")
+            st.success("Valores copiados para a área de transferência!")
     
     with col_copy_paste2:
         st.caption("Colar valores do FTManager")
@@ -520,7 +522,7 @@ with tab1:
         btn_col1, btn_col2 = st.columns(2)
         
         with btn_col1:
-            if st.button("✅ Aplicar Valores", key=f"apply_paste_{session_key}", use_container_width=True):
+            if st.button(":material/check_circle: Aplicar Valores", key=f"apply_paste_{session_key}", use_container_width=True):
                 if paste_text:
                     try:
                         # Processar valores colados - aceitar TAB, espaços ou ponto-e-vírgula
@@ -546,7 +548,7 @@ with tab1:
                     st.warning("Cole os valores primeiro")
         
         with btn_col2:
-            if st.button("🗑️ Limpar", key=f"clear_paste_{session_key}", use_container_width=True):
+            if st.button(":material/clear: Limpar", key=f"clear_paste_{session_key}", use_container_width=True):
                 # Limpar a área de texto
                 st.session_state[f"paste_ftm_{session_key}"] = ""
                 st.rerun()
