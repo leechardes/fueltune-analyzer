@@ -35,7 +35,7 @@ class Config:
         self.FUELTECH_FIELDS_COUNT: int = int(os.getenv("FUELTECH_FIELDS_COUNT", "64"))
 
         # Streamlit settings
-        self.STREAMLIT_SERVER_PORT: int = int(os.getenv("STREAMLIT_SERVER_PORT", "8501"))
+        self.STREAMLIT_SERVER_PORT: int = int(os.getenv("STREAMLIT_SERVER_PORT", "8503"))
         self.STREAMLIT_SERVER_ADDRESS: str = os.getenv("STREAMLIT_SERVER_ADDRESS", "localhost")
 
         # Cache settings

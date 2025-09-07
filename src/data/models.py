@@ -9,9 +9,10 @@ Created: 2025-01-02
 """
 
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
@@ -74,7 +75,11 @@ class DataSession(Base):
     # Additional metadata as JSON
     metadata_json = Column(JSON)
 
+    # Vehicle relationship
+    vehicle_id = Column(String(36), ForeignKey("vehicles.id"), nullable=True, comment="ID do veículo vinculado")
+
     # Relationships
+    vehicle = relationship("Vehicle", back_populates="sessions")
     core_data = relationship(
         "FuelTechCoreData", back_populates="session", cascade="all, delete-orphan"
     )
@@ -285,6 +290,208 @@ class DataQualityCheck(Base):
         Index("idx_quality_status", "status"),
         Index("idx_quality_timestamp", "check_timestamp"),
     )
+
+
+class Vehicle(Base):
+    """
+    Modelo de dados para veículos cadastrados.
+    Armazena todas as informações técnicas do veículo para contextualização
+    dos dados de telemetria.
+    """
+    __tablename__ = "vehicles"
+    
+    # Identificação Principal
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String(255), nullable=False, comment="Nome/modelo do veículo")
+    nickname = Column(String(100), comment="Apelido ou nome popular")
+    plate = Column(String(20), comment="Placa do veículo")
+    year = Column(Integer, comment="Ano de fabricação")
+    brand = Column(String(100), comment="Marca do veículo")
+    model = Column(String(100), comment="Modelo específico")
+    
+    # Especificações do Motor
+    engine_displacement = Column(Float, comment="Cilindrada em litros")
+    engine_cylinders = Column(Integer, comment="Número de cilindros")
+    engine_configuration = Column(String(50), comment="Configuração: V6, I4, V8, etc")
+    engine_aspiration = Column(String(50), comment="Naturally Aspirated, Turbo, Supercharged")
+    
+    # Sistema de Injeção
+    injector_type = Column(String(100), comment="Tipo de bico injetor")
+    injector_count = Column(Integer, comment="Quantidade de bicos")
+    injector_flow_rate = Column(Float, comment="Vazão em cc/min")
+    fuel_rail_pressure = Column(Float, comment="Pressão do rail em bar")
+    
+    # Turbocompressor
+    turbo_brand = Column(String(100), comment="Marca do turbocompressor")
+    turbo_model = Column(String(100), comment="Modelo do turbocompressor")
+    max_boost_pressure = Column(Float, comment="Pressão máxima em bar")
+    wastegate_type = Column(String(50), comment="Internal/External wastegate")
+    
+    # Transmissão
+    transmission_type = Column(String(50), comment="Manual/Automatic/CVT")
+    gear_count = Column(Integer, comment="Número de marchas")
+    final_drive_ratio = Column(Float, comment="Relação final da transmissão")
+    
+    # Características Físicas
+    curb_weight = Column(Float, comment="Peso em ordem de marcha (kg)")
+    power_weight_ratio = Column(Float, comment="Relação peso/potência")
+    drivetrain = Column(String(50), comment="FWD, RWD, AWD")
+    tire_size = Column(String(50), comment="Medida dos pneus")
+    
+    # Sistema de Combustível
+    fuel_type = Column(String(50), comment="Gasoline, Ethanol, Flex, Diesel")
+    octane_rating = Column(Integer, comment="Octanagem do combustível")
+    fuel_system = Column(String(100), comment="Port Injection, Direct, Dual")
+    
+    # Performance Estimada
+    estimated_power = Column(Float, comment="Potência estimada em HP")
+    estimated_torque = Column(Float, comment="Torque estimado em Nm")
+    max_rpm = Column(Integer, comment="RPM máximo do motor")
+    
+    # Sistema de Bancadas de Injeção
+    # Bancada A (Principal)
+    bank_a_enabled = Column(Boolean, default=True, comment="Bancada A habilitada (sempre ativa)")
+    bank_a_mode = Column(String(20), default='semissequencial', comment="Modo: multiponto, semissequencial, sequencial")
+    bank_a_outputs = Column(JSON, comment="Lista de saídas utilizadas: [1, 2, 3, 4] etc")
+    bank_a_injector_flow = Column(Float, comment="Vazão por bico em lb/h")
+    bank_a_injector_count = Column(Integer, comment="Quantidade de bicos na bancada A")
+    bank_a_total_flow = Column(Float, comment="Vazão total calculada (lb/h)")
+    bank_a_dead_time = Column(Float, comment="Dead time dos injetores em ms")
+    
+    # Bancada B (Auxiliar)
+    bank_b_enabled = Column(Boolean, default=False, comment="Bancada B habilitada")
+    bank_b_mode = Column(String(20), default='semissequencial', comment="Modo: multiponto, semissequencial, sequencial")
+    bank_b_outputs = Column(JSON, comment="Lista de saídas utilizadas: [5, 6, 7, 8] etc")
+    bank_b_injector_flow = Column(Float, comment="Vazão por bico em lb/h")
+    bank_b_injector_count = Column(Integer, comment="Quantidade de bicos na bancada B")
+    bank_b_total_flow = Column(Float, comment="Vazão total calculada (lb/h)")
+    bank_b_dead_time = Column(Float, comment="Dead time dos injetores em ms")
+    
+    # Limites operacionais para mapas
+    max_map_pressure = Column(Float, default=5.0, comment="Pressão MAP máxima em bar")
+    min_map_pressure = Column(Float, default=-1.0, comment="Pressão MAP mínima em bar")
+    
+    # Metadados de Sistema
+    created_at = Column(DateTime, default=func.now(), comment="Data de criação")
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), comment="Última atualização")
+    is_active = Column(Boolean, default=True, comment="Veículo está ativo")
+    notes = Column(Text, comment="Observações adicionais")
+    
+    # Relacionamentos
+    sessions = relationship("DataSession", back_populates="vehicle", cascade="all, delete-orphan")
+    # fuel_maps = relationship("FuelMap", back_populates="vehicle", cascade="all, delete-orphan")  # Temporariamente desabilitado até FuelMap ser criado
+    
+    # Índices para Performance
+    __table_args__ = (
+        Index("idx_vehicle_name", "name"),
+        Index("idx_vehicle_brand_model", "brand", "model"),
+        Index("idx_vehicle_active", "is_active"),
+        Index("idx_vehicle_created", "created_at"),
+        Index("idx_vehicle_year", "year"),
+    )
+    
+    def __repr__(self):
+        return f"<Vehicle(id={self.id}, name='{self.name}', year={self.year})>"
+    
+    @property
+    def display_name(self):
+        """Nome formatado para exibição."""
+        if self.nickname:
+            return f"{self.name} ({self.nickname})"
+        return f"{self.name} ({self.year})" if self.year else self.name
+    
+    @property
+    def technical_summary(self):
+        """Resumo técnico do veículo."""
+        parts = []
+        if self.engine_displacement:
+            parts.append(f"{self.engine_displacement}L")
+        if self.engine_configuration:
+            parts.append(self.engine_configuration)
+        if self.engine_aspiration and self.engine_aspiration != "Naturally Aspirated":
+            parts.append(self.engine_aspiration)
+        return " ".join(parts) if parts else "Não especificado"
+    
+    @property
+    def bank_configuration_summary(self):
+        """Resumo da configuração de bancadas."""
+        summary = []
+        
+        if self.bank_a_enabled:
+            bank_a_flow = self.bank_a_total_flow or 0
+            summary.append(f"Bancada A: {bank_a_flow:.0f} lb/h ({self.bank_a_mode})")
+        
+        if self.bank_b_enabled:
+            bank_b_flow = self.bank_b_total_flow or 0
+            summary.append(f"Bancada B: {bank_b_flow:.0f} lb/h ({self.bank_b_mode})")
+        
+        return " | ".join(summary) if summary else "Bancadas não configuradas"
+    
+    @property
+    def total_injector_flow(self):
+        """Vazão total de todas as bancadas ativas."""
+        total = 0
+        if self.bank_a_enabled and self.bank_a_total_flow:
+            total += self.bank_a_total_flow
+        if self.bank_b_enabled and self.bank_b_total_flow:
+            total += self.bank_b_total_flow
+        return total
+    
+    def calculate_bank_flow(self, bank: str) -> float:
+        """Calcula vazão total de uma bancada específica."""
+        if bank.upper() == 'A':
+            flow_per_injector = self.bank_a_injector_flow or 0
+            injector_count = self.bank_a_injector_count or 0
+        elif bank.upper() == 'B':
+            flow_per_injector = self.bank_b_injector_flow or 0
+            injector_count = self.bank_b_injector_count or 0
+        else:
+            return 0.0
+        
+        return flow_per_injector * injector_count
+    
+    def update_calculated_flows(self):
+        """Atualiza vazões calculadas das bancadas."""
+        if self.bank_a_enabled:
+            self.bank_a_total_flow = self.calculate_bank_flow('A')
+        
+        if self.bank_b_enabled:
+            self.bank_b_total_flow = self.calculate_bank_flow('B')
+    
+    def get_bank_outputs(self, bank: str) -> List[int]:
+        """Retorna lista de saídas configuradas para uma bancada."""
+        import json
+        
+        if bank.upper() == 'A':
+            outputs_json = self.bank_a_outputs
+        elif bank.upper() == 'B':
+            outputs_json = self.bank_b_outputs
+        else:
+            return []
+        
+        if not outputs_json:
+            return []
+        
+        try:
+            if isinstance(outputs_json, str):
+                return json.loads(outputs_json)
+            elif isinstance(outputs_json, list):
+                return outputs_json
+            else:
+                return []
+        except:
+            return []
+    
+    def has_output_conflicts(self) -> Tuple[bool, List[int]]:
+        """Verifica se há conflitos de saídas entre bancadas."""
+        if not self.bank_b_enabled:
+            return False, []
+        
+        outputs_a = set(self.get_bank_outputs('A'))
+        outputs_b = set(self.get_bank_outputs('B'))
+        
+        conflicts = list(outputs_a.intersection(outputs_b))
+        return len(conflicts) > 0, conflicts
 
 
 class DatabaseManager:

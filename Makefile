@@ -173,12 +173,12 @@ setup: install-dev ## Setup completo do projeto
 
 dev: ## Iniciar aplicação em modo desenvolvimento com auto-reload
 	$(call print_section,"Iniciando FuelTune em Modo Desenvolvimento")
-	$(call print_info,"Streamlit rodando em: http://localhost:8501")
+	$(call print_info,"Streamlit rodando em: http://localhost:8503")
 	$(call print_warning,"Modo DEBUG ativado com hot-reload")
 	@export PYTHONPATH="${PWD}/src:${PWD}:${PYTHONPATH}" && \
 	export DEBUG=true && \
 	$(PYTHON) -m streamlit run main.py \
-		--server.port=8501 \
+		--server.port=8503 \
 		--server.address=0.0.0.0 \
 		--server.headless=true \
 		--server.runOnSave=true \
@@ -191,7 +191,7 @@ start: ## Iniciar aplicação em produção
 	@export PYTHONPATH="${PWD}/src:${PWD}:${PYTHONPATH}" && \
 	export DEBUG=false && \
 	$(PYTHON) -m streamlit run main.py \
-		--server.port=8501 \
+		--server.port=8503 \
 		--server.address=0.0.0.0 \
 		--server.headless=true \
 		--server.runOnSave=false
@@ -209,7 +209,7 @@ status: ## Verificar status da aplicação
 
 health: ## Verificar saúde da aplicação
 	$(call print_info,"Executando health check...")
-	@curl -f http://localhost:8501/_stcore/health 2>/dev/null && \
+	@curl -f http://localhost:8503/_stcore/health 2>/dev/null && \
 		$(call print_success,"Aplicação está saudável!") || \
 		$(call print_error,"Aplicação não está respondendo")
 

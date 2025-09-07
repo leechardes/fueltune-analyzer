@@ -17,9 +17,10 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from config import config
 from src.data.cache import get_cache_manager
-from src.data.database import get_database
+from src.data.database import get_database, get_vehicle_by_id
 from src.utils.logger import get_logger
 from src.ui.theme_config import apply_professional_theme, professional_theme
+from src.ui.components.vehicle_selector import render_vehicle_selector, get_vehicle_context, set_vehicle_context
 
 # Import integration system
 from src.integration import (
@@ -166,6 +167,8 @@ def main():
     # Using the existing pages in src/ui/pages/
     pages = st.navigation([
         st.Page("src/ui/pages/dashboard.py", title="Dashboard", icon=":material/dashboard:"),
+        st.Page("src/ui/pages/vehicles.py", title="Veículos", icon=":material/directions_car:"),
+        st.Page("src/ui/pages/bank_configuration.py", title="Configuração de Bancadas", icon=":material/settings_input_component:"),
         st.Page("src/ui/pages/upload.py", title="Upload de Dados", icon=":material/upload_file:"),
         st.Page("src/ui/pages/analysis.py", title="Análise", icon=":material/analytics:"),
         st.Page("src/ui/pages/consumption.py", title="Consumo", icon=":material/local_gas_station:"),
@@ -230,6 +233,38 @@ def main():
             </div>
         </div>
         """, unsafe_allow_html=True)
+        
+        # Vehicle selector
+        st.markdown("### Contexto do Veículo")
+        selected_vehicle_id = render_vehicle_selector(
+            label="Veículo Ativo",
+            key="global_vehicle_context",
+            help_text="Todos os dados serão filtrados por este veículo",
+            show_create_button=True
+        )
+        
+        # Update global context
+        if selected_vehicle_id:
+            set_vehicle_context(selected_vehicle_id)
+            
+            # Show vehicle summary
+            vehicle = get_vehicle_by_id(selected_vehicle_id)
+            if vehicle:
+                st.markdown(f"""
+                <div style="background: linear-gradient(135deg, #1976D2, #42A5F5); padding: 0.75rem; border-radius: 8px; margin: 0.5rem 0; color: white;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="material-icons" style="font-size: 1.2rem;">directions_car</i>
+                        <strong style="font-size: 0.9rem;">{vehicle.display_name}</strong>
+                    </div>
+                    <div style="font-size: 0.8rem; margin-top: 0.25rem; opacity: 0.9;">
+                        {vehicle.technical_summary}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            set_vehicle_context(None)
+        
+        st.divider()
         
         # Session selector (if needed for multiple pages)
         st.markdown("### Sessão de Dados")

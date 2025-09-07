@@ -15,11 +15,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
+from sqlalchemy import or_
+from sqlalchemy.sql import func
 
 from ..utils.logging_config import get_logger
 from .csv_parser import CSVParser
 from .models import DatabaseManager as BaseDBManager
-from .models import DataQualityCheck, DataSession, FuelTechCoreData, FuelTechExtendedData
+from .models import DataQualityCheck, DataSession, FuelTechCoreData, FuelTechExtendedData, Vehicle
 from .normalizer import normalize_fueltech_data
 from .quality import assess_fueltech_data_quality
 from .validators import validate_fueltech_data
@@ -641,6 +643,257 @@ def get_database(db_path: str = "data/fueltech_data.db") -> FuelTechDatabase:
         _db_instance = FuelTechDatabase(db_path)
 
     return _db_instance
+
+
+# ========================================
+# CRUD Operations para Vehicle
+# ========================================
+
+def get_db_session():
+    """Helper para obter sessão do banco de dados usando a instância global."""
+    return get_database().get_session()
+
+def create_vehicle(vehicle_data: dict) -> str:
+    """
+    Cria um novo veículo no banco de dados.
+    
+    Args:
+        vehicle_data: Dicionário com dados do veículo
+    
+    Returns:
+        str: ID do veículo criado
+    
+    Raises:
+        ValueError: Se dados obrigatórios estão ausentes
+        Exception: Para outros erros de banco
+    """
+    if not vehicle_data.get("name"):
+        raise ValueError("Nome do veículo é obrigatório")
+    
+    try:
+        with get_db_session() as session:
+            vehicle = Vehicle(**vehicle_data)
+            session.add(vehicle)
+            session.commit()
+            
+            logger.info(f"Veículo criado: {vehicle.id} - {vehicle.name}")
+            return vehicle.id
+            
+    except Exception as e:
+        logger.error(f"Erro ao criar veículo: {str(e)}")
+        raise
+
+def get_vehicle_by_id(vehicle_id: str) -> Optional[Vehicle]:
+    """
+    Busca veículo por ID.
+    
+    Args:
+        vehicle_id: ID do veículo
+    
+    Returns:
+        Vehicle ou None se não encontrado
+    """
+    try:
+        with get_db_session() as session:
+            return session.query(Vehicle).filter(
+                Vehicle.id == vehicle_id
+            ).first()
+            
+    except Exception as e:
+        logger.error(f"Erro ao buscar veículo {vehicle_id}: {str(e)}")
+        return None
+
+def get_all_vehicles(active_only: bool = True) -> List[Vehicle]:
+    """
+    Lista todos os veículos.
+    
+    Args:
+        active_only: Se True, retorna apenas veículos ativos
+    
+    Returns:
+        List[Vehicle]: Lista de veículos
+    """
+    try:
+        with get_db_session() as session:
+            query = session.query(Vehicle)
+            
+            if active_only:
+                query = query.filter(Vehicle.is_active == True)
+            
+            return query.order_by(Vehicle.name).all()
+            
+    except Exception as e:
+        logger.error(f"Erro ao listar veículos: {str(e)}")
+        return []
+
+def update_vehicle(vehicle_id: str, update_data: dict) -> bool:
+    """
+    Atualiza dados do veículo.
+    
+    Args:
+        vehicle_id: ID do veículo
+        update_data: Dados para atualizar
+    
+    Returns:
+        bool: True se atualizado com sucesso
+    """
+    try:
+        with get_db_session() as session:
+            vehicle = session.query(Vehicle).filter(
+                Vehicle.id == vehicle_id
+            ).first()
+            
+            if not vehicle:
+                logger.warning(f"Veículo não encontrado: {vehicle_id}")
+                return False
+            
+            # Atualizar campos fornecidos
+            for field, value in update_data.items():
+                if hasattr(vehicle, field):
+                    setattr(vehicle, field, value)
+            
+            # Atualizar timestamp
+            vehicle.updated_at = func.now()
+            
+            session.commit()
+            logger.info(f"Veículo atualizado: {vehicle_id}")
+            return True
+            
+    except Exception as e:
+        logger.error(f"Erro ao atualizar veículo {vehicle_id}: {str(e)}")
+        return False
+
+def delete_vehicle(vehicle_id: str, soft_delete: bool = True) -> bool:
+    """
+    Remove veículo (soft delete por padrão).
+    
+    Args:
+        vehicle_id: ID do veículo
+        soft_delete: Se True, apenas marca como inativo
+    
+    Returns:
+        bool: True se removido com sucesso
+    """
+    try:
+        with get_db_session() as session:
+            vehicle = session.query(Vehicle).filter(
+                Vehicle.id == vehicle_id
+            ).first()
+            
+            if not vehicle:
+                logger.warning(f"Veículo não encontrado: {vehicle_id}")
+                return False
+            
+            # Verificar se há sessões vinculadas
+            session_count = session.query(DataSession).filter(
+                DataSession.vehicle_id == vehicle_id
+            ).count()
+            
+            if session_count > 0 and not soft_delete:
+                raise ValueError(
+                    f"Não é possível excluir veículo com {session_count} sessões vinculadas. "
+                    "Use soft delete ou migre as sessões primeiro."
+                )
+            
+            if soft_delete:
+                vehicle.is_active = False
+                vehicle.updated_at = func.now()
+                logger.info(f"Veículo desativado: {vehicle_id}")
+            else:
+                session.delete(vehicle)
+                logger.info(f"Veículo removido: {vehicle_id}")
+            
+            session.commit()
+            return True
+            
+    except Exception as e:
+        logger.error(f"Erro ao remover veículo {vehicle_id}: {str(e)}")
+        return False
+
+def search_vehicles(search_term: str, active_only: bool = True) -> List[Vehicle]:
+    """
+    Busca veículos por termo.
+    
+    Args:
+        search_term: Termo para buscar (nome, marca, modelo)
+        active_only: Se True, busca apenas veículos ativos
+    
+    Returns:
+        List[Vehicle]: Lista de veículos encontrados
+    """
+    try:
+        with get_db_session() as session:
+            query = session.query(Vehicle)
+            
+            if active_only:
+                query = query.filter(Vehicle.is_active == True)
+            
+            # Buscar em múltiplos campos
+            search_filter = or_(
+                Vehicle.name.ilike(f"%{search_term}%"),
+                Vehicle.brand.ilike(f"%{search_term}%"),
+                Vehicle.model.ilike(f"%{search_term}%"),
+                Vehicle.nickname.ilike(f"%{search_term}%")
+            )
+            
+            return query.filter(search_filter).order_by(Vehicle.name).all()
+            
+    except Exception as e:
+        logger.error(f"Erro ao buscar veículos com termo '{search_term}': {str(e)}")
+        return []
+
+def get_vehicle_statistics(vehicle_id: str) -> dict:
+    """
+    Obtém estatísticas do veículo (sessões, dados, etc.).
+    
+    Args:
+        vehicle_id: ID do veículo
+    
+    Returns:
+        dict: Estatísticas do veículo
+    """
+    try:
+        with get_db_session() as session:
+            vehicle = session.query(Vehicle).filter(
+                Vehicle.id == vehicle_id
+            ).first()
+            
+            if not vehicle:
+                return {}
+            
+            # Contar sessões
+            session_count = session.query(DataSession).filter(
+                DataSession.vehicle_id == vehicle_id
+            ).count()
+            
+            # Data da primeira e última sessão
+            first_session = session.query(DataSession).filter(
+                DataSession.vehicle_id == vehicle_id
+            ).order_by(DataSession.created_at).first()
+            
+            last_session = session.query(DataSession).filter(
+                DataSession.vehicle_id == vehicle_id
+            ).order_by(DataSession.created_at.desc()).first()
+            
+            # Contar registros de dados
+            core_data_count = session.query(FuelTechCoreData).join(DataSession).filter(
+                DataSession.vehicle_id == vehicle_id
+            ).count()
+            
+            return {
+                "vehicle_id": vehicle_id,
+                "vehicle_name": vehicle.display_name,
+                "session_count": session_count,
+                "core_data_count": core_data_count,
+                "first_session_date": first_session.created_at if first_session else None,
+                "last_session_date": last_session.created_at if last_session else None,
+                "created_at": vehicle.created_at,
+                "updated_at": vehicle.updated_at
+            }
+            
+    except Exception as e:
+        logger.error(f"Erro ao obter estatísticas do veículo {vehicle_id}: {str(e)}")
+        return {}
 
 
 if __name__ == "__main__":
