@@ -76,36 +76,54 @@ if selected_vehicle_id:
                 )
                 
                 if bank_a_enabled:
+                    mode_options = ["sequential", "semi-sequential", "batch"]
+                    current_mode = vehicle.get("bank_a_mode", "sequential")
+                    # Garantir que o modo atual está na lista
+                    try:
+                        mode_index = mode_options.index(current_mode) if current_mode in mode_options else 0
+                    except:
+                        mode_index = 0
+                    
                     bank_a_mode = st.selectbox(
                         "Modo de Operação",
-                        ["sequential", "semi-sequential", "batch"],
-                        index=["sequential", "semi-sequential", "batch"].index(
-                            vehicle.get("bank_a_mode", "sequential")
-                        ) if vehicle.get("bank_a_mode") else 0
+                        mode_options,
+                        index=mode_index
                     )
                     
+                    # Garantir valor padrão para quantidade de bicos
+                    a_count = vehicle.get("bank_a_injector_count")
+                    if a_count is None:
+                        a_count = 4
                     bank_a_injector_count = st.number_input(
                         "Quantidade de Bicos",
                         min_value=1,
                         max_value=16,
-                        value=vehicle.get("bank_a_injector_count", 4)
+                        value=int(a_count)
                     )
             
             with col2:
                 if bank_a_enabled:
+                    # Garantir valor padrão para vazão
+                    a_flow = vehicle.get("bank_a_injector_flow")
+                    if a_flow is None:
+                        a_flow = 550
                     bank_a_injector_flow = st.number_input(
                         "Vazão dos Bicos (cc/min)",
                         min_value=0,
                         max_value=3000,
-                        value=int(vehicle.get("bank_a_injector_flow", 550)),
+                        value=int(a_flow),
                         step=10
                     )
                     
+                    # Garantir valor padrão para dead time
+                    a_dead = vehicle.get("bank_a_dead_time")
+                    if a_dead is None:
+                        a_dead = 1.0
                     bank_a_dead_time = st.number_input(
                         "Dead Time (ms)",
                         min_value=0.0,
                         max_value=10.0,
-                        value=float(vehicle.get("bank_a_dead_time", 1.0)),
+                        value=float(a_dead),
                         step=0.1,
                         format="%.1f"
                     )
@@ -115,10 +133,10 @@ if selected_vehicle_id:
                     st.metric("Vazão Total", f"{total_flow_a} cc/min")
             
             # Configuração de saídas
+            outputs_a = []
             if bank_a_enabled:
                 st.subheader("Mapeamento de Saídas")
                 
-                outputs_a = []
                 cols = st.columns(4)
                 for i in range(bank_a_injector_count):
                     with cols[i % 4]:
@@ -130,6 +148,13 @@ if selected_vehicle_id:
                             key=f"bank_a_output_{i}"
                         )
                         outputs_a.append(output)
+            else:
+                # Valores padrão quando desabilitado
+                bank_a_mode = None
+                bank_a_injector_count = 0
+                bank_a_injector_flow = 0
+                bank_a_dead_time = 0
+                total_flow_a = 0
             
             # Botão de salvar
             submitted_a = st.form_submit_button("Salvar Configuração Bancada A", type="primary", use_container_width=True)
@@ -177,36 +202,54 @@ if selected_vehicle_id:
                 )
                 
                 if bank_b_enabled:
+                    mode_options = ["sequential", "semi-sequential", "batch"]
+                    current_mode = vehicle.get("bank_b_mode", "sequential")
+                    # Garantir que o modo atual está na lista
+                    try:
+                        mode_index = mode_options.index(current_mode) if current_mode in mode_options else 0
+                    except:
+                        mode_index = 0
+                    
                     bank_b_mode = st.selectbox(
                         "Modo de Operação",
-                        ["sequential", "semi-sequential", "batch"],
-                        index=["sequential", "semi-sequential", "batch"].index(
-                            vehicle.get("bank_b_mode", "sequential")
-                        ) if vehicle.get("bank_b_mode") else 0
+                        mode_options,
+                        index=mode_index
                     )
                     
+                    # Garantir valor padrão para quantidade de bicos
+                    b_count = vehicle.get("bank_b_injector_count")
+                    if b_count is None:
+                        b_count = 4
                     bank_b_injector_count = st.number_input(
                         "Quantidade de Bicos",
                         min_value=1,
                         max_value=16,
-                        value=vehicle.get("bank_b_injector_count", 4)
+                        value=int(b_count)
                     )
             
             with col2:
                 if bank_b_enabled:
+                    # Garantir valor padrão para vazão
+                    b_flow = vehicle.get("bank_b_injector_flow")
+                    if b_flow is None:
+                        b_flow = 550
                     bank_b_injector_flow = st.number_input(
                         "Vazão dos Bicos (cc/min)",
                         min_value=0,
                         max_value=3000,
-                        value=int(vehicle.get("bank_b_injector_flow", 550)),
+                        value=int(b_flow),
                         step=10
                     )
                     
+                    # Garantir valor padrão para dead time
+                    b_dead = vehicle.get("bank_b_dead_time")
+                    if b_dead is None:
+                        b_dead = 1.0
                     bank_b_dead_time = st.number_input(
                         "Dead Time (ms)",
                         min_value=0.0,
                         max_value=10.0,
-                        value=float(vehicle.get("bank_b_dead_time", 1.0)),
+                        value=float(b_dead),
                         step=0.1,
                         format="%.1f"
                     )
@@ -216,10 +259,10 @@ if selected_vehicle_id:
                     st.metric("Vazão Total", f"{total_flow_b} cc/min")
             
             # Configuração de saídas
+            outputs_b = []
             if bank_b_enabled:
                 st.subheader("Mapeamento de Saídas")
                 
-                outputs_b = []
                 cols = st.columns(4)
                 for i in range(bank_b_injector_count):
                     with cols[i % 4]:
@@ -231,6 +274,13 @@ if selected_vehicle_id:
                             key=f"bank_b_output_{i}"
                         )
                         outputs_b.append(output)
+            else:
+                # Valores padrão quando desabilitado
+                bank_b_mode = None
+                bank_b_injector_count = 0
+                bank_b_injector_flow = 0
+                bank_b_dead_time = 0
+                total_flow_b = 0
             
             # Botão de salvar
             submitted_b = st.form_submit_button("Salvar Configuração Bancada B", type="primary", use_container_width=True)
@@ -323,11 +373,11 @@ if selected_vehicle_id:
             st.divider()
             st.subheader("Balanceamento de Vazão")
             
-            total_flow = vehicle.get("bank_a_total_flow", 0) + vehicle.get("bank_b_total_flow", 0)
+            total_flow = (vehicle.get("bank_a_total_flow") or 0) + (vehicle.get("bank_b_total_flow") or 0)
             
             if total_flow > 0:
-                bank_a_percent = (vehicle.get("bank_a_total_flow", 0) / total_flow) * 100
-                bank_b_percent = (vehicle.get("bank_b_total_flow", 0) / total_flow) * 100
+                bank_a_percent = ((vehicle.get("bank_a_total_flow") or 0) / total_flow) * 100
+                bank_b_percent = ((vehicle.get("bank_b_total_flow") or 0) / total_flow) * 100
                 
                 col1, col2, col3 = st.columns(3)
                 with col1:
@@ -342,8 +392,8 @@ if selected_vehicle_id:
                 df = pd.DataFrame({
                     "Bancada": ["A", "B"],
                     "Vazão (cc/min)": [
-                        vehicle.get("bank_a_total_flow", 0),
-                        vehicle.get("bank_b_total_flow", 0)
+                        vehicle.get("bank_a_total_flow") or 0,
+                        vehicle.get("bank_b_total_flow") or 0
                     ]
                 })
                 st.bar_chart(df.set_index("Bancada"))
