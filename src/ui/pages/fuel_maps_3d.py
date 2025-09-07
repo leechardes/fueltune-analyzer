@@ -38,39 +38,45 @@ except ImportError:
 st.title("Mapas de Injeção 3D")
 st.caption("Configure mapas de injeção tridimensionais")
 
-# Constantes para tipos de mapas 3D
-MAP_TYPES_3D = {
-    "main_fuel_3d_map": {
-        "name": "Mapa Principal de Injeção 3D - 16x16 (256 posições)",
-        "grid_size": 16,
-        "x_axis_type": "RPM",
-        "y_axis_type": "MAP",
-        "unit": "ms",
-        "min_value": 0.0,
-        "max_value": 50.0,
-        "description": "Mapa principal 3D baseado em RPM vs MAP"
-    },
-    "ignition_3d_map": {
-        "name": "Mapa de Ignição 3D - 16x16",
-        "grid_size": 16,
-        "x_axis_type": "RPM",
-        "y_axis_type": "MAP",
-        "unit": "°",
-        "min_value": -10.0,
-        "max_value": 60.0,
-        "description": "Mapa 3D de avanço de ignição"
-    },
-    "lambda_target_3d_map": {
-        "name": "Mapa de Lambda Alvo 3D - 16x16",
-        "grid_size": 16,
-        "x_axis_type": "RPM",
-        "y_axis_type": "MAP",
-        "unit": "λ",
-        "min_value": 0.6,
-        "max_value": 1.5,
-        "description": "Mapa 3D de lambda alvo"
-    }
-}
+# Carregar configuração de tipos de mapas 3D do arquivo externo
+def load_map_types_config():
+    """Carrega a configuração de tipos de mapas do arquivo JSON."""
+    config_path = Path("config/map_types_3d.json")
+    
+    # Se o arquivo não existir, usar configuração padrão
+    if not config_path.exists():
+        return {
+            "main_fuel_3d_map": {
+                "name": "Mapa Principal de Injeção 3D - 32x32 (1024 posições)",
+                "grid_size": 32,
+                "x_axis_type": "RPM",
+                "y_axis_type": "MAP",
+                "unit": "ms",
+                "min_value": 0.0,
+                "max_value": 50.0,
+                "description": "Mapa principal 3D baseado em RPM vs MAP"
+            },
+            "lambda_target_3d_map": {
+                "name": "Mapa de Lambda Alvo 3D - 32x32",
+                "grid_size": 32,
+                "x_axis_type": "RPM",
+                "y_axis_type": "MAP",
+                "unit": "λ",
+                "min_value": 0.6,
+                "max_value": 1.5,
+                "description": "Mapa 3D de lambda alvo"
+            }
+        }
+    
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        st.warning(f"Erro ao carregar configuração: {e}. Usando valores padrão.")
+        return load_map_types_config.__defaults__[0]
+
+# Carregar configuração de tipos de mapas
+MAP_TYPES_3D = load_map_types_config()
 
 # Eixos padrão - 32 posições com sistema enable/disable
 # MAP (bar) - 32 posições totais, 21 ativas por padrão
@@ -99,14 +105,6 @@ def get_default_3d_map_values(map_type: str, rpm_enabled: List[bool], map_enable
         rpm_factor = np.linspace(1.0, 0.9, active_rpm_count)
         map_factor = np.linspace(0.5, 2.0, active_map_count)
         base_values = np.outer(map_factor, rpm_factor) * 10.0 + 5.0
-        return base_values
-    
-    elif map_type == "ignition_3d_map":
-        # Valores de avanço de ignição típicos (10-35°)
-        # Aumenta com RPM e diminui com MAP (carga)
-        rpm_factor = np.linspace(0.3, 1.0, active_rpm_count)
-        map_factor = np.linspace(1.0, 0.5, active_map_count)
-        base_values = np.outer(map_factor, rpm_factor) * 25.0 + 10.0
         return base_values
     
     elif map_type == "lambda_target_3d_map":
@@ -335,8 +333,8 @@ with tab1:
         active_rpm_values = get_active_axis_values(current_data["rpm_axis"], rpm_enabled)
         active_map_values = get_active_axis_values(current_data["map_axis"], map_enabled)
         
-        st.write("**Eixo X (MAP em bar):** Valores ativos dos eixos")
-        st.write("**Eixo Y (RPM):** Valores ativos dos eixos")
+        st.write("**Eixo X (MAP em bar):** Valores crescentes (menor → maior)")
+        st.write("**Eixo Y (RPM):** Valores decrescentes (maior → menor)")
         
         # Criar DataFrame pivotado para edição usando apenas valores ativos
         matrix = current_data["values_matrix"]
@@ -346,23 +344,28 @@ with tab1:
         active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled[:32]) if enabled]
         active_map_indices = [i for i, enabled in enumerate(map_enabled[:32]) if enabled]
         
-        # Criar matriz filtrada
+        # Inverter a ordem do RPM para mostrar decrescente (maior para menor)
+        active_rpm_values_reversed = list(reversed(active_rpm_values))
+        active_rpm_indices_reversed = list(reversed(active_rpm_indices))
+        
+        # Criar matriz filtrada - garantir que temos uma linha para cada RPM ativo (ordem invertida)
         filtered_matrix = []
-        for rpm_idx in active_rpm_indices:
-            if rpm_idx < len(matrix):
-                row = []
-                for map_idx in active_map_indices:
-                    if map_idx < len(matrix[rpm_idx]):
-                        row.append(matrix[rpm_idx][map_idx])
-                    else:
-                        row.append(0.0)
-                filtered_matrix.append(row)
+        for rpm_idx in active_rpm_indices_reversed:
+            row = []
+            for map_idx in active_map_indices:
+                # Verificar se os índices estão dentro dos limites da matriz
+                if rpm_idx < len(matrix) and map_idx < len(matrix[rpm_idx]):
+                    row.append(matrix[rpm_idx][map_idx])
+                else:
+                    row.append(0.0)  # Valor padrão se fora dos limites
+            filtered_matrix.append(row)
         
         # Criar DataFrame com valores numéricos puros (sem labels MAP/RPM)
+        # RPM em ordem decrescente (maior para menor)
         matrix_df = pd.DataFrame(
             filtered_matrix,
             columns=[f"{map_val:.3f}" for map_val in active_map_values],
-            index=[f"{int(rpm)}" for rpm in active_rpm_values]
+            index=[f"{int(rpm)}" for rpm in active_rpm_values_reversed]
         )
         
         # Editor de matriz com formatação 3 casas decimais
@@ -395,7 +398,8 @@ with tab1:
         full_matrix = np.zeros((32, 32))
         
         # Copiar valores editados de volta para as posições corretas
-        for i, rpm_idx in enumerate(active_rpm_indices):
+        # Considerando que o DataFrame está com RPM em ordem invertida (maior para menor)
+        for i, rpm_idx in enumerate(active_rpm_indices_reversed):
             if i < len(edited_matrix_df.values) and rpm_idx < 32:
                 for j, map_idx in enumerate(active_map_indices):
                     if j < len(edited_matrix_df.values[i]) and map_idx < 32:
@@ -454,96 +458,104 @@ with tab1:
         with col_x:
             st.subheader("Configurar Eixo X (RPM)")
             
-            # Sistema de 3 colunas: checkbox, value, position
-            rpm_cols = st.columns([1, 3, 1])
-            with rpm_cols[0]:
-                st.caption("Ativar")
-            with rpm_cols[1]:
-                st.caption("Valor (RPM)")
-            with rpm_cols[2]:
-                st.caption("Posição")
-            
             # Garantir que temos 32 posições
             rpm_axis_temp = current_data["rpm_axis"].copy()
-            new_rpm_axis = [0.0] * 32  # Inicializar com 32 zeros
+            rpm_axis_values = [0.0] * 32  # Inicializar com 32 zeros
             for i in range(min(len(rpm_axis_temp), 32)):
-                new_rpm_axis[i] = rpm_axis_temp[i]
-            new_rpm_enabled = []
+                rpm_axis_values[i] = rpm_axis_temp[i]
             
-            for i in range(32):
-                with rpm_cols[0]:
-                    enabled = st.checkbox(
-                        "", 
-                        value=current_data.get("rpm_enabled", [True] * 32)[i] if i < len(current_data.get("rpm_enabled", [True] * 32)) else False,
-                        key=f"rpm_en_{session_key}_{i}"
-                    )
-                    new_rpm_enabled.append(enabled)
-                
-                with rpm_cols[1]:
-                    value = st.number_input(
-                        "", 
-                        value=current_data["rpm_axis"][i] if i < len(current_data["rpm_axis"]) else 0,
+            rpm_enabled_values = current_data.get("rpm_enabled", [True] * 32)
+            
+            # Criar DataFrame para edição
+            rpm_df = pd.DataFrame({
+                "Ativo": rpm_enabled_values[:32],
+                "Posição": [f"Pos {i+1}" for i in range(32)],
+                "RPM": rpm_axis_values
+            })
+            
+            # Editor de tabela
+            edited_rpm_df = st.data_editor(
+                rpm_df,
+                column_config={
+                    "Ativo": st.column_config.CheckboxColumn(
+                        "Ativo",
+                        help="Marque para ativar esta posição",
+                        default=False,
+                        width="small"
+                    ),
+                    "Posição": st.column_config.TextColumn(
+                        "Posição",
+                        disabled=True,
+                        width="small"
+                    ),
+                    "RPM": st.column_config.NumberColumn(
+                        "RPM",
+                        help="Valor do RPM",
                         format="%.0f",
                         step=100,
-                        disabled=not enabled,
-                        key=f"rpm_val_{session_key}_{i}",
-                        label_visibility="collapsed"
+                        width="medium"
                     )
-                    new_rpm_axis[i] = value
-                
-                with rpm_cols[2]:
-                    st.text(f"Pos {i+1}")
+                },
+                hide_index=True,
+                use_container_width=True,
+                height=400,
+                key=f"rpm_editor_{session_key}"
+            )
             
             # Atualizar no session state
-            st.session_state[session_key]["rpm_axis"] = new_rpm_axis
-            st.session_state[session_key]["rpm_enabled"] = new_rpm_enabled
+            st.session_state[session_key]["rpm_axis"] = edited_rpm_df["RPM"].tolist()
+            st.session_state[session_key]["rpm_enabled"] = edited_rpm_df["Ativo"].tolist()
         
         with col_y:
             st.subheader("Configurar Eixo Y (MAP em bar)")
             
-            # Sistema de 3 colunas: checkbox, value, position
-            map_cols = st.columns([1, 3, 1])
-            with map_cols[0]:
-                st.caption("Ativar")
-            with map_cols[1]:
-                st.caption("Valor (bar)")
-            with map_cols[2]:
-                st.caption("Posição")
-            
             # Garantir que temos 32 posições
             map_axis_temp = current_data["map_axis"].copy()
-            new_map_axis = [0.0] * 32  # Inicializar com 32 zeros
+            map_axis_values = [0.0] * 32  # Inicializar com 32 zeros
             for i in range(min(len(map_axis_temp), 32)):
-                new_map_axis[i] = map_axis_temp[i]
-            new_map_enabled = []
+                map_axis_values[i] = map_axis_temp[i]
             
-            for i in range(32):
-                with map_cols[0]:
-                    enabled = st.checkbox(
-                        "", 
-                        value=current_data.get("map_enabled", [True] * 32)[i] if i < len(current_data.get("map_enabled", [True] * 32)) else False,
-                        key=f"map_en_{session_key}_{i}"
-                    )
-                    new_map_enabled.append(enabled)
-                
-                with map_cols[1]:
-                    value = st.number_input(
-                        "", 
-                        value=current_data["map_axis"][i] if i < len(current_data["map_axis"]) else 0.0,
+            map_enabled_values = current_data.get("map_enabled", [True] * 32)
+            
+            # Criar DataFrame para edição
+            map_df = pd.DataFrame({
+                "Ativo": map_enabled_values[:32],
+                "Posição": [f"Pos {i+1}" for i in range(32)],
+                "MAP (bar)": map_axis_values
+            })
+            
+            # Editor de tabela
+            edited_map_df = st.data_editor(
+                map_df,
+                column_config={
+                    "Ativo": st.column_config.CheckboxColumn(
+                        "Ativo",
+                        help="Marque para ativar esta posição",
+                        default=False,
+                        width="small"
+                    ),
+                    "Posição": st.column_config.TextColumn(
+                        "Posição",
+                        disabled=True,
+                        width="small"
+                    ),
+                    "MAP (bar)": st.column_config.NumberColumn(
+                        "MAP (bar)",
+                        help="Valor do MAP em bar",
                         format="%.3f",
                         step=0.01,
-                        disabled=not enabled,
-                        key=f"map_val_{session_key}_{i}",
-                        label_visibility="collapsed"
+                        width="medium"
                     )
-                    new_map_axis[i] = value
-                
-                with map_cols[2]:
-                    st.text(f"Pos {i+1}")
+                },
+                hide_index=True,
+                use_container_width=True,
+                height=400,
+                key=f"map_editor_{session_key}"
+            )
             
             # Atualizar no session state
-            st.session_state[session_key]["map_axis"] = new_map_axis
-            st.session_state[session_key]["map_enabled"] = new_map_enabled
+            st.session_state[session_key]["map_axis"] = edited_map_df["MAP (bar)"].tolist()
+            st.session_state[session_key]["map_enabled"] = edited_map_df["Ativo"].tolist()
         
         # Botão para regenerar matriz baseada nos eixos ativos
         if st.button("Regenerar Matriz com Eixos Ativos", key=f"regenerate_matrix_{session_key}"):
@@ -710,12 +722,29 @@ with tab3:
     if session_key in st.session_state:
         current_data = st.session_state[session_key]
         values_matrix = current_data["values_matrix"]
+        rpm_enabled = current_data.get("rpm_enabled", [True] * 32)
+        map_enabled = current_data.get("map_enabled", [True] * 32)
+        
+        # Obter índices ativos
+        active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled[:32]) if enabled]
+        active_map_indices = [i for i, enabled in enumerate(map_enabled[:32]) if enabled]
+        
+        # Inverter a ordem do RPM para mostrar decrescente (maior para menor)
+        active_rpm_indices_reversed = list(reversed(active_rpm_indices))
         
         # Formatar matriz com TABs entre valores (3 casas decimais)
+        # RPM em ordem decrescente, MAP em ordem crescente
         ftm_matrix = []
-        for row in values_matrix:
-            ftm_row = "\t".join([format_value_3_decimals(v) for v in row])
-            ftm_matrix.append(ftm_row)
+        for rpm_idx in active_rpm_indices_reversed:
+            if rpm_idx < len(values_matrix):
+                row_values = []
+                for map_idx in active_map_indices:
+                    if map_idx < len(values_matrix[rpm_idx]):
+                        row_values.append(format_value_3_decimals(values_matrix[rpm_idx][map_idx]))
+                    else:
+                        row_values.append("0.000")
+                ftm_row = "\t".join(row_values)
+                ftm_matrix.append(ftm_row)
         ftm_string = "\n".join(ftm_matrix)
         
         # Mostrar em text_area
@@ -755,22 +784,44 @@ with tab3:
                 try:
                     # Parse valores com TAB e nova linha
                     lines = pasted_values.strip().split("\n")
-                    if len(lines) == 16:
-                        new_matrix = []
-                        for line in lines:
+                    
+                    # Obter informações sobre posições ativas
+                    rpm_enabled = current_data.get("rpm_enabled", [True] * 32)
+                    map_enabled = current_data.get("map_enabled", [True] * 32)
+                    active_rpm_count = sum(rpm_enabled)
+                    active_map_count = sum(map_enabled)
+                    
+                    if len(lines) == active_rpm_count:
+                        # Obter índices ativos
+                        active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled[:32]) if enabled]
+                        active_map_indices = [i for i, enabled in enumerate(map_enabled[:32]) if enabled]
+                        
+                        # Inverter a ordem do RPM (dados vêm em ordem decrescente)
+                        active_rpm_indices_reversed = list(reversed(active_rpm_indices))
+                        
+                        # Criar matriz 32x32 com valores existentes
+                        full_matrix = st.session_state[session_key]["values_matrix"].copy()
+                        
+                        # Aplicar valores colados nas posições corretas
+                        for i, line in enumerate(lines):
                             values = line.split("\t")
-                            if len(values) == 16:
-                                new_matrix.append([float(v) for v in values])
+                            if len(values) == active_map_count:
+                                rpm_idx = active_rpm_indices_reversed[i]
+                                for j, val in enumerate(values):
+                                    map_idx = active_map_indices[j]
+                                    # Substituir vírgula por ponto para conversão correta
+                                    val_clean = val.replace(",", ".")
+                                    full_matrix[rpm_idx][map_idx] = float(val_clean)
                             else:
-                                st.error(f"Linha deve ter 16 valores separados por TAB")
+                                st.error(f"Linha {i+1} deve ter {active_map_count} valores separados por TAB, encontrado {len(values)}")
                                 break
                         else:
                             # Aplicar à matriz
-                            st.session_state[session_key]["values_matrix"] = np.array(new_matrix)
+                            st.session_state[session_key]["values_matrix"] = full_matrix
                             st.success(":material/check_circle: Valores aplicados com sucesso!")
                             st.rerun()
                     else:
-                        st.error("Deve conter exatamente 16 linhas")
+                        st.error(f"Esperado {active_rpm_count} linhas (RPM ativos), encontrado {len(lines)}")
                 except ValueError as e:
                     st.error(f"Erro ao processar valores: {str(e)}")
         

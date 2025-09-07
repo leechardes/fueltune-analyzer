@@ -106,13 +106,13 @@ if selected_vehicle_id:
                     # Garantir valor padrão para vazão
                     a_flow = vehicle.get("bank_a_injector_flow")
                     if a_flow is None:
-                        a_flow = 550
+                        a_flow = 80
                     bank_a_injector_flow = st.number_input(
-                        "Vazão dos Bicos (cc/min)",
+                        "Vazão dos Bicos (lbs/h)",
                         min_value=0,
-                        max_value=3000,
+                        max_value=300,
                         value=int(a_flow),
-                        step=10
+                        step=5
                     )
                     
                     # Garantir valor padrão para dead time
@@ -130,25 +130,9 @@ if selected_vehicle_id:
                     
                     # Cálculo da vazão total
                     total_flow_a = bank_a_injector_flow * bank_a_injector_count
-                    st.metric("Vazão Total", f"{total_flow_a} cc/min")
+                    st.metric("Vazão Total", f"{total_flow_a} lbs/h")
             
-            # Configuração de saídas
-            outputs_a = []
-            if bank_a_enabled:
-                st.subheader("Mapeamento de Saídas")
-                
-                cols = st.columns(4)
-                for i in range(bank_a_injector_count):
-                    with cols[i % 4]:
-                        output = st.number_input(
-                            f"Saída Bico {i+1}",
-                            min_value=1,
-                            max_value=16,
-                            value=i+1,
-                            key=f"bank_a_output_{i}"
-                        )
-                        outputs_a.append(output)
-            else:
+            if not bank_a_enabled:
                 # Valores padrão quando desabilitado
                 bank_a_mode = None
                 bank_a_injector_count = 0
@@ -168,8 +152,7 @@ if selected_vehicle_id:
                         "bank_a_injector_count": bank_a_injector_count,
                         "bank_a_injector_flow": bank_a_injector_flow,
                         "bank_a_dead_time": bank_a_dead_time,
-                        "bank_a_total_flow": total_flow_a,
-                        "bank_a_outputs": outputs_a
+                        "bank_a_total_flow": total_flow_a
                     })
                 else:
                     update_data.update({
@@ -178,8 +161,7 @@ if selected_vehicle_id:
                         "bank_a_injector_count": 0,
                         "bank_a_injector_flow": 0,
                         "bank_a_dead_time": 0,
-                        "bank_a_total_flow": 0,
-                        "bank_a_outputs": []
+                        "bank_a_total_flow": 0
                     })
                 
                 if update_vehicle(selected_vehicle_id, update_data):
@@ -232,13 +214,13 @@ if selected_vehicle_id:
                     # Garantir valor padrão para vazão
                     b_flow = vehicle.get("bank_b_injector_flow")
                     if b_flow is None:
-                        b_flow = 550
+                        b_flow = 80
                     bank_b_injector_flow = st.number_input(
-                        "Vazão dos Bicos (cc/min)",
+                        "Vazão dos Bicos (lbs/h)",
                         min_value=0,
-                        max_value=3000,
+                        max_value=300,
                         value=int(b_flow),
-                        step=10
+                        step=5
                     )
                     
                     # Garantir valor padrão para dead time
@@ -256,25 +238,9 @@ if selected_vehicle_id:
                     
                     # Cálculo da vazão total
                     total_flow_b = bank_b_injector_flow * bank_b_injector_count
-                    st.metric("Vazão Total", f"{total_flow_b} cc/min")
+                    st.metric("Vazão Total", f"{total_flow_b} lbs/h")
             
-            # Configuração de saídas
-            outputs_b = []
-            if bank_b_enabled:
-                st.subheader("Mapeamento de Saídas")
-                
-                cols = st.columns(4)
-                for i in range(bank_b_injector_count):
-                    with cols[i % 4]:
-                        output = st.number_input(
-                            f"Saída Bico {i+1}",
-                            min_value=1,
-                            max_value=16,
-                            value=i+1,
-                            key=f"bank_b_output_{i}"
-                        )
-                        outputs_b.append(output)
-            else:
+            if not bank_b_enabled:
                 # Valores padrão quando desabilitado
                 bank_b_mode = None
                 bank_b_injector_count = 0
@@ -294,8 +260,7 @@ if selected_vehicle_id:
                         "bank_b_injector_count": bank_b_injector_count,
                         "bank_b_injector_flow": bank_b_injector_flow,
                         "bank_b_dead_time": bank_b_dead_time,
-                        "bank_b_total_flow": total_flow_b,
-                        "bank_b_outputs": outputs_b
+                        "bank_b_total_flow": total_flow_b
                     })
                 else:
                     update_data.update({
@@ -304,8 +269,7 @@ if selected_vehicle_id:
                         "bank_b_injector_count": 0,
                         "bank_b_injector_flow": 0,
                         "bank_b_dead_time": 0,
-                        "bank_b_total_flow": 0,
-                        "bank_b_outputs": []
+                        "bank_b_total_flow": 0
                     })
                 
                 if update_vehicle(selected_vehicle_id, update_data):
@@ -326,7 +290,7 @@ if selected_vehicle_id:
                 st.success("Ativa")
                 st.write(f"**Modo:** {vehicle.get('bank_a_mode', 'N/A')}")
                 st.write(f"**Bicos:** {vehicle.get('bank_a_injector_count', 0)}")
-                st.write(f"**Vazão Total:** {vehicle.get('bank_a_total_flow', 0)} cc/min")
+                st.write(f"**Vazão Total:** {vehicle.get('bank_a_total_flow', 0)} lbs/h")
             else:
                 st.info("Desativada")
         
@@ -336,7 +300,7 @@ if selected_vehicle_id:
                 st.success("Ativa")
                 st.write(f"**Modo:** {vehicle.get('bank_b_mode', 'N/A')}")
                 st.write(f"**Bicos:** {vehicle.get('bank_b_injector_count', 0)}")
-                st.write(f"**Vazão Total:** {vehicle.get('bank_b_total_flow', 0)} cc/min")
+                st.write(f"**Vazão Total:** {vehicle.get('bank_b_total_flow', 0)} lbs/h")
             else:
                 st.info("Desativada")
         
@@ -385,13 +349,13 @@ if selected_vehicle_id:
                 with col2:
                     st.metric("Bancada B", f"{bank_b_percent:.1f}%")
                 with col3:
-                    st.metric("Vazão Total", f"{total_flow} cc/min")
+                    st.metric("Vazão Total", f"{total_flow} lbs/h")
                 
                 # Gráfico de barras simples
                 import pandas as pd
                 df = pd.DataFrame({
                     "Bancada": ["A", "B"],
-                    "Vazão (cc/min)": [
+                    "Vazão (lbs/h)": [
                         vehicle.get("bank_a_total_flow") or 0,
                         vehicle.get("bank_b_total_flow") or 0
                     ]

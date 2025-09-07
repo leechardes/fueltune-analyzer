@@ -354,60 +354,64 @@ with tab1:
         st.write(f"**Configurar Eixo X ({map_info['axis_type']})** - {map_info['positions']} posições")
         st.caption("Use os checkboxes para ativar/desativar cada posição")
         
-        # Sistema de 3 colunas: checkbox, value, position
-        axis_cols = st.columns([1, 3, 1])
-        with axis_cols[0]:
-            st.caption("Ativar")
-        with axis_cols[1]:
-            st.caption(f"Valor ({map_info['axis_type']})")
-        with axis_cols[2]:
-            st.caption("Posição")
-        
         # Garantir que temos 32 posições
         axis_values_temp = current_data["axis_values"].copy()
-        new_axis_values = [0.0] * 32  # Inicializar com 32 zeros
+        axis_values = [0.0] * 32  # Inicializar com 32 zeros
         for i in range(min(len(axis_values_temp), 32)):
-            new_axis_values[i] = axis_values_temp[i]
-        new_axis_enabled = []
+            axis_values[i] = axis_values_temp[i]
         
-        # Garantir que temos dados para todas as posições
-        while len(new_axis_values) < map_info["positions"]:
-            new_axis_values.append(0.0)
+        axis_enabled_values = current_data.get("axis_enabled", [True] * 32)
         
-        for i in range(map_info["positions"]):
-            with axis_cols[0]:
-                enabled = st.checkbox(
-                    "", 
-                    value=current_data.get("axis_enabled", [True] * 32)[i] if i < len(current_data.get("axis_enabled", [True] * 32)) else False,
-                    key=f"axis_en_{session_key}_{i}"
-                )
-                new_axis_enabled.append(enabled)
-            
-            with axis_cols[1]:
-                # Determinar step baseado no tipo de eixo
-                if map_info["axis_type"] == "MAP":
-                    step = 0.01
-                    format_str = "%.3f"
-                elif map_info["axis_type"] in ["VOLTAGE"]:
-                    step = 0.1
-                    format_str = "%.1f"
-                else:
-                    step = 1.0 if map_info["axis_type"] in ["RPM", "TPS"] else 5.0
-                    format_str = "%.0f"
-                
-                value = st.number_input(
-                    "", 
-                    value=new_axis_values[i],
+        # Determinar formato baseado no tipo de eixo
+        if map_info["axis_type"] == "MAP":
+            step = 0.01
+            format_str = "%.3f"
+        elif map_info["axis_type"] in ["VOLTAGE"]:
+            step = 0.1
+            format_str = "%.1f"
+        else:
+            step = 1.0 if map_info["axis_type"] in ["RPM", "TPS"] else 5.0
+            format_str = "%.0f"
+        
+        # Criar DataFrame para edição
+        axis_df = pd.DataFrame({
+            "Ativo": axis_enabled_values[:32],
+            "Posição": [f"Pos {i+1}" for i in range(32)],
+            f"{map_info['axis_type']}": axis_values
+        })
+        
+        # Editor de tabela
+        edited_axis_df = st.data_editor(
+            axis_df,
+            column_config={
+                "Ativo": st.column_config.CheckboxColumn(
+                    "Ativo",
+                    help="Marque para ativar esta posição",
+                    default=False,
+                    width="small"
+                ),
+                "Posição": st.column_config.TextColumn(
+                    "Posição",
+                    disabled=True,
+                    width="small"
+                ),
+                f"{map_info['axis_type']}": st.column_config.NumberColumn(
+                    f"{map_info['axis_type']}",
+                    help=f"Valor do {map_info['axis_type']}",
                     format=format_str,
                     step=step,
-                    disabled=not enabled,
-                    key=f"axis_val_{session_key}_{i}",
-                    label_visibility="collapsed"
+                    width="medium"
                 )
-                new_axis_values[i] = value
-            
-            with axis_cols[2]:
-                st.text(f"Pos {i+1}")
+            },
+            hide_index=True,
+            use_container_width=True,
+            height=400,
+            key=f"axis_editor_{session_key}"
+        )
+        
+        # Extrair valores editados
+        new_axis_values = edited_axis_df[f"{map_info['axis_type']}"].tolist()
+        new_axis_enabled = edited_axis_df["Ativo"].tolist()
         
         # Atualizar dados na sessão
         st.session_state[session_key]["axis_values"] = new_axis_values

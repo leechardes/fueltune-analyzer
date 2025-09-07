@@ -155,7 +155,7 @@ with tab_new:
             injector_count = st.number_input("Quantidade de Bicos", min_value=1, max_value=16, value=4)
         
         with col2:
-            injector_flow_rate = st.number_input("Vazão (cc/min)", min_value=0, max_value=3000, value=550)
+            injector_flow_rate = st.number_input("Vazão (lbs/h)", min_value=0, max_value=300, value=80)
             fuel_rail_pressure = st.number_input("Pressão da Linha (bar)", min_value=0.0, max_value=10.0, value=3.5, step=0.1)
         
         with col3:
@@ -212,7 +212,7 @@ with tab_new:
             if bank_a_enabled:
                 bank_a_mode = st.selectbox("Modo Bancada A", ["sequential", "semi-sequential", "batch"], key="bank_a_mode")
                 bank_a_injector_count = st.number_input("Qtd Bicos A", min_value=1, max_value=8, value=4, key="bank_a_count")
-                bank_a_injector_flow = st.number_input("Vazão Bicos A (cc)", min_value=0, max_value=3000, value=550, key="bank_a_flow")
+                bank_a_injector_flow = st.number_input("Vazão Bicos A (lbs/h)", min_value=0, max_value=300, value=80, key="bank_a_flow")
                 bank_a_dead_time = st.number_input("Dead Time A (ms)", min_value=0.0, max_value=10.0, value=1.0, step=0.1, key="bank_a_dt")
             else:
                 bank_a_mode = None
@@ -226,7 +226,7 @@ with tab_new:
             if bank_b_enabled:
                 bank_b_mode = st.selectbox("Modo Bancada B", ["sequential", "semi-sequential", "batch"], key="bank_b_mode")
                 bank_b_injector_count = st.number_input("Qtd Bicos B", min_value=1, max_value=8, value=4, key="bank_b_count")
-                bank_b_injector_flow = st.number_input("Vazão Bicos B (cc)", min_value=0, max_value=3000, value=550, key="bank_b_flow")
+                bank_b_injector_flow = st.number_input("Vazão Bicos B (lbs/h)", min_value=0, max_value=300, value=80, key="bank_b_flow")
                 bank_b_dead_time = st.number_input("Dead Time B (ms)", min_value=0.0, max_value=10.0, value=1.0, step=0.1, key="bank_b_dt")
             else:
                 bank_b_mode = None
@@ -287,7 +287,6 @@ with tab_new:
                 "bank_a_injector_flow": bank_a_injector_flow,
                 "bank_a_total_flow": bank_a_injector_flow * bank_a_injector_count if bank_a_enabled else 0,
                 "bank_a_dead_time": bank_a_dead_time,
-                "bank_a_outputs": list(range(1, bank_a_injector_count + 1)) if bank_a_enabled else [],
                 # Bancada B
                 "bank_b_enabled": bank_b_enabled,
                 "bank_b_mode": bank_b_mode,
@@ -295,7 +294,6 @@ with tab_new:
                 "bank_b_injector_flow": bank_b_injector_flow,
                 "bank_b_total_flow": bank_b_injector_flow * bank_b_injector_count if bank_b_enabled else 0,
                 "bank_b_dead_time": bank_b_dead_time,
-                "bank_b_outputs": list(range(1, bank_b_injector_count + 1)) if bank_b_enabled else [],
                 # MAP
                 "min_map_pressure": min_map_pressure,
                 "max_map_pressure": max_map_pressure
