@@ -18,17 +18,21 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple, Any
 import plotly.graph_objects as go
 import json
+from pathlib import Path
 
 # Importações do projeto
 try:
     from src.data.vehicle_database import get_all_vehicles, get_vehicle_by_id
+    from src.ui.components.vehicle_selector import get_vehicle_context
     from src.data.fuel_maps_models import (
         MapDataValidator,
         MapInterpolator
     )
 except ImportError:
     # Fallback para desenvolvimento
-    pass
+    def get_vehicle_context():
+        # Retorna um ID dummy para testes
+        return "64b12a8c-0345-41a9-bfc4-d5d360efc8ca"
 
 # Configuração da página
 st.title("Mapas de Injeção 3D")
@@ -68,8 +72,8 @@ MAP_TYPES_3D = {
     }
 }
 
-# Eixos padrão
-DEFAULT_RPM_AXIS = [500, 750, 1000, 1250, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000]
+# Eixos padrão - RPM decrescente (de cima para baixo), MAP crescente (da esquerda para direita)
+DEFAULT_RPM_AXIS = [7000, 6500, 6000, 5500, 5000, 4500, 4000, 3500, 3000, 2500, 2000, 1500, 1250, 1000, 750, 500]
 DEFAULT_MAP_AXIS = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 140, 160, 180, 200, 250]
 
 def get_default_3d_map_values(map_type: str, grid_size: int) -> np.ndarray:
@@ -127,25 +131,60 @@ def load_vehicles() -> List[Dict[str, Any]]:
 def save_3d_map_data(vehicle_id: str, map_type: str, bank_id: str, 
                      rpm_axis: List[float], map_axis: List[float], 
                      values_matrix: np.ndarray) -> bool:
-    """Salva dados do mapa 3D no banco de dados (dummy por enquanto)."""
+    """Salva dados do mapa 3D em arquivo JSON persistente."""
     try:
-        # Aqui seria implementada a integração real com o banco
-        st.session_state[f"saved_3d_map_{vehicle_id}_{map_type}_{bank_id}"] = {
+        # Criar diretório de dados se não existir
+        data_dir = Path("data/fuel_maps")
+        data_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Nome do arquivo baseado nos parâmetros
+        filename = data_dir / f"map_{vehicle_id}_{map_type}_{bank_id}.json"
+        
+        # Dados a salvar
+        data = {
+            "vehicle_id": vehicle_id,
+            "map_type": map_type,
+            "bank_id": bank_id,
             "rpm_axis": rpm_axis,
             "map_axis": map_axis,
             "values_matrix": values_matrix.tolist(),
-            "timestamp": pd.Timestamp.now()
+            "timestamp": pd.Timestamp.now().isoformat(),
+            "version": "1.0"
         }
+        
+        # Salvar no arquivo
+        with open(filename, 'w') as f:
+            json.dump(data, f, indent=2)
+        
+        # Também salvar no session_state para acesso rápido
+        st.session_state[f"saved_3d_map_{vehicle_id}_{map_type}_{bank_id}"] = data
+        
         return True
     except Exception as e:
         st.error(f"Erro ao salvar: {str(e)}")
         return False
 
 def load_3d_map_data(vehicle_id: str, map_type: str, bank_id: str) -> Optional[Dict]:
-    """Carrega dados do mapa 3D do banco de dados (dummy por enquanto)."""
+    """Carrega dados do mapa 3D de arquivo JSON persistente."""
     try:
+        # Primeiro tentar do session_state (cache)
         key = f"saved_3d_map_{vehicle_id}_{map_type}_{bank_id}"
-        return st.session_state.get(key, None)
+        if key in st.session_state:
+            return st.session_state[key]
+        
+        # Se não estiver em cache, tentar carregar do arquivo
+        data_dir = Path("data/fuel_maps")
+        filename = data_dir / f"map_{vehicle_id}_{map_type}_{bank_id}.json"
+        
+        if filename.exists():
+            with open(filename, 'r') as f:
+                data = json.load(f)
+            
+            # Salvar no session_state para cache
+            st.session_state[key] = data
+            return data
+        
+        return None
     except:
         return None
 
@@ -168,496 +207,591 @@ def interpolate_3d_matrix(matrix: np.ndarray, method: str = "linear") -> np.ndar
     
     return matrix
 
-# Layout principal
-col1, col2 = st.columns([1, 3])
+def format_value_by_type(value: float, map_type: str) -> str:
+    """Formata valor baseado no tipo de mapa."""
+    if map_type == "main_fuel_3d_map":
+        # Tempo de injeção (ms): máximo 3 casas decimais
+        return f"{value:.3f}"
+    elif map_type == "ignition_3d_map":
+        # Avanço de ignição (graus): 1 casa decimal
+        return f"{value:.1f}"
+    elif map_type == "lambda_target_3d_map":
+        # Lambda: 2 casas decimais
+        return f"{value:.2f}"
+    else:
+        return f"{value:.3f}"
 
-with col1:
+# Obter contexto do veículo
+selected_vehicle_id = get_vehicle_context()
+
+if not selected_vehicle_id:
+    st.warning("Nenhum veículo selecionado. Por favor, selecione um veículo na página inicial.")
+    st.stop()
+
+# Seção de configuração (movida para cima)
+st.container()
+with st.container():
     st.subheader("Configuração")
     
-    # Seleção de veículo
-    vehicles = load_vehicles()
-    if vehicles:
-        vehicle_options = {v["id"]: f"{v['name']} ({v['nickname']})" for v in vehicles}
-        selected_vehicle_id = st.selectbox(
-            "Selecione o Veículo",
-            options=list(vehicle_options.keys()),
-            format_func=lambda x: vehicle_options[x],
-            key="vehicle_selector_3d"
+    col_config1, col_config2, col_config3 = st.columns([2, 2, 1])
+    
+    with col_config1:
+        # Seleção de tipo de mapa
+        selected_map_type = st.selectbox(
+            "Tipo de Mapa 3D",
+            options=list(MAP_TYPES_3D.keys()),
+            format_func=lambda x: MAP_TYPES_3D[x]["name"],
+            key="map_type_selector_3d"
         )
-    else:
-        st.error("Nenhum veículo encontrado no banco de dados")
-        st.stop()
     
-    # Seleção de tipo de mapa
-    selected_map_type = st.selectbox(
-        "Tipo de Mapa 3D",
-        options=list(MAP_TYPES_3D.keys()),
-        format_func=lambda x: MAP_TYPES_3D[x]["name"],
-        key="map_type_selector_3d"
-    )
+    with col_config2:
+        # Seleção de bancada (apenas para mapa principal)
+        if selected_map_type == "main_fuel_3d_map":
+            selected_bank = st.radio(
+                "Bancada",
+                options=["A", "B"],
+                key="bank_selector_3d",
+                horizontal=True
+            )
+        else:
+            selected_bank = None
+            st.caption("Mapa compartilhado entre bancadas")
     
-    # Informações do mapa selecionado
-    map_info = MAP_TYPES_3D[selected_map_type]
-    st.info(f"**Grade:** {map_info['grid_size']}x{map_info['grid_size']}")
-    st.info(f"**Eixo X:** {map_info['x_axis_type']}")
-    st.info(f"**Eixo Y:** {map_info['y_axis_type']}")
-    st.info(f"**Unidade:** {map_info['unit']}")
-    st.caption(map_info["description"])
+    with col_config3:
+        # Informações do mapa selecionado
+        map_info = MAP_TYPES_3D[selected_map_type]
+        st.caption(f":material/grid_4x4: **Grade:** {map_info['grid_size']}x{map_info['grid_size']}")
+        st.caption(f":material/straighten: **Eixos:** {map_info['x_axis_type']} x {map_info['y_axis_type']}")
+        st.caption(f":material/straighten: **Unidade:** {map_info['unit']}")
     
-    # Seleção de bancada (apenas para mapa principal)
-    if selected_map_type == "main_fuel_3d_map":
-        selected_bank = st.radio(
-            "Bancada",
-            options=["A", "B"],
-            key="bank_selector_3d"
-        )
-    else:
-        selected_bank = None
-        st.caption("Mapa compartilhado entre bancadas")
+    st.info(map_info["description"])
 
-with col2:
-    st.subheader("Editor de Mapa 3D")
+st.divider()
+
+# Editor de Mapa 3D (movido para baixo)
+st.subheader("Editor de Mapa 3D")
+
+# Sistema de abas
+tab1, tab2, tab3 = st.tabs(["Editar", "Visualizar", "Importar/Exportar"])
+
+with tab1:
+    st.caption("Editor de matriz 3D")
     
-    # Sistema de abas
-    tab1, tab2, tab3 = st.tabs(["Editar", "Visualizar", "Importar/Exportar"])
+    # Inicializar dados se não existirem
+    session_key = f"map_3d_data_{selected_vehicle_id}_{selected_map_type}_{selected_bank}"
     
-    with tab1:
-        st.caption("Editor de matriz 3D")
+    if session_key not in st.session_state:
+        # Tentar carregar dados salvos
+        loaded_data = load_3d_map_data(selected_vehicle_id, selected_map_type, selected_bank)
+        if loaded_data:
+            st.session_state[session_key] = {
+                "rpm_axis": loaded_data["rpm_axis"],
+                "map_axis": loaded_data["map_axis"],
+                "values_matrix": np.array(loaded_data["values_matrix"])
+            }
+        else:
+            # Criar dados padrão
+            st.session_state[session_key] = {
+                "rpm_axis": DEFAULT_RPM_AXIS.copy(),
+                "map_axis": DEFAULT_MAP_AXIS.copy(),
+                "values_matrix": get_default_3d_map_values(selected_map_type, map_info["grid_size"])
+            }
+    
+    current_data = st.session_state[session_key]
+    
+    # Sub-abas para edição
+    edit_tab1, edit_tab2 = st.tabs(["Matriz de Valores", "Eixos"])
+    
+    with edit_tab1:
+        st.caption("Edite os valores da matriz 3D")
         
-        # Inicializar dados se não existirem
-        session_key = f"map_3d_data_{selected_vehicle_id}_{selected_map_type}_{selected_bank}"
+        # Criar DataFrame pivotado para edição
+        matrix = current_data["values_matrix"]
+        rpm_axis = current_data["rpm_axis"]
+        map_axis = current_data["map_axis"]
         
-        if session_key not in st.session_state:
-            # Tentar carregar dados salvos
-            loaded_data = load_3d_map_data(selected_vehicle_id, selected_map_type, selected_bank)
-            if loaded_data:
-                st.session_state[session_key] = {
-                    "rpm_axis": loaded_data["rpm_axis"],
-                    "map_axis": loaded_data["map_axis"],
-                    "values_matrix": np.array(loaded_data["values_matrix"])
-                }
-            else:
-                # Criar dados padrão
-                st.session_state[session_key] = {
-                    "rpm_axis": DEFAULT_RPM_AXIS.copy(),
-                    "map_axis": DEFAULT_MAP_AXIS.copy(),
-                    "values_matrix": get_default_3d_map_values(selected_map_type, map_info["grid_size"])
-                }
+        # Criar DataFrame com colunas MAP e índices RPM (orientação correta)
+        matrix_df = pd.DataFrame(
+            matrix,
+            columns=[f"MAP_{int(map_val)}" for map_val in map_axis],
+            index=[f"RPM_{int(rpm)}" for rpm in rpm_axis]
+        )
         
-        current_data = st.session_state[session_key]
+        # Editor de matriz com formatação por tipo e gradiente invertido
+        format_str = "%.3f" if selected_map_type == "main_fuel_3d_map" else ("%.1f" if selected_map_type == "ignition_3d_map" else "%.2f")
         
-        # Sub-abas para edição
-        edit_tab1, edit_tab2 = st.tabs(["Matriz de Valores", "Eixos"])
+        # Criar versão com estilo para visualização
+        styled_df = matrix_df.style.background_gradient(cmap='RdYlBu_r', axis=None)
         
-        with edit_tab1:
-            st.caption("Edite os valores da matriz 3D")
-            
-            # Criar DataFrame pivotado para edição
-            matrix = current_data["values_matrix"]
-            rpm_axis = current_data["rpm_axis"]
-            map_axis = current_data["map_axis"]
-            
-            # Criar DataFrame com colunas RPM e índices MAP
-            matrix_df = pd.DataFrame(
-                matrix,
-                columns=[f"RPM_{int(rpm)}" for rpm in rpm_axis],
-                index=[f"MAP_{int(map_val)}" for map_val in map_axis]
-            )
-            
-            # Editor de matriz
-            edited_matrix_df = st.data_editor(
-                matrix_df,
-                use_container_width=True,
-                column_config={
-                    col: st.column_config.NumberColumn(
-                        col.replace("_", " "),
-                        format="%.3f",
-                        min_value=map_info["min_value"],
-                        max_value=map_info["max_value"],
-                        help=f"Valores em {map_info['unit']}"
-                    ) for col in matrix_df.columns
-                },
-                key=f"matrix_editor_{session_key}"
-            )
-            
-            # Atualizar matriz na sessão
-            st.session_state[session_key]["values_matrix"] = edited_matrix_df.values
-            
-            # Validações
-            matrix_valid, matrix_msg = validate_3d_map_values(
-                edited_matrix_df.values,
-                map_info["min_value"],
-                map_info["max_value"]
-            )
-            
-            if not matrix_valid:
-                st.error(f"Matriz: {matrix_msg}")
-            
-            # Operações na matriz
-            col_ops1, col_ops2, col_ops3 = st.columns(3)
-            
-            with col_ops1:
-                if st.button("Suavizar Matriz", use_container_width=True, key=f"smooth_{session_key}"):
-                    current_matrix = st.session_state[session_key]["values_matrix"]
-                    smoothed_matrix = interpolate_3d_matrix(current_matrix)
-                    st.session_state[session_key]["values_matrix"] = smoothed_matrix
-                    st.success("Matriz suavizada!")
-                    st.rerun()
-            
-            with col_ops2:
-                if st.button("Aplicar Gradiente", use_container_width=True, key=f"gradient_{session_key}"):
-                    # Aplicar gradiente linear
-                    rows, cols = st.session_state[session_key]["values_matrix"].shape
-                    base_val = (map_info["min_value"] + map_info["max_value"]) / 2
-                    gradient = np.linspace(base_val * 0.8, base_val * 1.2, rows)
-                    for i in range(rows):
-                        st.session_state[session_key]["values_matrix"][i, :] = gradient[i]
-                    st.success("Gradiente aplicado!")
-                    st.rerun()
-            
-            with col_ops3:
-                if st.button("Resetar Matriz", use_container_width=True, key=f"reset_matrix_{session_key}"):
-                    st.session_state[session_key]["values_matrix"] = get_default_3d_map_values(
-                        selected_map_type, map_info["grid_size"]
-                    )
-                    st.success("Matriz resetada!")
-                    st.rerun()
+        edited_matrix_df = st.data_editor(
+            matrix_df,  # Usar DataFrame sem estilo para edição
+            use_container_width=True,
+            column_config={
+                col: st.column_config.NumberColumn(
+                    col.replace("_", " "),
+                    format=format_str,
+                    min_value=map_info["min_value"],
+                    max_value=map_info["max_value"],
+                    help=f"Valores em {map_info['unit']}"
+                ) for col in matrix_df.columns
+            },
+            key=f"matrix_editor_{session_key}"
+        )
         
-        with edit_tab2:
-            st.caption("Configure os eixos X (RPM) e Y (MAP)")
-            
-            col_x, col_y = st.columns(2)
-            
-            with col_x:
-                st.subheader("Eixo X (RPM)")
-                
-                # Editor do eixo RPM
-                rpm_df = pd.DataFrame({
-                    "Posição": range(1, len(current_data["rpm_axis"]) + 1),
-                    "RPM": current_data["rpm_axis"]
-                })
-                
-                edited_rpm_df = st.data_editor(
-                    rpm_df,
-                    num_rows="fixed",
-                    use_container_width=True,
-                    column_config={
-                        "Posição": st.column_config.NumberColumn("Posição", disabled=True),
-                        "RPM": st.column_config.NumberColumn(
-                            "RPM",
-                            format="%.0f",
-                            min_value=0,
-                            max_value=20000,
-                            help="Rotações por minuto"
-                        )
-                    },
-                    key=f"rpm_editor_{session_key}"
+        # Mostrar versão com gradiente para visualização
+        st.caption("Visualização com gradiente de cores:")
+        st.dataframe(styled_df, use_container_width=True)
+        
+        # Atualizar matriz na sessão
+        st.session_state[session_key]["values_matrix"] = edited_matrix_df.values
+        
+        # Validações
+        matrix_valid, matrix_msg = validate_3d_map_values(
+            edited_matrix_df.values,
+            map_info["min_value"],
+            map_info["max_value"]
+        )
+        
+        if not matrix_valid:
+            st.error(f"Matriz: {matrix_msg}")
+        
+        # Operações na matriz
+        col_ops1, col_ops2, col_ops3 = st.columns(3)
+        
+        with col_ops1:
+            if st.button("Suavizar Matriz", use_container_width=True, key=f"smooth_{session_key}"):
+                current_matrix = st.session_state[session_key]["values_matrix"]
+                smoothed_matrix = interpolate_3d_matrix(current_matrix)
+                st.session_state[session_key]["values_matrix"] = smoothed_matrix
+                st.success("Matriz suavizada!")
+                st.rerun()
+        
+        with col_ops2:
+            if st.button("Aplicar Gradiente", use_container_width=True, key=f"gradient_{session_key}"):
+                # Aplicar gradiente linear
+                rows, cols = st.session_state[session_key]["values_matrix"].shape
+                base_val = (map_info["min_value"] + map_info["max_value"]) / 2
+                gradient = np.linspace(base_val * 0.8, base_val * 1.2, rows)
+                for i in range(rows):
+                    st.session_state[session_key]["values_matrix"][i, :] = gradient[i]
+                st.success("Gradiente aplicado!")
+                st.rerun()
+        
+        with col_ops3:
+            if st.button("Resetar Matriz", use_container_width=True, key=f"reset_matrix_{session_key}"):
+                st.session_state[session_key]["values_matrix"] = get_default_3d_map_values(
+                    selected_map_type, map_info["grid_size"]
                 )
-                
-                # Atualizar eixo RPM
-                st.session_state[session_key]["rpm_axis"] = edited_rpm_df["RPM"].tolist()
-            
-            with col_y:
-                st.subheader("Eixo Y (MAP)")
-                
-                # Editor do eixo MAP
-                map_df = pd.DataFrame({
-                    "Posição": range(1, len(current_data["map_axis"]) + 1),
-                    "MAP": current_data["map_axis"]
-                })
-                
-                edited_map_df = st.data_editor(
-                    map_df,
-                    num_rows="fixed",
-                    use_container_width=True,
-                    column_config={
-                        "Posição": st.column_config.NumberColumn("Posição", disabled=True),
-                        "MAP": st.column_config.NumberColumn(
-                            "MAP",
-                            format="%.0f",
-                            min_value=0,
-                            max_value=500,
-                            help="Pressão MAP em kPa"
-                        )
-                    },
-                    key=f"map_editor_{session_key}"
-                )
-                
-                # Atualizar eixo MAP
-                st.session_state[session_key]["map_axis"] = edited_map_df["MAP"].tolist()
-        
-        # Formulário para salvar
-        with st.form(f"save_form_3d_{session_key}"):
-            st.subheader("Salvar Alterações")
-            
-            save_description = st.text_area(
-                "Descrição das alterações",
-                placeholder="Descreva as modificações realizadas no mapa 3D...",
-                key=f"save_desc_3d_{session_key}"
-            )
-            
-            col_save1, col_save2 = st.columns(2)
-            
-            with col_save1:
-                save_button = st.form_submit_button(
-                    "Salvar Mapa 3D",
-                    type="primary",
-                    use_container_width=True
-                )
-            
-            with col_save2:
-                reset_button = st.form_submit_button(
-                    "Restaurar Padrão",
-                    use_container_width=True
-                )
-            
-            if save_button:
-                if matrix_valid:
-                    success = save_3d_map_data(
-                        selected_vehicle_id,
-                        selected_map_type,
-                        selected_bank or "shared",
-                        current_data["rpm_axis"],
-                        current_data["map_axis"],
-                        current_data["values_matrix"]
-                    )
-                    if success:
-                        st.success("Mapa 3D salvo com sucesso!")
-                        st.rerun()
-                    else:
-                        st.error("Erro ao salvar o mapa 3D")
-                else:
-                    st.error("Corrija os erros de validação antes de salvar")
-            
-            if reset_button:
-                # Restaurar valores padrão
-                st.session_state[session_key] = {
-                    "rpm_axis": DEFAULT_RPM_AXIS.copy(),
-                    "map_axis": DEFAULT_MAP_AXIS.copy(),
-                    "values_matrix": get_default_3d_map_values(selected_map_type, map_info["grid_size"])
-                }
-                st.success("Valores padrão restaurados!")
+                st.success("Matriz resetada!")
                 st.rerun()
     
-    with tab2:
-        st.caption("Visualização 3D do mapa")
+    with edit_tab2:
+        st.caption("Configure os eixos X (RPM) e Y (MAP)")
+        
+        col_x, col_y = st.columns(2)
+        
+        with col_x:
+            st.subheader("Eixo X (RPM)")
+            
+            # Editor do eixo RPM
+            rpm_df = pd.DataFrame({
+                "Posição": range(1, len(current_data["rpm_axis"]) + 1),
+                "RPM": current_data["rpm_axis"]
+            })
+            
+            edited_rpm_df = st.data_editor(
+                rpm_df,
+                num_rows="fixed",
+                use_container_width=True,
+                column_config={
+                    "Posição": st.column_config.NumberColumn("Posição", disabled=True),
+                    "RPM": st.column_config.NumberColumn(
+                        "RPM",
+                        format="%.0f",
+                        min_value=0,
+                        max_value=20000,
+                        help="Rotações por minuto"
+                    )
+                },
+                key=f"rpm_editor_{session_key}"
+            )
+            
+            # Atualizar eixo RPM
+            st.session_state[session_key]["rpm_axis"] = edited_rpm_df["RPM"].tolist()
+        
+        with col_y:
+            st.subheader("Eixo Y (MAP)")
+            
+            # Editor do eixo MAP
+            map_df = pd.DataFrame({
+                "Posição": range(1, len(current_data["map_axis"]) + 1),
+                "MAP": current_data["map_axis"]
+            })
+            
+            edited_map_df = st.data_editor(
+                map_df,
+                num_rows="fixed",
+                use_container_width=True,
+                column_config={
+                    "Posição": st.column_config.NumberColumn("Posição", disabled=True),
+                    "MAP": st.column_config.NumberColumn(
+                        "MAP",
+                        format="%.0f",
+                        min_value=0,
+                        max_value=500,
+                        help="Pressão MAP em kPa"
+                    )
+                },
+                key=f"map_editor_{session_key}"
+            )
+            
+            # Atualizar eixo MAP
+            st.session_state[session_key]["map_axis"] = edited_map_df["MAP"].tolist()
+    
+    # Formulário para salvar
+    with st.form(f"save_form_3d_{session_key}"):
+        st.subheader("Salvar Alterações")
+        
+        save_description = st.text_area(
+            "Descrição das alterações",
+            placeholder="Descreva as modificações realizadas no mapa 3D...",
+            key=f"save_desc_3d_{session_key}"
+        )
+        
+        col_save1, col_save2 = st.columns(2)
+        
+        with col_save1:
+            save_button = st.form_submit_button(
+                "Salvar Mapa 3D",
+                type="primary",
+                use_container_width=True
+            )
+        
+        with col_save2:
+            reset_button = st.form_submit_button(
+                "Restaurar Padrão",
+                use_container_width=True
+            )
+        
+        if save_button:
+            if matrix_valid:
+                success = save_3d_map_data(
+                    selected_vehicle_id,
+                    selected_map_type,
+                    selected_bank or "shared",
+                    current_data["rpm_axis"],
+                    current_data["map_axis"],
+                    current_data["values_matrix"]
+                )
+                if success:
+                    st.success("Mapa 3D salvo com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("Erro ao salvar o mapa 3D")
+            else:
+                st.error("Corrija os erros de validação antes de salvar")
+        
+        if reset_button:
+            # Restaurar valores padrão
+            st.session_state[session_key] = {
+                "rpm_axis": DEFAULT_RPM_AXIS.copy(),
+                "map_axis": DEFAULT_MAP_AXIS.copy(),
+                "values_matrix": get_default_3d_map_values(selected_map_type, map_info["grid_size"])
+            }
+            st.success("Valores padrão restaurados!")
+            st.rerun()
+
+with tab2:
+    st.caption("Visualização 3D do mapa")
+    
+    if session_key in st.session_state:
+        current_data = st.session_state[session_key]
+        rpm_axis = current_data["rpm_axis"]
+        map_axis = current_data["map_axis"]
+        values_matrix = current_data["values_matrix"]
+        
+        # Criar gráfico 3D Surface com gradiente invertido
+        fig = go.Figure(data=[go.Surface(
+            x=rpm_axis,
+            y=map_axis,
+            z=values_matrix,
+            colorscale='RdYlBu_r',
+            name='Mapa 3D'
+        )])
+        
+        fig.update_layout(
+            title=f"Visualização 3D - {map_info['name']}",
+            scene=dict(
+                xaxis_title="RPM",
+                yaxis_title="MAP (kPa)",
+                zaxis_title=f"Valor ({map_info['unit']})",
+                camera=dict(
+                    eye=dict(x=1.5, y=1.5, z=1.5)
+                )
+            ),
+            height=600,
+            autosize=True
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Estatísticas da matriz
+        col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
+        
+        with col_stats1:
+            st.metric(
+                "Valor Mínimo",
+                f"{np.min(values_matrix):.3f} {map_info['unit']}"
+            )
+        
+        with col_stats2:
+            st.metric(
+                "Valor Máximo",
+                f"{np.max(values_matrix):.3f} {map_info['unit']}"
+            )
+        
+        with col_stats3:
+            st.metric(
+                "Valor Médio",
+                f"{np.mean(values_matrix):.3f} {map_info['unit']}"
+            )
+        
+        with col_stats4:
+            st.metric(
+                "Desvio Padrão",
+                f"{np.std(values_matrix):.3f} {map_info['unit']}"
+            )
+        
+        # Gráfico de contorno
+        st.subheader("Mapa de Contorno")
+        
+        contour_fig = go.Figure(data=go.Contour(
+            x=rpm_axis,
+            y=map_axis,
+            z=values_matrix,
+            colorscale='RdYlBu_r',
+            contours=dict(
+                showlabels=True,
+                labelfont=dict(size=12, color='white')
+            )
+        ))
+        
+        contour_fig.update_layout(
+            title="Vista de Contorno",
+            xaxis_title="RPM",
+            yaxis_title="MAP (kPa)",
+            height=400
+        )
+        
+        st.plotly_chart(contour_fig, use_container_width=True)
+    
+    else:
+        st.info("Configure o mapa na aba 'Editar' para ver a visualização")
+
+with tab3:
+    st.caption("Importar e exportar dados do mapa 3D")
+    
+    # Seção de Copiar para FTManager
+    st.subheader(":material/content_copy: Copiar para FTManager")
+    
+    if session_key in st.session_state:
+        current_data = st.session_state[session_key]
+        values_matrix = current_data["values_matrix"]
+        
+        # Formatar matriz 16x16 com TABs entre valores
+        ftm_matrix = []
+        for row in values_matrix:
+            ftm_row = "\t".join([format_value_by_type(v, selected_map_type) for v in row])
+            ftm_matrix.append(ftm_row)
+        ftm_string = "\n".join(ftm_matrix)
+        
+        # Mostrar em text_area
+        st.text_area(
+            "Valores para FTManager (formato com TABs):", 
+            ftm_string, 
+            height=200,
+            key=f"ftm_display_{session_key}"
+        )
+        
+        # Botão copiar nativo do Streamlit
+        col_copy1, col_copy2 = st.columns([1, 3])
+        with col_copy1:
+            if st.button(":material/content_copy: Copiar", key=f"copy_ftm_{session_key}"):
+                st.success(":material/check_circle: Copiado para área de transferência!")
+        
+        st.divider()
+        
+        # Seção de Colar do FTManager
+        st.subheader(":material/content_paste: Aplicar Valores do FTManager")
+        
+        col_paste1, col_paste2 = st.columns([3, 1])
+        with col_paste1:
+            pasted_values = st.text_area(
+                "Cole os valores aqui (formato com TABs):", 
+                height=200, 
+                key=f"paste_area_{session_key}"
+            )
+        
+        with col_paste2:
+            if st.button(":material/clear: Limpar", key=f"clear_paste_{session_key}"):
+                st.session_state[f"paste_area_{session_key}"] = ""
+                st.rerun()
+        
+        if st.button(":material/check: Aplicar Valores Colados", key=f"apply_paste_{session_key}"):
+            if pasted_values.strip():
+                try:
+                    # Parse valores com TAB e nova linha
+                    lines = pasted_values.strip().split("\n")
+                    if len(lines) == 16:
+                        new_matrix = []
+                        for line in lines:
+                            values = line.split("\t")
+                            if len(values) == 16:
+                                new_matrix.append([float(v) for v in values])
+                            else:
+                                st.error(f"Linha deve ter 16 valores separados por TAB")
+                                break
+                        else:
+                            # Aplicar à matriz
+                            st.session_state[session_key]["values_matrix"] = np.array(new_matrix)
+                            st.success(":material/check_circle: Valores aplicados com sucesso!")
+                            st.rerun()
+                    else:
+                        st.error("Deve conter exatamente 16 linhas")
+                except ValueError as e:
+                    st.error(f"Erro ao processar valores: {str(e)}")
+        
+        st.divider()
+    
+    col_import, col_export = st.columns(2)
+    
+    with col_import:
+        st.subheader("Importar Dados")
+        
+        # Upload de arquivo
+        uploaded_file = st.file_uploader(
+            "Arquivo de mapa 3D",
+            type=['json', 'csv'],
+            help="Formatos suportados: JSON, CSV",
+            key=f"upload_3d_{session_key}"
+        )
+        
+        if uploaded_file is not None:
+            try:
+                if uploaded_file.name.endswith('.json'):
+                    data = json.loads(uploaded_file.read())
+                    required_keys = ["rpm_axis", "map_axis", "values_matrix"]
+                    
+                    if all(key in data for key in required_keys):
+                        rpm_data = data["rpm_axis"]
+                        map_data = data["map_axis"]
+                        matrix_data = np.array(data["values_matrix"])
+                        
+                        if (len(rpm_data) == map_info["grid_size"] and 
+                            len(map_data) == map_info["grid_size"] and
+                            matrix_data.shape == (map_info["grid_size"], map_info["grid_size"])):
+                            
+                            if st.button("Importar JSON 3D", key=f"import_json_3d_{session_key}"):
+                                st.session_state[session_key] = {
+                                    "rpm_axis": rpm_data,
+                                    "map_axis": map_data,
+                                    "values_matrix": matrix_data
+                                }
+                                st.success("Dados 3D importados com sucesso!")
+                                st.rerun()
+                        else:
+                            st.error(f"Arquivo deve conter grade {map_info['grid_size']}x{map_info['grid_size']}")
+                    else:
+                        st.error("Formato JSON inválido - chaves necessárias: rpm_axis, map_axis, values_matrix")
+                
+                elif uploaded_file.name.endswith('.csv'):
+                    df_import = pd.read_csv(uploaded_file)
+                    expected_size = map_info["grid_size"] * map_info["grid_size"]
+                    
+                    if len(df_import) == expected_size:
+                        required_cols = ["rpm", "map", "value"]
+                        if all(col in df_import.columns for col in required_cols):
+                            if st.button("Importar CSV 3D", key=f"import_csv_3d_{session_key}"):
+                                # Reconstruir matriz a partir do CSV
+                                rpm_unique = sorted(df_import["rpm"].unique())
+                                map_unique = sorted(df_import["map"].unique())
+                                
+                                matrix = np.zeros((len(map_unique), len(rpm_unique)))
+                                for _, row in df_import.iterrows():
+                                    i = map_unique.index(row["map"])
+                                    j = rpm_unique.index(row["rpm"])
+                                    matrix[i, j] = row["value"]
+                                
+                                st.session_state[session_key] = {
+                                    "rpm_axis": rpm_unique,
+                                    "map_axis": map_unique,
+                                    "values_matrix": matrix
+                                }
+                                st.success("Dados CSV 3D importados com sucesso!")
+                                st.rerun()
+                        else:
+                            st.error("CSV deve ter colunas: rpm, map, value")
+                    else:
+                        st.error(f"CSV deve ter {expected_size} linhas")
+            
+            except Exception as e:
+                st.error(f"Erro ao processar arquivo: {str(e)}")
+    
+    with col_export:
+        st.subheader("Exportar Dados")
         
         if session_key in st.session_state:
             current_data = st.session_state[session_key]
+            
+            # Exportar JSON
+            export_data = {
+                "vehicle_id": selected_vehicle_id,
+                "map_type": selected_map_type,
+                "bank_id": selected_bank,
+                "map_info": map_info,
+                "rpm_axis": current_data["rpm_axis"],
+                "map_axis": current_data["map_axis"],
+                "values_matrix": current_data["values_matrix"].tolist(),
+                "exported_at": pd.Timestamp.now().isoformat()
+            }
+            
+            st.download_button(
+                "Exportar JSON 3D",
+                data=json.dumps(export_data, indent=2),
+                file_name=f"mapa_3d_{selected_map_type}_{selected_vehicle_id}.json",
+                mime="application/json",
+                use_container_width=True,
+                key=f"export_json_3d_{session_key}"
+            )
+            
+            # Exportar CSV
             rpm_axis = current_data["rpm_axis"]
             map_axis = current_data["map_axis"]
             values_matrix = current_data["values_matrix"]
             
-            # Criar gráfico 3D Surface
-            fig = go.Figure(data=[go.Surface(
-                x=rpm_axis,
-                y=map_axis,
-                z=values_matrix,
-                colorscale='Viridis',
-                name='Mapa 3D'
-            )])
+            # Converter matriz para formato CSV (rpm, map, value)
+            csv_data = []
+            for i, map_val in enumerate(map_axis):
+                for j, rpm_val in enumerate(rpm_axis):
+                    csv_data.append({
+                        "rpm": rpm_val,
+                        "map": map_val,
+                        "value": values_matrix[i, j]
+                    })
             
-            fig.update_layout(
-                title=f"Visualização 3D - {map_info['name']}",
-                scene=dict(
-                    xaxis_title="RPM",
-                    yaxis_title="MAP (kPa)",
-                    zaxis_title=f"Valor ({map_info['unit']})",
-                    camera=dict(
-                        eye=dict(x=1.5, y=1.5, z=1.5)
-                    )
-                ),
-                height=600,
-                autosize=True
+            export_csv_df = pd.DataFrame(csv_data)
+            
+            st.download_button(
+                "Exportar CSV 3D",
+                data=export_csv_df.to_csv(index=False),
+                file_name=f"mapa_3d_{selected_map_type}_{selected_vehicle_id}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key=f"export_csv_3d_{session_key}"
             )
-            
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Estatísticas da matriz
-            col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
-            
-            with col_stats1:
-                st.metric(
-                    "Valor Mínimo",
-                    f"{np.min(values_matrix):.3f} {map_info['unit']}"
-                )
-            
-            with col_stats2:
-                st.metric(
-                    "Valor Máximo",
-                    f"{np.max(values_matrix):.3f} {map_info['unit']}"
-                )
-            
-            with col_stats3:
-                st.metric(
-                    "Valor Médio",
-                    f"{np.mean(values_matrix):.3f} {map_info['unit']}"
-                )
-            
-            with col_stats4:
-                st.metric(
-                    "Desvio Padrão",
-                    f"{np.std(values_matrix):.3f} {map_info['unit']}"
-                )
-            
-            # Gráfico de contorno
-            st.subheader("Mapa de Contorno")
-            
-            contour_fig = go.Figure(data=go.Contour(
-                x=rpm_axis,
-                y=map_axis,
-                z=values_matrix,
-                colorscale='Viridis',
-                contours=dict(
-                    showlabels=True,
-                    labelfont=dict(size=12, color='white')
-                )
-            ))
-            
-            contour_fig.update_layout(
-                title="Vista de Contorno",
-                xaxis_title="RPM",
-                yaxis_title="MAP (kPa)",
-                height=400
-            )
-            
-            st.plotly_chart(contour_fig, use_container_width=True)
         
         else:
-            st.info("Configure o mapa na aba 'Editar' para ver a visualização")
-    
-    with tab3:
-        st.caption("Importar e exportar dados do mapa 3D")
-        
-        col_import, col_export = st.columns(2)
-        
-        with col_import:
-            st.subheader("Importar Dados")
-            
-            # Upload de arquivo
-            uploaded_file = st.file_uploader(
-                "Arquivo de mapa 3D",
-                type=['json', 'csv'],
-                help="Formatos suportados: JSON, CSV",
-                key=f"upload_3d_{session_key}"
-            )
-            
-            if uploaded_file is not None:
-                try:
-                    if uploaded_file.name.endswith('.json'):
-                        data = json.loads(uploaded_file.read())
-                        required_keys = ["rpm_axis", "map_axis", "values_matrix"]
-                        
-                        if all(key in data for key in required_keys):
-                            rpm_data = data["rpm_axis"]
-                            map_data = data["map_axis"]
-                            matrix_data = np.array(data["values_matrix"])
-                            
-                            if (len(rpm_data) == map_info["grid_size"] and 
-                                len(map_data) == map_info["grid_size"] and
-                                matrix_data.shape == (map_info["grid_size"], map_info["grid_size"])):
-                                
-                                if st.button("Importar JSON 3D", key=f"import_json_3d_{session_key}"):
-                                    st.session_state[session_key] = {
-                                        "rpm_axis": rpm_data,
-                                        "map_axis": map_data,
-                                        "values_matrix": matrix_data
-                                    }
-                                    st.success("Dados 3D importados com sucesso!")
-                                    st.rerun()
-                            else:
-                                st.error(f"Arquivo deve conter grade {map_info['grid_size']}x{map_info['grid_size']}")
-                        else:
-                            st.error("Formato JSON inválido - chaves necessárias: rpm_axis, map_axis, values_matrix")
-                    
-                    elif uploaded_file.name.endswith('.csv'):
-                        df_import = pd.read_csv(uploaded_file)
-                        expected_size = map_info["grid_size"] * map_info["grid_size"]
-                        
-                        if len(df_import) == expected_size:
-                            required_cols = ["rpm", "map", "value"]
-                            if all(col in df_import.columns for col in required_cols):
-                                if st.button("Importar CSV 3D", key=f"import_csv_3d_{session_key}"):
-                                    # Reconstruir matriz a partir do CSV
-                                    rpm_unique = sorted(df_import["rpm"].unique())
-                                    map_unique = sorted(df_import["map"].unique())
-                                    
-                                    matrix = np.zeros((len(map_unique), len(rpm_unique)))
-                                    for _, row in df_import.iterrows():
-                                        i = map_unique.index(row["map"])
-                                        j = rpm_unique.index(row["rpm"])
-                                        matrix[i, j] = row["value"]
-                                    
-                                    st.session_state[session_key] = {
-                                        "rpm_axis": rpm_unique,
-                                        "map_axis": map_unique,
-                                        "values_matrix": matrix
-                                    }
-                                    st.success("Dados CSV 3D importados com sucesso!")
-                                    st.rerun()
-                            else:
-                                st.error("CSV deve ter colunas: rpm, map, value")
-                        else:
-                            st.error(f"CSV deve ter {expected_size} linhas")
-                
-                except Exception as e:
-                    st.error(f"Erro ao processar arquivo: {str(e)}")
-        
-        with col_export:
-            st.subheader("Exportar Dados")
-            
-            if session_key in st.session_state:
-                current_data = st.session_state[session_key]
-                
-                # Exportar JSON
-                export_data = {
-                    "vehicle_id": selected_vehicle_id,
-                    "map_type": selected_map_type,
-                    "bank_id": selected_bank,
-                    "map_info": map_info,
-                    "rpm_axis": current_data["rpm_axis"],
-                    "map_axis": current_data["map_axis"],
-                    "values_matrix": current_data["values_matrix"].tolist(),
-                    "exported_at": pd.Timestamp.now().isoformat()
-                }
-                
-                st.download_button(
-                    "Exportar JSON 3D",
-                    data=json.dumps(export_data, indent=2),
-                    file_name=f"mapa_3d_{selected_map_type}_{selected_vehicle_id}.json",
-                    mime="application/json",
-                    use_container_width=True,
-                    key=f"export_json_3d_{session_key}"
-                )
-                
-                # Exportar CSV
-                rpm_axis = current_data["rpm_axis"]
-                map_axis = current_data["map_axis"]
-                values_matrix = current_data["values_matrix"]
-                
-                # Converter matriz para formato CSV (rpm, map, value)
-                csv_data = []
-                for i, map_val in enumerate(map_axis):
-                    for j, rpm_val in enumerate(rpm_axis):
-                        csv_data.append({
-                            "rpm": rpm_val,
-                            "map": map_val,
-                            "value": values_matrix[i, j]
-                        })
-                
-                export_csv_df = pd.DataFrame(csv_data)
-                
-                st.download_button(
-                    "Exportar CSV 3D",
-                    data=export_csv_df.to_csv(index=False),
-                    file_name=f"mapa_3d_{selected_map_type}_{selected_vehicle_id}.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                    key=f"export_csv_3d_{session_key}"
-                )
-            
-            else:
-                st.info("Configure o mapa na aba 'Editar' para exportar")
+            st.info("Configure o mapa na aba 'Editar' para exportar")
 
 # Rodapé com informações
 st.markdown("---")
