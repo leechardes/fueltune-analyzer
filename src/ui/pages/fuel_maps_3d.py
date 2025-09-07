@@ -341,9 +341,26 @@ with tab1:
         # Criar DataFrame pivotado para edição usando apenas valores ativos
         matrix = current_data["values_matrix"]
         
+        # Filtrar a matriz para usar apenas as posições ativas
+        # Pegar apenas as linhas ativas (RPM) e colunas ativas (MAP)
+        active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled[:32]) if enabled]
+        active_map_indices = [i for i, enabled in enumerate(map_enabled[:32]) if enabled]
+        
+        # Criar matriz filtrada
+        filtered_matrix = []
+        for rpm_idx in active_rpm_indices:
+            if rpm_idx < len(matrix):
+                row = []
+                for map_idx in active_map_indices:
+                    if map_idx < len(matrix[rpm_idx]):
+                        row.append(matrix[rpm_idx][map_idx])
+                    else:
+                        row.append(0.0)
+                filtered_matrix.append(row)
+        
         # Criar DataFrame com valores numéricos puros (sem labels MAP/RPM)
         matrix_df = pd.DataFrame(
-            matrix,
+            filtered_matrix,
             columns=[f"{map_val:.3f}" for map_val in active_map_values],
             index=[f"{int(rpm)}" for rpm in active_rpm_values]
         )
@@ -373,8 +390,18 @@ with tab1:
         st.caption("Visualização com gradiente de cores:")
         st.dataframe(styled_df, use_container_width=True)
         
-        # Atualizar matriz na sessão
-        st.session_state[session_key]["values_matrix"] = edited_matrix_df.values
+        # Atualizar matriz na sessão - expandir de volta para 32x32
+        # Criar matriz 32x32 com valores padrão
+        full_matrix = np.zeros((32, 32))
+        
+        # Copiar valores editados de volta para as posições corretas
+        for i, rpm_idx in enumerate(active_rpm_indices):
+            if i < len(edited_matrix_df.values) and rpm_idx < 32:
+                for j, map_idx in enumerate(active_map_indices):
+                    if j < len(edited_matrix_df.values[i]) and map_idx < 32:
+                        full_matrix[rpm_idx][map_idx] = edited_matrix_df.values[i][j]
+        
+        st.session_state[session_key]["values_matrix"] = full_matrix
         
         # Validações
         matrix_valid, matrix_msg = validate_3d_map_values(
