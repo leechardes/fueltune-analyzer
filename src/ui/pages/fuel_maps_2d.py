@@ -272,36 +272,78 @@ with col2:
         # Expander para editar valores do eixo X
         with st.expander("⚙️ Configurar Eixo X"):
             st.write(f"**Editar valores do eixo X** ({map_info['axis_type']})")
+            st.caption("Deixe vazio ou coloque 0 para desabilitar uma posição")
             
             # Criar colunas para os inputs
             num_cols = min(4, map_info["positions"])  # Máximo 4 colunas por linha
             cols = st.columns(num_cols)
             
             new_axis_values = []
+            enabled_positions = []
+            
             for i in range(map_info["positions"]):
                 col_idx = i % num_cols
                 with cols[col_idx]:
-                    value = st.number_input(
-                        f"Pos {i+1}",
-                        value=float(current_data["axis_values"][i]),
-                        step=0.1 if map_info["axis_type"] in ["MAP", "VOLTAGE"] else 1.0,
-                        key=f"axis_input_{session_key}_{i}"
-                    )
-                    new_axis_values.append(value)
+                    # Container para cada posição
+                    container = st.container()
+                    with container:
+                        # Checkbox para habilitar/desabilitar
+                        current_value = current_data["axis_values"][i] if i < len(current_data["axis_values"]) else None
+                        is_enabled = st.checkbox(
+                            f"Pos {i+1}",
+                            value=(current_value is not None and current_value != 0),
+                            key=f"enable_{session_key}_{i}"
+                        )
+                        
+                        if is_enabled:
+                            value = st.number_input(
+                                f"Valor",
+                                value=float(current_value) if current_value else 0.0,
+                                step=0.1 if map_info["axis_type"] in ["MAP", "VOLTAGE"] else 1.0,
+                                key=f"axis_input_{session_key}_{i}",
+                                label_visibility="collapsed"
+                            )
+                            new_axis_values.append(value)
+                            enabled_positions.append(i)
+                        else:
+                            # Posição desabilitada
+                            st.caption("Desabilitado")
             
             # Botão para aplicar e ordenar
-            if st.button("Aplicar e Ordenar", key=f"apply_axis_{session_key}"):
-                # Criar pares (eixo, valor) para manter correspondência
-                pairs = list(zip(new_axis_values, current_data["map_values"]))
-                # Ordenar por valores do eixo X
-                pairs.sort(key=lambda x: x[0])
-                # Separar novamente
-                sorted_axis = [p[0] for p in pairs]
-                sorted_values = [p[1] for p in pairs]
-                # Atualizar session state
-                st.session_state[session_key]["axis_values"] = sorted_axis
-                st.session_state[session_key]["map_values"] = sorted_values
-                st.rerun()
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Aplicar e Ordenar", key=f"apply_axis_{session_key}", use_container_width=True):
+                    if new_axis_values:  # Só processar se houver valores habilitados
+                        # Pegar apenas os valores correspondentes às posições habilitadas
+                        enabled_map_values = [current_data["map_values"][i] for i in enabled_positions 
+                                            if i < len(current_data["map_values"])]
+                        
+                        # Criar pares (eixo, valor) para manter correspondência
+                        pairs = list(zip(new_axis_values, enabled_map_values))
+                        # Ordenar por valores do eixo X
+                        pairs.sort(key=lambda x: x[0])
+                        # Separar novamente
+                        sorted_axis = [p[0] for p in pairs]
+                        sorted_values = [p[1] for p in pairs]
+                        # Atualizar session state com apenas valores habilitados
+                        st.session_state[session_key]["axis_values"] = sorted_axis
+                        st.session_state[session_key]["map_values"] = sorted_values
+                        st.rerun()
+                    else:
+                        st.warning("Habilite pelo menos uma posição!")
+            
+            with col2:
+                if st.button("Restaurar Todas", key=f"restore_all_{session_key}", use_container_width=True):
+                    # Restaurar valores padrão completos
+                    st.session_state[session_key]["axis_values"] = get_default_axis_values(
+                        map_info["axis_type"], 
+                        map_info["positions"]
+                    )
+                    st.session_state[session_key]["map_values"] = get_default_map_values(
+                        selected_map_type, 
+                        map_info["positions"]
+                    )
+                    st.rerun()
         
         # Criar DataFrame horizontal - os valores do eixo X como colunas
         # Criar dicionário com os valores do eixo X como chaves
