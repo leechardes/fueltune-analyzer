@@ -509,7 +509,7 @@ with tab1:
                         key=f"map_val_{session_key}_{i}",
                         label_visibility="collapsed"
                     )
-                    new_map_axis[i] = value.0
+                    new_map_axis[i] = value
                 
                 with map_cols[2]:
                     st.text(f"Pos {i+1}")
