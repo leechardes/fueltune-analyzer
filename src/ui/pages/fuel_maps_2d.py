@@ -379,16 +379,34 @@ with col2:
         st.write(f"**Editar valores do mapa** ({map_info['unit']})")
         st.caption(f"Eixo X: {map_info['axis_type']}")
         
+        # Aplicar formatação de decimais ao DataFrame para exibição
+        formatted_df = df.copy()
+        for col in formatted_df.columns:
+            if map_info["unit"] == "ms":  # Tempo de injeção
+                formatted_df[col] = formatted_df[col].apply(lambda x: round(x, 3))
+            elif map_info["unit"] == "%":  # Percentual
+                formatted_df[col] = formatted_df[col].apply(lambda x: round(x, 1))
+            else:
+                formatted_df[col] = formatted_df[col].apply(lambda x: round(x, 2))
+        
         # Aplicar estilo com gradiente de cores na linha de valores
-        styled_df = df.style.background_gradient(
-            cmap='RdYlBu_r',  # Red-Yellow-Blue reversed (blue for high values)
+        styled_df = formatted_df.style.background_gradient(
+            cmap='RdYlBu_r',  # Red-Yellow-Blue reversed (vermelho para baixo, azul para alto)
             axis=1,  # Aplicar gradiente ao longo das colunas (horizontal)
-            vmin=map_info["min_value"],
-            vmax=map_info["max_value"]
+            vmin=min(formatted_df.iloc[0].values),  # Usar valores reais do DataFrame
+            vmax=max(formatted_df.iloc[0].values),  # Usar valores reais do DataFrame
+            subset=None  # Aplicar a todas as células
         )
         
-        # Usar st.dataframe com estilo ao invés de st.data_editor para mostrar cores
-        # Depois usar st.data_editor sem estilo para edição
+        # Adicionar formato de exibição
+        if map_info["unit"] == "ms":
+            styled_df = styled_df.format("{:.3f}")
+        elif map_info["unit"] == "%":
+            styled_df = styled_df.format("{:.1f}")
+        else:
+            styled_df = styled_df.format("{:.2f}")
+        
+        # Usar st.dataframe com estilo para mostrar cores
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
         
         # Editor de dados (sem cores mas funcional)
@@ -545,22 +563,30 @@ with col2:
             # Estatísticas do mapa
             col_stats1, col_stats2, col_stats3 = st.columns(3)
             
+            # Formatação de decimais baseada no tipo de unidade
+            if map_info["unit"] == "ms":
+                decimal_places = 3
+            elif map_info["unit"] == "%":
+                decimal_places = 1
+            else:
+                decimal_places = 2
+            
             with col_stats1:
                 st.metric(
                     "Valor Mínimo",
-                    f"{min(map_values):.3f} {map_info['unit']}"
+                    f"{min(map_values):.{decimal_places}f} {map_info['unit']}"
                 )
             
             with col_stats2:
                 st.metric(
                     "Valor Máximo",
-                    f"{max(map_values):.3f} {map_info['unit']}"
+                    f"{max(map_values):.{decimal_places}f} {map_info['unit']}"
                 )
             
             with col_stats3:
                 st.metric(
                     "Valor Médio",
-                    f"{np.mean(map_values):.3f} {map_info['unit']}"
+                    f"{np.mean(map_values):.{decimal_places}f} {map_info['unit']}"
                 )
         
         else:
@@ -648,11 +674,12 @@ with col2:
                     key=f"export_json_{session_key}"
                 )
                 
-                # Exportar CSV
+                # Exportar CSV - usar apenas o tamanho real dos dados habilitados
+                num_values = len(current_data["axis_values"])
                 export_df = pd.DataFrame({
-                    "posicao": range(1, map_info["positions"] + 1),
-                    "axis_x": current_data["axis_values"],
-                    "value": current_data["map_values"]
+                    "posicao": range(1, num_values + 1),
+                    "axis_x": current_data["axis_values"][:num_values],
+                    "value": current_data["map_values"][:num_values]
                 })
                 
                 st.download_button(
