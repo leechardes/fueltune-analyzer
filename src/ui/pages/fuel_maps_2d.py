@@ -314,12 +314,20 @@ with col2:
         # Criar DataFrame horizontal com uma única linha de valores
         df = pd.DataFrame(data_dict)
         
-        # Configurar colunas dinamicamente
+        # Configurar colunas dinamicamente com formato apropriado
         column_config = {}
+        # Definir formato baseado no tipo de dado
+        if map_info["unit"] == "ms":  # Tempo de injeção
+            value_format = "%.3f"  # Máximo 3 casas decimais
+        elif map_info["unit"] == "%":  # Percentual (TPS, compensações)
+            value_format = "%.1f"  # 1 casa decimal
+        else:
+            value_format = "%.2f"  # Padrão 2 casas
+            
         for col in df.columns:
             column_config[col] = st.column_config.NumberColumn(
                 col,  # O nome da coluna é o valor do eixo X
-                format="%.3f",
+                format=value_format,
                 min_value=map_info["min_value"],
                 max_value=map_info["max_value"],
                 help=f"{map_info['axis_type']}: {col}, Valor em {map_info['unit']}"
@@ -469,7 +477,6 @@ with col2:
                     showscale=True,
                     colorbar=dict(
                         title=map_info["unit"],
-                        titleside='right',
                         tickmode='linear',
                         tick0=map_info["min_value"],
                         dtick=(map_info["max_value"] - map_info["min_value"]) / 10
