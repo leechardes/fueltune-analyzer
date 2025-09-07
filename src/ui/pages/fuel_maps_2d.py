@@ -96,27 +96,39 @@ MAP_TYPES_2D = {
 }
 
 def get_default_axis_values(axis_type: str, positions: int) -> List[float]:
-    """Retorna valores padrão para o eixo baseado no tipo e número de posições."""
+    """Retorna valores padrão arredondados para o eixo baseado no tipo e número de posições."""
     if axis_type == "MAP":
-        # Valores MAP de -1.0 a 2.0 bar
-        return list(np.linspace(-1.0, 2.0, positions))
+        # Valores MAP arredondados de -1.0 a 2.5 bar
+        values = np.linspace(-1.0, 2.5, positions)
+        # Arredondar para 1 casa decimal
+        return [round(v, 1) for v in values]
     elif axis_type == "TPS":
-        # Valores TPS de 0 a 100%
-        return list(np.linspace(0, 100, positions))
+        # Valores TPS arredondados de 0 a 100%
+        values = np.linspace(0, 100, positions)
+        # Arredondar para inteiros
+        return [round(v) for v in values]
     elif axis_type == "RPM":
-        # Valores RPM de 400 a 8000
-        return list(np.linspace(400, 8000, positions))
+        # Valores RPM arredondados de 500 a 8000
+        values = np.linspace(500, 8000, positions)
+        # Arredondar para múltiplos de 250
+        return [round(v/250)*250 for v in values]
     elif axis_type == "TEMP":
-        # Valores temperatura de -10 a 120°C
-        return list(np.linspace(-10, 120, positions))
+        # Valores temperatura arredondados de -10 a 120°C
+        values = np.linspace(-10, 120, positions)
+        # Arredondar para múltiplos de 5
+        return [round(v/5)*5 for v in values]
     elif axis_type == "AIR_TEMP":
-        # Valores temperatura do ar de -20 a 60°C
-        return list(np.linspace(-20, 60, positions))
+        # Valores temperatura do ar arredondados de -20 a 60°C
+        values = np.linspace(-20, 60, positions)
+        # Arredondar para múltiplos de 5
+        return [round(v/5)*5 for v in values]
     elif axis_type == "VOLTAGE":
-        # Valores tensão de 8 a 16V
-        return list(np.linspace(8, 16, positions))
+        # Valores tensão arredondados de 8 a 16V
+        values = np.linspace(8, 16, positions)
+        # Arredondar para 0.5V
+        return [round(v*2)/2 for v in values]
     else:
-        return list(np.linspace(0, positions-1, positions))
+        return list(range(positions))
 
 def get_default_map_values(map_type: str, positions: int) -> List[float]:
     """Retorna valores padrão para o mapa baseado no tipo."""
@@ -257,10 +269,41 @@ with col2:
         
         current_data = st.session_state[session_key]
         
-        # Criar DataFrame horizontal - os valores do eixo X como colunas
-        # Primeira linha: valores do eixo X (editáveis)
-        # Segunda linha: valores do mapa correspondentes
+        # Expander para editar valores do eixo X
+        with st.expander("⚙️ Configurar Eixo X"):
+            st.write(f"**Editar valores do eixo X** ({map_info['axis_type']})")
+            
+            # Criar colunas para os inputs
+            num_cols = min(4, map_info["positions"])  # Máximo 4 colunas por linha
+            cols = st.columns(num_cols)
+            
+            new_axis_values = []
+            for i in range(map_info["positions"]):
+                col_idx = i % num_cols
+                with cols[col_idx]:
+                    value = st.number_input(
+                        f"Pos {i+1}",
+                        value=float(current_data["axis_values"][i]),
+                        step=0.1 if map_info["axis_type"] in ["MAP", "VOLTAGE"] else 1.0,
+                        key=f"axis_input_{session_key}_{i}"
+                    )
+                    new_axis_values.append(value)
+            
+            # Botão para aplicar e ordenar
+            if st.button("Aplicar e Ordenar", key=f"apply_axis_{session_key}"):
+                # Criar pares (eixo, valor) para manter correspondência
+                pairs = list(zip(new_axis_values, current_data["map_values"]))
+                # Ordenar por valores do eixo X
+                pairs.sort(key=lambda x: x[0])
+                # Separar novamente
+                sorted_axis = [p[0] for p in pairs]
+                sorted_values = [p[1] for p in pairs]
+                # Atualizar session state
+                st.session_state[session_key]["axis_values"] = sorted_axis
+                st.session_state[session_key]["map_values"] = sorted_values
+                st.rerun()
         
+        # Criar DataFrame horizontal - os valores do eixo X como colunas
         # Criar dicionário com os valores do eixo X como chaves
         data_dict = {}
         for i, axis_val in enumerate(current_data["axis_values"]):
@@ -282,15 +325,31 @@ with col2:
                 help=f"{map_info['axis_type']}: {col}, Valor em {map_info['unit']}"
             )
         
-        # Editor de tabela horizontal
+        # Editor de tabela horizontal com gradiente de cores
         st.write(f"**Editar valores do mapa** ({map_info['unit']})")
         st.caption(f"Eixo X: {map_info['axis_type']}")
+        
+        # Aplicar estilo com gradiente de cores na linha de valores
+        styled_df = df.style.background_gradient(
+            cmap='RdYlBu_r',  # Red-Yellow-Blue reversed (blue for high values)
+            axis=1,  # Aplicar gradiente ao longo das colunas (horizontal)
+            vmin=map_info["min_value"],
+            vmax=map_info["max_value"]
+        )
+        
+        # Usar st.dataframe com estilo ao invés de st.data_editor para mostrar cores
+        # Depois usar st.data_editor sem estilo para edição
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
+        
+        # Editor de dados (sem cores mas funcional)
+        st.caption("Clique nos valores abaixo para editar:")
         edited_df = st.data_editor(
             df,
             num_rows="fixed",
             use_container_width=True,
             column_config=column_config,
-            key=f"data_editor_{session_key}"
+            key=f"data_editor_{session_key}",
+            hide_index=True
         )
         
         # Atualizar dados na sessão
@@ -383,16 +442,40 @@ with col2:
             axis_values = current_data["axis_values"]
             map_values = current_data["map_values"]
             
-            # Criar gráfico
+            # Criar gráfico com gradiente de cores
             fig = go.Figure()
+            
+            # Normalizar valores para escala de cores
+            min_val = min(map_values)
+            max_val = max(map_values)
+            norm_values = [(v - min_val) / (max_val - min_val) if max_val > min_val else 0.5 
+                          for v in map_values]
             
             fig.add_trace(go.Scatter(
                 x=axis_values,
                 y=map_values,
                 mode='lines+markers',
                 name='Mapa',
-                line=dict(width=2),
-                marker=dict(size=6)
+                line=dict(
+                    width=3,
+                    color='rgba(100, 100, 100, 0.7)'  # Linha cinza semi-transparente
+                ),
+                marker=dict(
+                    size=10,
+                    color=map_values,  # Usar valores para colorir
+                    colorscale='RdYlBu_r',  # Mesma escala da tabela
+                    cmin=map_info["min_value"],
+                    cmax=map_info["max_value"],
+                    showscale=True,
+                    colorbar=dict(
+                        title=map_info["unit"],
+                        titleside='right',
+                        tickmode='linear',
+                        tick0=map_info["min_value"],
+                        dtick=(map_info["max_value"] - map_info["min_value"]) / 10
+                    ),
+                    line=dict(width=1, color='white')
+                )
             ))
             
             fig.update_layout(
