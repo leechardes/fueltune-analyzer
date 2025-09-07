@@ -102,50 +102,67 @@ MAP_TYPES_2D = {
 }
 
 def get_default_axis_values(axis_type: str, positions: int) -> List[float]:
-    """Retorna valores padrão arredondados para o eixo baseado no tipo e número de posições."""
+    """Retorna valores padrão para 32 posições com sistema enable/disable."""
     if axis_type == "MAP":
-        # Valores MAP arredondados de -1.0 a 2.5 bar
-        values = np.linspace(-1.0, 2.5, positions)
-        # Arredondar para 1 casa decimal
-        return [round(v, 1) for v in values]
+        # Valores MAP para 32 posições: -1.00 a 2.00 bar (21 ativas) + zeros
+        return [-1.00, -0.90, -0.80, -0.70, -0.60, -0.50, -0.40, -0.30, 
+                -0.20, -0.10, 0.00, 0.20, 0.40, 0.60, 0.80, 1.00,
+                1.20, 1.40, 1.60, 1.80, 2.00, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     elif axis_type == "TPS":
-        # Valores TPS arredondados de 0 a 100%
-        values = np.linspace(0, 100, positions)
-        # Arredondar para inteiros
-        return [round(v) for v in values]
+        # TPS para 20 posições: 0 a 100%
+        if positions == 20:
+            return list(np.linspace(0, 100, 20))
+        else:
+            return list(np.linspace(0, 100, positions))
     elif axis_type == "RPM":
-        # Valores RPM arredondados de 500 a 8000
-        values = np.linspace(500, 8000, positions)
-        # Arredondar para múltiplos de 250
-        return [round(v/250)*250 for v in values]
+        # RPM para 32 posições: 400 a 8000 RPM (24 ativas) + zeros  
+        return [400, 600, 800, 1000, 1200, 1400, 1600, 1800,
+                2000, 2200, 2400, 2600, 2800, 3000, 3500, 4000,
+                4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000,
+                0, 0, 0, 0, 0, 0, 0, 0]
     elif axis_type == "TEMP":
-        # Valores temperatura arredondados de -10 a 120°C
-        values = np.linspace(-10, 120, positions)
-        # Arredondar para múltiplos de 5
-        return [round(v/5)*5 for v in values]
+        # Temperatura para 16 posições
+        return list(np.linspace(-10, 120, positions))
     elif axis_type == "AIR_TEMP":
-        # Valores temperatura do ar arredondados de -20 a 60°C
-        values = np.linspace(-20, 60, positions)
-        # Arredondar para múltiplos de 5
-        return [round(v/5)*5 for v in values]
+        # Temperatura do ar para 9 posições
+        return list(np.linspace(-20, 60, positions))
     elif axis_type == "VOLTAGE":
-        # Valores tensão arredondados de 8 a 16V
-        values = np.linspace(8, 16, positions)
-        # Arredondar para 0.5V
-        return [round(v*2)/2 for v in values]
+        # Tensão para 8 posições
+        return list(np.linspace(8, 16, positions))
     else:
-        return list(range(positions))
+        return [0.0] * positions
 
-def get_default_map_values(map_type: str, positions: int) -> List[float]:
-    """Retorna valores padrão para o mapa baseado no tipo."""
+def get_default_enabled_positions(axis_type: str, positions: int) -> List[bool]:
+    """Retorna posições habilitadas por padrão."""
+    if axis_type == "MAP" and positions == 32:
+        return [True] * 21 + [False] * 11  # Primeiras 21 ativas
+    elif axis_type == "RPM" and positions == 32:
+        return [True] * 24 + [False] * 8   # Primeiras 24 ativas
+    else:
+        return [True] * positions  # Todas ativas para outros tipos
+
+def get_active_values(values: List[float], enabled: List[bool]) -> List[float]:
+    """Retorna apenas os valores ativos."""
+    return [values[i] for i in range(len(values)) if i < len(enabled) and enabled[i]]
+
+def get_default_map_values(map_type: str, axis_type: str, positions: int) -> List[float]:
+    """Retorna valores padrão para o mapa baseado no tipo e posições ativas."""
+    enabled = get_default_enabled_positions(axis_type, positions)
+    active_count = sum(enabled)
+    
     if "main_fuel" in map_type:
         # Valores de injeção típicos (5-15ms)
-        return list(np.linspace(5.0, 15.0, positions))
+        return list(np.linspace(5.0, 15.0, active_count))
     elif "compensation" in map_type:
         # Valores de compensação (0% inicial)
-        return [0.0] * positions
+        return [0.0] * active_count
     else:
-        return [0.0] * positions
+        return [0.0] * active_count
+
+def format_value_3_decimals(value: float) -> str:
+    """Formata valor com 3 casas decimais."""
+    return f"{value:.3f}"
 
 def validate_map_values(values: List[float], min_val: float, max_val: float) -> Tuple[bool, str]:
     """Valida se os valores estão dentro dos limites permitidos."""
@@ -172,7 +189,8 @@ def load_vehicles() -> List[Dict[str, Any]]:
         return get_dummy_vehicles()
 
 def save_map_data(vehicle_id: str, map_type: str, bank_id: str, 
-                  axis_values: List[float], map_values: List[float]) -> bool:
+                  axis_values: List[float], map_values: List[float],
+                  axis_enabled: List[bool] = None) -> bool:
     """Salva dados do mapa em arquivo JSON persistente."""
     try:
         # Criar diretório de dados se não existir
@@ -189,6 +207,7 @@ def save_map_data(vehicle_id: str, map_type: str, bank_id: str,
             "bank_id": bank_id,
             "axis_values": axis_values,
             "map_values": map_values,
+            "axis_enabled": axis_enabled,
             "timestamp": pd.Timestamp.now().isoformat(),
             "version": "1.0"
         }
@@ -303,12 +322,18 @@ with tab1:
         # Tentar carregar dados salvos
         loaded_data = load_map_data(selected_vehicle_id, selected_map_type, selected_bank)
         if loaded_data:
+            # Verificar se tem dados enable/disable
+            axis_enabled = loaded_data.get("axis_enabled")
+            if axis_enabled is None:
+                axis_enabled = get_default_enabled_positions(map_info["axis_type"], map_info["positions"])
             st.session_state[session_key] = {
                 "axis_values": loaded_data["axis_values"],
-                "map_values": loaded_data["map_values"]
+                "map_values": loaded_data["map_values"],
+                "axis_enabled": axis_enabled
             }
         else:
             # Criar dados padrão
+            axis_enabled = get_default_enabled_positions(map_info["axis_type"], map_info["positions"])
             st.session_state[session_key] = {
                 "axis_values": get_default_axis_values(
                     map_info["axis_type"], 
@@ -316,112 +341,117 @@ with tab1:
                 ),
                 "map_values": get_default_map_values(
                     selected_map_type, 
+                    map_info["axis_type"],
                     map_info["positions"]
-                )
+                ),
+                "axis_enabled": axis_enabled
             }
     
     current_data = st.session_state[session_key]
     
-    # Expander para editar valores do eixo X
-    with st.expander("⚙️ Configurar Eixo X"):
-        st.write(f"**Editar valores do eixo X** ({map_info['axis_type']})")
-        st.caption("Deixe vazio ou coloque 0 para desabilitar uma posição")
+    # Expander para configurar eixos com checkboxes
+    with st.expander(":material/settings: Configurar Eixo X com Enable/Disable"):
+        st.write(f"**Configurar Eixo X ({map_info['axis_type']})** - {map_info['positions']} posições")
+        st.caption("Use os checkboxes para ativar/desativar cada posição")
         
-        # Criar colunas para os inputs
-        num_cols = min(4, map_info["positions"])  # Máximo 4 colunas por linha
-        cols = st.columns(num_cols)
+        # Sistema de 3 colunas: checkbox, value, position
+        axis_cols = st.columns([1, 3, 1])
+        with axis_cols[0]:
+            st.caption("Ativar")
+        with axis_cols[1]:
+            st.caption(f"Valor ({map_info['axis_type']})")
+        with axis_cols[2]:
+            st.caption("Posição")
         
-        new_axis_values = []
-        enabled_positions = []
+        new_axis_values = current_data["axis_values"].copy()
+        new_axis_enabled = []
+        
+        # Garantir que temos dados para todas as posições
+        while len(new_axis_values) < map_info["positions"]:
+            new_axis_values.append(0.0)
         
         for i in range(map_info["positions"]):
-            col_idx = i % num_cols
-            with cols[col_idx]:
-                # Container para cada posição
-                container = st.container()
-                with container:
-                    # Checkbox para habilitar/desabilitar
-                    current_value = current_data["axis_values"][i] if i < len(current_data["axis_values"]) else None
-                    is_enabled = st.checkbox(
-                        f"Pos {i+1}",
-                        value=(current_value is not None and current_value != 0),
-                        key=f"enable_{session_key}_{i}"
-                    )
-                    
-                    if is_enabled:
-                        value = st.number_input(
-                            f"Valor",
-                            value=float(current_value) if current_value else 0.0,
-                            step=0.1 if map_info["axis_type"] in ["MAP", "VOLTAGE"] else 1.0,
-                            key=f"axis_input_{session_key}_{i}",
-                            label_visibility="collapsed"
-                        )
-                        new_axis_values.append(value)
-                        enabled_positions.append(i)
-                    else:
-                        # Posição desabilitada
-                        st.caption("Desabilitado")
-        
-        # Botão para aplicar e ordenar
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Aplicar e Ordenar", key=f"apply_axis_{session_key}", use_container_width=True):
-                if new_axis_values:  # Só processar se houver valores habilitados
-                    # Pegar apenas os valores correspondentes às posições habilitadas
-                    enabled_map_values = [current_data["map_values"][i] for i in enabled_positions 
-                                        if i < len(current_data["map_values"])]
-                    
-                    # Criar pares (eixo, valor) para manter correspondência
-                    pairs = list(zip(new_axis_values, enabled_map_values))
-                    # Ordenar por valores do eixo X
-                    pairs.sort(key=lambda x: x[0])
-                    # Separar novamente
-                    sorted_axis = [p[0] for p in pairs]
-                    sorted_values = [p[1] for p in pairs]
-                    # Atualizar session state com apenas valores habilitados
-                    st.session_state[session_key]["axis_values"] = sorted_axis
-                    st.session_state[session_key]["map_values"] = sorted_values
-                    st.rerun()
+            with axis_cols[0]:
+                enabled = st.checkbox(
+                    "", 
+                    value=current_data["axis_enabled"][i] if i < len(current_data["axis_enabled"]) else False,
+                    key=f"axis_en_{session_key}_{i}"
+                )
+                new_axis_enabled.append(enabled)
+            
+            with axis_cols[1]:
+                # Determinar step baseado no tipo de eixo
+                if map_info["axis_type"] == "MAP":
+                    step = 0.01
+                    format_str = "%.3f"
+                elif map_info["axis_type"] in ["VOLTAGE"]:
+                    step = 0.1
+                    format_str = "%.1f"
                 else:
-                    st.warning("Habilite pelo menos uma posição!")
+                    step = 1.0 if map_info["axis_type"] in ["RPM", "TPS"] else 5.0
+                    format_str = "%.0f"
+                
+                value = st.number_input(
+                    "", 
+                    value=new_axis_values[i],
+                    format=format_str,
+                    step=step,
+                    disabled=not enabled,
+                    key=f"axis_val_{session_key}_{i}",
+                    label_visibility="collapsed"
+                )
+                new_axis_values[i] = value
+            
+            with axis_cols[2]:
+                st.text(f"Pos {i+1}")
         
-        with col2:
-            if st.button("Restaurar Todas", key=f"restore_all_{session_key}", use_container_width=True):
-                # Restaurar valores padrão completos
-                st.session_state[session_key]["axis_values"] = get_default_axis_values(
-                    map_info["axis_type"], 
-                    map_info["positions"]
-                )
-                st.session_state[session_key]["map_values"] = get_default_map_values(
-                    selected_map_type, 
-                    map_info["positions"]
-                )
-                st.rerun()
+        # Atualizar dados na sessão
+        st.session_state[session_key]["axis_values"] = new_axis_values
+        st.session_state[session_key]["axis_enabled"] = new_axis_enabled
+        
+        # Botão para aplicar apenas valores ativos
+        if st.button("Aplicar Valores Ativos", key=f"apply_active_{session_key}"):
+            # Filtrar apenas valores ativos
+            active_axis = get_active_values(new_axis_values, new_axis_enabled)
+            active_map = get_active_values(
+                st.session_state[session_key]["map_values"] if len(st.session_state[session_key]["map_values"]) >= len(active_axis) else 
+                get_default_map_values(selected_map_type, map_info["axis_type"], map_info["positions"])[:len(active_axis)],
+                new_axis_enabled
+            )
+            
+            # Garantir que temos valores de mapa suficientes
+            while len(active_map) < len(active_axis):
+                active_map.append(0.0)
+            
+            st.session_state[session_key]["axis_values"] = active_axis
+            st.session_state[session_key]["map_values"] = active_map[:len(active_axis)]
+            st.success(f"Aplicados {len(active_axis)} valores ativos!")
+            st.rerun()
     
-    # Criar DataFrame horizontal - os valores do eixo X como colunas
-    # Criar dicionário com os valores do eixo X como chaves
+    # Criar DataFrame horizontal usando apenas valores ativos
+    active_axis_values = current_data["axis_values"]  # Já filtrados
+    active_map_values = current_data["map_values"]    # Já filtrados
+    
+    st.write(f"**Eixo X ({map_info['axis_type']}):** Valores numéricos")
+    st.caption(f"Total de {len(active_axis_values)} posições ativas")
+    
+    # Criar dicionário com os valores do eixo X como chaves (apenas valores numéricos)
     data_dict = {}
-    for i, axis_val in enumerate(current_data["axis_values"]):
-        # Usar string formatada como nome da coluna
-        col_name = f"{axis_val:.1f}" if axis_val % 1 != 0 else str(int(axis_val))
-        data_dict[col_name] = [current_data["map_values"][i]]
+    for i, axis_val in enumerate(active_axis_values):
+        # Usar formatação 3 casas decimais para colunas
+        col_name = format_value_3_decimals(axis_val)
+        data_dict[col_name] = [active_map_values[i] if i < len(active_map_values) else 0.0]
     
     # Criar DataFrame horizontal com uma única linha de valores
     df = pd.DataFrame(data_dict)
     
-    # Configurar colunas dinamicamente com formato apropriado
+    # Configurar colunas dinamicamente com formatação 3 casas decimais
     column_config = {}
-    # Definir formato baseado no tipo de dado
-    if map_info["unit"] == "ms":  # Tempo de injeção
-        value_format = "%.3f"  # Máximo 3 casas decimais
-    elif map_info["unit"] == "%":  # Percentual (TPS, compensações)
-        value_format = "%.1f"  # 1 casa decimal
-    else:
-        value_format = "%.2f"  # Padrão 2 casas
+    value_format = "%.3f"  # Sempre 3 casas decimais
         
     for col in df.columns:
         column_config[col] = st.column_config.NumberColumn(
-            col,  # O nome da coluna é o valor do eixo X
+            col,  # Valor numérico puro
             format=value_format,
             min_value=map_info["min_value"],
             max_value=map_info["max_value"],
@@ -430,17 +460,12 @@ with tab1:
     
     # Editor de tabela horizontal com gradiente de cores
     st.write(f"**Editar valores do mapa** ({map_info['unit']})")
-    st.caption(f"Eixo X: {map_info['axis_type']}")
+    st.caption(f"Valores com 3 casas decimais - Total: {len(df.columns)} valores")
     
-    # Aplicar formatação de decimais ao DataFrame para exibição
+    # Aplicar formatação de 3 casas decimais ao DataFrame para exibição
     formatted_df = df.copy()
     for col in formatted_df.columns:
-        if map_info["unit"] == "ms":  # Tempo de injeção
-            formatted_df[col] = formatted_df[col].apply(lambda x: round(x, 3))
-        elif map_info["unit"] == "%":  # Percentual
-            formatted_df[col] = formatted_df[col].apply(lambda x: round(x, 1))
-        else:
-            formatted_df[col] = formatted_df[col].apply(lambda x: round(x, 2))
+        formatted_df[col] = formatted_df[col].apply(lambda x: round(x, 3))
     
     # Aplicar estilo com gradiente de cores na linha de valores
     styled_df = formatted_df.style.background_gradient(
@@ -451,13 +476,8 @@ with tab1:
         subset=None  # Aplicar a todas as células
     )
     
-    # Adicionar formato de exibição
-    if map_info["unit"] == "ms":
-        styled_df = styled_df.format("{:.3f}")
-    elif map_info["unit"] == "%":
-        styled_df = styled_df.format("{:.1f}")
-    else:
-        styled_df = styled_df.format("{:.2f}")
+    # Adicionar formato de exibição com 3 casas decimais
+    styled_df = styled_df.format("{:.3f}")
     
     # Usar st.dataframe com estilo para mostrar cores
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
@@ -469,16 +489,11 @@ with tab1:
     with col_copy_paste1:
         st.caption("Copiar valores para FTManager")
         
-        # Gerar string para copiar (formato FTManager)
+        # Gerar string para copiar (formato FTManager com 3 casas decimais)
         ftm_values = []
         for val in current_data["map_values"]:
-            # Formatar valor com vírgula como separador decimal
-            if map_info["unit"] == "ms":
-                formatted = f"{val:.3f}".replace('.', ',')
-            elif map_info["unit"] == "%":
-                formatted = f"{val:.1f}".replace('.', ',')
-            else:
-                formatted = f"{val:.2f}".replace('.', ',')
+            # Formatar valor com vírgula como separador decimal (3 casas)
+            formatted = f"{val:.3f}".replace('.', ',')
             ftm_values.append(formatted)
         
         # Criar string com TAB entre valores (formato FTManager)
@@ -632,7 +647,8 @@ with tab1:
                     selected_map_type,
                     selected_bank or "shared",
                     current_data["axis_values"],
-                    new_values
+                    new_values,
+                    current_data.get("axis_enabled")
                 )
                 if success:
                     st.success("Mapa salvo com sucesso!")
@@ -644,15 +660,18 @@ with tab1:
         
         if reset_button:
             # Restaurar valores padrão
+            axis_enabled = get_default_enabled_positions(map_info["axis_type"], map_info["positions"])
             st.session_state[session_key] = {
                 "axis_values": get_default_axis_values(
                     map_info["axis_type"], 
                     map_info["positions"]
                 ),
                 "map_values": get_default_map_values(
-                    selected_map_type, 
+                    selected_map_type,
+                    map_info["axis_type"], 
                     map_info["positions"]
-                )
+                ),
+                "axis_enabled": axis_enabled
             }
             st.success("Valores padrão restaurados!")
             st.rerun()
@@ -718,13 +737,8 @@ with tab2:
         # Estatísticas do mapa
         col_stats1, col_stats2, col_stats3 = st.columns(3)
         
-        # Formatação de decimais baseada no tipo de unidade
-        if map_info["unit"] == "ms":
-            decimal_places = 3
-        elif map_info["unit"] == "%":
-            decimal_places = 1
-        else:
-            decimal_places = 2
+        # Formatação sempre com 3 casas decimais
+        decimal_places = 3
         
         with col_stats1:
             st.metric(
@@ -817,6 +831,7 @@ with tab3:
                 "map_info": map_info,
                 "axis_values": current_data["axis_values"],
                 "map_values": current_data["map_values"],
+                "axis_enabled": current_data.get("axis_enabled"),
                 "exported_at": pd.Timestamp.now().isoformat()
             }
             
