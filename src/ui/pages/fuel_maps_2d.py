@@ -24,6 +24,7 @@ import json
 # Importações do projeto
 try:
     from src.data.vehicle_database import get_all_vehicles, get_vehicle_by_id
+    from src.ui.components.vehicle_selector import get_vehicle_context
     from src.data.fuel_maps_models import (
         create_default_main_fuel_2d_map,
         create_default_rpm_compensation_map,
@@ -33,6 +34,9 @@ try:
     )
 except ImportError:
     # Fallback para desenvolvimento
+    def get_vehicle_context():
+        # Retorna um ID dummy para testes
+        return "64b12a8c-0345-41a9-bfc4-d5d360efc8ca"
     pass
 
 # Configuração da página
@@ -226,28 +230,32 @@ def load_map_data(vehicle_id: str, map_type: str, bank_id: str) -> Optional[Dict
         print(f"Erro ao carregar mapa: {e}")
         return None
 
+# Obter veículo do contexto global (sidebar)
+selected_vehicle_id = get_vehicle_context()
+
+if not selected_vehicle_id:
+    st.warning("Selecione um veículo no menu lateral para configurar os mapas de injeção")
+    st.stop()
+
+# Obter informações do veículo selecionado
+vehicles = load_vehicles()
+if vehicles:
+    vehicle_data = next((v for v in vehicles if v["id"] == selected_vehicle_id), None)
+    if vehicle_data:
+        st.info(f"Veículo Ativo: **{vehicle_data['name']}** ({vehicle_data['nickname']})")
+    else:
+        st.warning("Veículo não encontrado")
+else:
+    # Usar dados dummy se não houver veículos
+    st.info("Veículo Ativo: **Honda Civic** (Teste)")
+
 # Configurações no topo
 st.subheader("Configuração do Mapa")
 
-# Layout de configurações em colunas
-config_col1, config_col2, config_col3, config_col4 = st.columns([2, 2, 1, 1])
+# Layout de configurações em colunas (agora com 3 colunas, sem seletor de veículo)
+config_col1, config_col2, config_col3 = st.columns([3, 2, 2])
 
 with config_col1:
-    # Seleção de veículo
-    vehicles = load_vehicles()
-    if vehicles:
-        vehicle_options = {v["id"]: f"{v['name']} ({v['nickname']})" for v in vehicles}
-        selected_vehicle_id = st.selectbox(
-            "Veículo",
-            options=list(vehicle_options.keys()),
-            format_func=lambda x: vehicle_options[x],
-            key="vehicle_selector"
-        )
-    else:
-        st.error("Nenhum veículo encontrado no banco de dados")
-        st.stop()
-
-with config_col2:
     # Seleção de tipo de mapa
     selected_map_type = st.selectbox(
         "Tipo de Mapa 2D",
@@ -255,8 +263,10 @@ with config_col2:
         format_func=lambda x: MAP_TYPES_2D[x]["name"],
         key="map_type_selector"
     )
+    # Informações do mapa
+    map_info = MAP_TYPES_2D[selected_map_type]
 
-with config_col3:
+with config_col2:
     # Seleção de bancada (se aplicável)
     if "main_fuel" in selected_map_type:
         selected_bank = st.radio(
@@ -267,11 +277,10 @@ with config_col3:
         )
     else:
         selected_bank = None
-        st.info("Compartilhado")
+        st.info("Mapa Compartilhado")
 
-with config_col4:
+with config_col3:
     # Informações do mapa
-    map_info = MAP_TYPES_2D[selected_map_type]
     st.metric("Posições", map_info['positions'])
     st.caption(f"{map_info['axis_type']} / {map_info['unit']}")
 
