@@ -257,51 +257,58 @@ with col2:
         
         current_data = st.session_state[session_key]
         
-        # Criar DataFrame para edição
-        df = pd.DataFrame({
-            "Posição": range(1, map_info["positions"] + 1),
-            "Eixo X": current_data["axis_values"],
-            "Valor": current_data["map_values"]
-        })
+        # Criar DataFrame horizontal - os valores do eixo X como colunas
+        # Primeira linha: valores do eixo X (editáveis)
+        # Segunda linha: valores do mapa correspondentes
         
-        # Editor de tabela
+        # Criar dicionário com os valores do eixo X como chaves
+        data_dict = {}
+        for i, axis_val in enumerate(current_data["axis_values"]):
+            # Usar string formatada como nome da coluna
+            col_name = f"{axis_val:.1f}" if axis_val % 1 != 0 else str(int(axis_val))
+            data_dict[col_name] = [current_data["map_values"][i]]
+        
+        # Criar DataFrame horizontal com uma única linha de valores
+        df = pd.DataFrame(data_dict)
+        
+        # Configurar colunas dinamicamente
+        column_config = {}
+        for col in df.columns:
+            column_config[col] = st.column_config.NumberColumn(
+                col,  # O nome da coluna é o valor do eixo X
+                format="%.3f",
+                min_value=map_info["min_value"],
+                max_value=map_info["max_value"],
+                help=f"{map_info['axis_type']}: {col}, Valor em {map_info['unit']}"
+            )
+        
+        # Editor de tabela horizontal
+        st.write(f"**Editar valores do mapa** ({map_info['unit']})")
+        st.caption(f"Eixo X: {map_info['axis_type']}")
         edited_df = st.data_editor(
             df,
             num_rows="fixed",
             use_container_width=True,
-            column_config={
-                "Posição": st.column_config.NumberColumn(
-                    "Posição",
-                    disabled=True,
-                    help="Posição na tabela"
-                ),
-                "Eixo X": st.column_config.NumberColumn(
-                    f"Eixo X ({map_info['axis_type']})",
-                    format="%.2f",
-                    help=f"Valores do eixo X em {map_info['axis_type']}"
-                ),
-                "Valor": st.column_config.NumberColumn(
-                    f"Valor ({map_info['unit']})",
-                    format="%.3f",
-                    min_value=map_info["min_value"],
-                    max_value=map_info["max_value"],
-                    help=f"Valores do mapa em {map_info['unit']}"
-                )
-            },
+            column_config=column_config,
             key=f"data_editor_{session_key}"
         )
         
         # Atualizar dados na sessão
-        st.session_state[session_key]["axis_values"] = edited_df["Eixo X"].tolist()
-        st.session_state[session_key]["map_values"] = edited_df["Valor"].tolist()
+        # Manter os valores do eixo X originais (não editáveis nesta versão)
+        st.session_state[session_key]["axis_values"] = current_data["axis_values"]
+        # Extrair os valores editados do mapa
+        new_values = []
+        for col in df.columns:
+            new_values.append(edited_df[col].iloc[0])
+        st.session_state[session_key]["map_values"] = new_values
         
         # Validações
         axis_valid, axis_msg = validate_map_values(
-            edited_df["Eixo X"].tolist(), 
+            current_data["axis_values"], 
             -1000, 10000  # Validação genérica ampla
         )
         values_valid, values_msg = validate_map_values(
-            edited_df["Valor"].tolist(),
+            new_values,
             map_info["min_value"],
             map_info["max_value"]
         )
@@ -394,7 +401,7 @@ with col2:
                 yaxis_title=f"Valor ({map_info['unit']})",
                 height=500,
                 showlegend=False,
-                hovermode='x+y'
+                hovermode='closest'
             )
             
             # Configurar grid
