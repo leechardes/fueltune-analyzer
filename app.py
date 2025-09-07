@@ -169,6 +169,8 @@ def main():
         st.Page("src/ui/pages/dashboard.py", title="Dashboard", icon=":material/dashboard:"),
         st.Page("src/ui/pages/vehicles.py", title="Veículos", icon=":material/directions_car:"),
         st.Page("src/ui/pages/bank_configuration.py", title="Configuração de Bancadas", icon=":material/settings_input_component:"),
+        st.Page("src/ui/pages/fuel_maps_2d.py", title="Mapas de Injeção 2D", icon=":material/tune:"),
+        st.Page("src/ui/pages/fuel_maps_3d.py", title="Mapas de Injeção 3D", icon=":material/3d_rotation:"),
         st.Page("src/ui/pages/upload.py", title="Upload de Dados", icon=":material/upload_file:"),
         st.Page("src/ui/pages/analysis.py", title="Análise", icon=":material/analytics:"),
         st.Page("src/ui/pages/consumption.py", title="Consumo", icon=":material/local_gas_station:"),
