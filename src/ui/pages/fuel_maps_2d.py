@@ -43,63 +43,55 @@ except ImportError:
 st.title("Mapas de Injeção 2D")
 st.caption("Configure mapas de injeção bidimensionais")
 
-# Constantes para tipos de mapas 2D
-MAP_TYPES_2D = {
-    "main_fuel_2d_map_32": {
-        "name": "Mapa Principal de Injeção (MAP) - 32 posições",
-        "positions": 32,
-        "axis_type": "MAP",
-        "unit": "ms",
-        "min_value": 0.0,
-        "max_value": 50.0,
-        "description": "Mapa principal baseado na pressão MAP"
-    },
-    "main_fuel_2d_tps_20": {
-        "name": "Mapa Principal de Injeção (TPS) - 20 posições",
-        "positions": 20,
-        "axis_type": "TPS",
-        "unit": "ms",
-        "min_value": 0.0,
-        "max_value": 50.0,
-        "description": "Mapa principal baseado na posição do acelerador"
-    },
-    "rpm_compensation_32": {
-        "name": "Compensação por RPM - 32 posições",
-        "positions": 32,
-        "axis_type": "RPM",
-        "unit": "%",
-        "min_value": -100.0,
-        "max_value": 100.0,
-        "description": "Compensação baseada no RPM do motor"
-    },
-    "temp_compensation_16": {
-        "name": "Compensação por Temperatura do Motor - 16 posições",
-        "positions": 16,
-        "axis_type": "TEMP",
-        "unit": "%",
-        "min_value": -100.0,
-        "max_value": 100.0,
-        "description": "Compensação baseada na temperatura do motor"
-    },
-    "air_temp_compensation_9": {
-        "name": "Compensação por Temperatura do Ar - 9 posições",
-        "positions": 9,
-        "axis_type": "AIR_TEMP",
-        "unit": "%",
-        "min_value": -100.0,
-        "max_value": 100.0,
-        "description": "Compensação baseada na temperatura do ar"
-    },
-    "voltage_compensation_8": {
-        "name": "Compensação por Tensão de Bateria - 8 posições",
-        "positions": 8,
-        "axis_type": "VOLTAGE",
-        "unit": "%",
-        "min_value": -100.0,
-        "max_value": 100.0,
-        "description": "Compensação baseada na tensão da bateria"
-    }
-}
+# Carregar configuração de tipos de mapas 2D do arquivo externo
+def load_map_types_config():
+    """Carrega a configuração de tipos de mapas do arquivo JSON."""
+    config_path = Path("config/map_types_2d.json")
+    
+    # Se o arquivo não existir, usar configuração padrão
+    if not config_path.exists():
+        return {
+            "main_fuel_2d_map_32": {
+                "name": "Mapa Principal de Injeção (MAP) - 32 posições",
+                "positions": 32,
+                "axis_type": "MAP",
+                "unit": "ms",
+                "min_value": 0.0,
+                "max_value": 50.0,
+                "description": "Mapa principal de combustível baseado na pressão MAP",
+                "default_enabled_count": 21
+            },
+            "tps_correction_2d": {
+                "name": "Correção por TPS",
+                "positions": 32,
+                "axis_type": "TPS",
+                "unit": "%",
+                "min_value": -50.0,
+                "max_value": 50.0,
+                "description": "Correção de combustível baseada no TPS",
+                "default_enabled_count": 16
+            },
+            "temp_correction_2d": {
+                "name": "Correção por Temperatura",
+                "positions": 32,
+                "axis_type": "TEMP",
+                "unit": "%",
+                "min_value": -30.0,
+                "max_value": 30.0,
+                "description": "Correção baseada na temperatura do motor",
+                "default_enabled_count": 12
+            }
+        }
+    
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        st.warning(f"Erro ao carregar configuração: {e}. Usando valores padrão.")
+        return load_map_types_config.__defaults__[0]
+
+# Carregar configuração de tipos de mapas
+MAP_TYPES_2D = load_map_types_config()
 
 def get_default_axis_values(axis_type: str, positions: int) -> List[float]:
     """Retorna valores padrão para 32 posições com sistema enable/disable."""
@@ -133,8 +125,14 @@ def get_default_axis_values(axis_type: str, positions: int) -> List[float]:
     else:
         return [0.0] * positions
 
-def get_default_enabled_positions(axis_type: str, positions: int) -> List[bool]:
+def get_default_enabled_positions(axis_type: str, positions: int, map_type_key: str = None) -> List[bool]:
     """Retorna posições habilitadas por padrão."""
+    # Usar configuração do JSON se disponível
+    if map_type_key and map_type_key in MAP_TYPES_2D:
+        default_count = MAP_TYPES_2D[map_type_key].get("default_enabled_count", positions)
+        return [True] * min(default_count, positions) + [False] * max(0, positions - default_count)
+    
+    # Fallback para lógica anterior
     if axis_type == "MAP" and positions == 32:
         return [True] * 21 + [False] * 11  # Primeiras 21 ativas
     elif axis_type == "RPM" and positions == 32:
@@ -325,7 +323,7 @@ with tab1:
             # Verificar se tem dados enable/disable
             axis_enabled = loaded_data.get("axis_enabled")
             if axis_enabled is None:
-                axis_enabled = get_default_enabled_positions(map_info["axis_type"], map_info["positions"])
+                axis_enabled = get_default_enabled_positions(map_info["axis_type"], map_info["positions"], selected_map_type)
             st.session_state[session_key] = {
                 "axis_values": loaded_data["axis_values"],
                 "map_values": loaded_data["map_values"],
@@ -333,7 +331,7 @@ with tab1:
             }
         else:
             # Criar dados padrão
-            axis_enabled = get_default_enabled_positions(map_info["axis_type"], map_info["positions"])
+            axis_enabled = get_default_enabled_positions(map_info["axis_type"], map_info["positions"], selected_map_type)
             st.session_state[session_key] = {
                 "axis_values": get_default_axis_values(
                     map_info["axis_type"], 
@@ -349,18 +347,182 @@ with tab1:
     
     current_data = st.session_state[session_key]
     
-    # Expander para configurar eixos com checkboxes
-    with st.expander(":material/settings: Configurar Eixo X com Enable/Disable"):
+    # Sub-abas para edição
+    edit_tab1, edit_tab2 = st.tabs(["Valores", "Eixos"])
+    
+    with edit_tab1:
+        st.caption("Edite os valores do mapa usando layout horizontal")
+    
+    
+        # Criar DataFrame horizontal usando apenas valores ativos
+        active_axis_values = current_data["axis_values"]  # Já filtrados
+        active_map_values = current_data["map_values"]    # Já filtrados
+        
+        st.write(f"**Eixo X ({map_info['axis_type']}):** Valores numéricos")
+        st.caption(f"Total de {len(active_axis_values)} posições ativas")
+        
+        # Criar dicionário com os valores do eixo X como chaves (apenas valores numéricos)
+        data_dict = {}
+        for i, axis_val in enumerate(active_axis_values):
+            # Usar formatação 3 casas decimais para colunas
+            col_name = format_value_3_decimals(axis_val)
+            data_dict[col_name] = [active_map_values[i] if i < len(active_map_values) else 0.0]
+        
+        # Criar DataFrame horizontal com uma única linha de valores
+        df = pd.DataFrame(data_dict)
+        
+        # Configurar colunas dinamicamente com formatação 3 casas decimais
+        column_config = {}
+        value_format = "%.3f"  # Sempre 3 casas decimais
+            
+        for col in df.columns:
+            column_config[col] = st.column_config.NumberColumn(
+                col,  # Valor numérico puro
+                format=value_format,
+                min_value=map_info["min_value"],
+                max_value=map_info["max_value"],
+                help=f"{map_info['axis_type']}: {col}, Valor em {map_info['unit']}"
+            )
+        
+        # Editor de tabela horizontal com gradiente de cores
+        st.write(f"**Editar valores do mapa** ({map_info['unit']})")
+        st.caption(f"Valores com 3 casas decimais - Total: {len(df.columns)} valores")
+        
+        # Aplicar formatação de 3 casas decimais ao DataFrame para exibição
+        formatted_df = df.copy()
+        for col in formatted_df.columns:
+            formatted_df[col] = formatted_df[col].apply(lambda x: round(x, 3))
+        
+        # Aplicar estilo com gradiente de cores na linha de valores
+        styled_df = formatted_df.style.background_gradient(
+            cmap='RdYlBu',  # Red-Yellow-Blue (vermelho para valores baixos, azul para altos)
+            axis=1,  # Aplicar gradiente ao longo das colunas (horizontal)
+            vmin=min(formatted_df.iloc[0].values),  # Usar valores reais do DataFrame
+            vmax=max(formatted_df.iloc[0].values),  # Usar valores reais do DataFrame
+            subset=None  # Aplicar a todas as células
+        )
+        
+        # Adicionar formato de exibição com 3 casas decimais
+        styled_df = styled_df.format("{:.3f}")
+        
+        # Usar st.dataframe com estilo para mostrar cores
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
+        
+        st.divider()
+        
+        # Editor de dados (sem cores mas funcional)
+        st.caption("Clique nos valores abaixo para editar:")
+        edited_df = st.data_editor(
+            df,
+            num_rows="fixed",
+            use_container_width=True,
+            column_config=column_config,
+            key=f"data_editor_{session_key}",
+            hide_index=True
+        )
+        
+        # Atualizar dados na sessão
+        # Manter os valores do eixo X originais (não editáveis nesta versão)
+        st.session_state[session_key]["axis_values"] = current_data["axis_values"]
+        # Extrair os valores editados do mapa
+        new_values = []
+        for col in df.columns:
+            new_values.append(edited_df[col].iloc[0])
+        st.session_state[session_key]["map_values"] = new_values
+    
+    
+        # Validações
+        axis_valid, axis_msg = validate_map_values(
+            current_data["axis_values"], 
+            -1000, 10000  # Validação genérica ampla
+        )
+        values_valid, values_msg = validate_map_values(
+            new_values,
+            map_info["min_value"],
+            map_info["max_value"]
+        )
+        
+        if not axis_valid:
+            st.error(f"Eixo X: {axis_msg}")
+        if not values_valid:
+            st.error(f"Valores: {values_msg}")
+        
+        # Formulário para salvar
+        with st.form(f"save_form_{session_key}"):
+            st.subheader("Salvar Alterações")
+            
+            save_description = st.text_area(
+                "Descrição das alterações",
+                placeholder="Descreva as modificações realizadas no mapa...",
+                key=f"save_desc_{session_key}"
+            )
+            
+            col_save1, col_save2 = st.columns(2)
+            
+            with col_save1:
+                save_button = st.form_submit_button(
+                    "Salvar Mapa",
+                    type="primary",
+                    use_container_width=True
+                )
+            
+            with col_save2:
+                reset_button = st.form_submit_button(
+                    "Restaurar Padrão",
+                    use_container_width=True
+                )
+            
+            if save_button:
+                if axis_valid and values_valid:
+                    success = save_map_data(
+                        selected_vehicle_id,
+                        selected_map_type,
+                        selected_bank or "shared",
+                        current_data["axis_values"],
+                        new_values,
+                        current_data.get("axis_enabled")
+                    )
+                    if success:
+                        st.success("Mapa salvo com sucesso!")
+                        st.rerun()
+                    else:
+                        st.error("Erro ao salvar o mapa")
+                else:
+                    st.error("Corrija os erros de validação antes de salvar")
+            
+            if reset_button:
+                # Restaurar valores padrão
+                axis_enabled = get_default_enabled_positions(map_info["axis_type"], map_info["positions"], selected_map_type)
+                st.session_state[session_key] = {
+                    "axis_values": get_default_axis_values(
+                        map_info["axis_type"], 
+                        map_info["positions"]
+                    ),
+                    "map_values": get_default_map_values(
+                        selected_map_type,
+                        map_info["axis_type"], 
+                        map_info["positions"]
+                    ),
+                    "axis_enabled": axis_enabled
+                }
+                st.success("Valores padrão restaurados!")
+                st.rerun()
+    
+    with edit_tab2:
+        st.caption("Configure os eixos com sistema enable/disable")
+        
+        # Configurar eixos com checkboxes
         st.write(f"**Configurar Eixo X ({map_info['axis_type']})** - {map_info['positions']} posições")
         st.caption("Use os checkboxes para ativar/desativar cada posição")
         
-        # Garantir que temos 32 posições
+        # Garantir que temos o número correto de posições
         axis_values_temp = current_data["axis_values"].copy()
-        axis_values = [0.0] * 32  # Inicializar com 32 zeros
-        for i in range(min(len(axis_values_temp), 32)):
+        total_positions = map_info["positions"]
+        axis_values = [0.0] * total_positions
+        for i in range(min(len(axis_values_temp), total_positions)):
             axis_values[i] = axis_values_temp[i]
         
-        axis_enabled_values = current_data.get("axis_enabled", [True] * 32)
+        axis_enabled_values = current_data.get("axis_enabled", [True] * total_positions)
         
         # Determinar formato baseado no tipo de eixo
         if map_info["axis_type"] == "MAP":
@@ -368,15 +530,15 @@ with tab1:
             format_str = "%.3f"
         elif map_info["axis_type"] in ["VOLTAGE"]:
             step = 0.1
-            format_str = "%.1f"
+            format_str = "%.3f"
         else:
             step = 1.0 if map_info["axis_type"] in ["RPM", "TPS"] else 5.0
-            format_str = "%.0f"
+            format_str = "%.3f"
         
         # Criar DataFrame para edição
         axis_df = pd.DataFrame({
-            "Ativo": axis_enabled_values[:32],
-            "Posição": [f"Pos {i+1}" for i in range(32)],
+            "Ativo": axis_enabled_values[:total_positions],
+            "Posição": [f"Pos {i+1}" for i in range(total_positions)],
             f"{map_info['axis_type']}": axis_values
         })
         
@@ -434,254 +596,6 @@ with tab1:
             st.session_state[session_key]["axis_values"] = active_axis
             st.session_state[session_key]["map_values"] = active_map[:len(active_axis)]
             st.success(f"Aplicados {len(active_axis)} valores ativos!")
-            st.rerun()
-    
-    # Criar DataFrame horizontal usando apenas valores ativos
-    active_axis_values = current_data["axis_values"]  # Já filtrados
-    active_map_values = current_data["map_values"]    # Já filtrados
-    
-    st.write(f"**Eixo X ({map_info['axis_type']}):** Valores numéricos")
-    st.caption(f"Total de {len(active_axis_values)} posições ativas")
-    
-    # Criar dicionário com os valores do eixo X como chaves (apenas valores numéricos)
-    data_dict = {}
-    for i, axis_val in enumerate(active_axis_values):
-        # Usar formatação 3 casas decimais para colunas
-        col_name = format_value_3_decimals(axis_val)
-        data_dict[col_name] = [active_map_values[i] if i < len(active_map_values) else 0.0]
-    
-    # Criar DataFrame horizontal com uma única linha de valores
-    df = pd.DataFrame(data_dict)
-    
-    # Configurar colunas dinamicamente com formatação 3 casas decimais
-    column_config = {}
-    value_format = "%.3f"  # Sempre 3 casas decimais
-        
-    for col in df.columns:
-        column_config[col] = st.column_config.NumberColumn(
-            col,  # Valor numérico puro
-            format=value_format,
-            min_value=map_info["min_value"],
-            max_value=map_info["max_value"],
-            help=f"{map_info['axis_type']}: {col}, Valor em {map_info['unit']}"
-        )
-    
-    # Editor de tabela horizontal com gradiente de cores
-    st.write(f"**Editar valores do mapa** ({map_info['unit']})")
-    st.caption(f"Valores com 3 casas decimais - Total: {len(df.columns)} valores")
-    
-    # Aplicar formatação de 3 casas decimais ao DataFrame para exibição
-    formatted_df = df.copy()
-    for col in formatted_df.columns:
-        formatted_df[col] = formatted_df[col].apply(lambda x: round(x, 3))
-    
-    # Aplicar estilo com gradiente de cores na linha de valores
-    styled_df = formatted_df.style.background_gradient(
-        cmap='RdYlBu',  # Red-Yellow-Blue (vermelho para valores baixos, azul para altos)
-        axis=1,  # Aplicar gradiente ao longo das colunas (horizontal)
-        vmin=min(formatted_df.iloc[0].values),  # Usar valores reais do DataFrame
-        vmax=max(formatted_df.iloc[0].values),  # Usar valores reais do DataFrame
-        subset=None  # Aplicar a todas as células
-    )
-    
-    # Adicionar formato de exibição com 3 casas decimais
-    styled_df = styled_df.format("{:.3f}")
-    
-    # Usar st.dataframe com estilo para mostrar cores
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
-    
-    # Botões de copiar/colar compatível com FTManager
-    st.write("**Integração com FTManager**")
-    col_copy_paste1, col_copy_paste2 = st.columns(2)
-    
-    with col_copy_paste1:
-        st.caption("Copiar valores para FTManager")
-        
-        # Gerar string para copiar (formato FTManager com 3 casas decimais)
-        ftm_values = []
-        for val in current_data["map_values"]:
-            # Formatar valor com vírgula como separador decimal (3 casas)
-            formatted = f"{val:.3f}".replace('.', ',')
-            ftm_values.append(formatted)
-        
-        # Criar string com TAB entre valores (formato FTManager)
-        ftm_string = "\t".join(ftm_values)
-        
-        # Área de texto para copiar
-        text_area_copy = st.text_area(
-            "Valores formatados",
-            value=ftm_string,
-            height=60,
-            key=f"copy_ftm_{session_key}",
-            help="Valores separados por TAB, prontos para FTManager",
-            label_visibility="collapsed"
-        )
-        
-        # Botão para copiar para área de transferência
-        if st.button(":material/content_copy: Copiar para Área de Transferência", key=f"copy_clipboard_{session_key}", use_container_width=True):
-            # Usar componente HTML com JavaScript para copiar
-            # Escapar tabs para JavaScript
-            ftm_string_js = ftm_string.replace('\\', '\\\\').replace('\t', '\\t').replace('`', '\\`')
-            components.html(
-                f"""
-                <script>
-                const text = "{ftm_string_js}";
-                navigator.clipboard.writeText(text).then(function() {{
-                    console.log('Copiado para área de transferência');
-                }}, function(err) {{
-                    console.error('Erro ao copiar: ', err);
-                }});
-                </script>
-                """,
-                height=0
-            )
-            st.success("Valores copiados para a área de transferência!")
-    
-    with col_copy_paste2:
-        st.caption("Colar valores do FTManager")
-        
-        # Área para colar valores do FTManager
-        paste_text = st.text_area(
-            "Cole os valores aqui",
-            placeholder="Cole aqui os valores copiados do FTManager...",
-            height=60,
-            key=f"paste_ftm_{session_key}",
-            help="Aceita valores separados por TAB, espaços ou ponto-e-vírgula",
-            label_visibility="collapsed"
-        )
-        
-        # Botões em duas colunas
-        btn_col1, btn_col2 = st.columns(2)
-        
-        with btn_col1:
-            if st.button(":material/check_circle: Aplicar Valores", key=f"apply_paste_{session_key}", use_container_width=True):
-                if paste_text:
-                    try:
-                        # Processar valores colados - aceitar TAB, espaços ou ponto-e-vírgula
-                        # Substituir tabs e ponto-e-vírgula por espaços
-                        normalized_text = paste_text.replace('\t', ' ').replace(';', ' ')
-                        # Remover espaços extras e dividir
-                        values_str = normalized_text.strip().split()
-                        # Converter vírgulas para pontos e para float
-                        new_values = [float(v.replace(',', '.')) for v in values_str]
-                        
-                        # Verificar quantidade de valores
-                        current_positions = len(current_data["axis_values"])
-                        if len(new_values) == current_positions:
-                            # Aplicar valores
-                            st.session_state[session_key]["map_values"] = new_values
-                            st.success(f"Aplicados {len(new_values)} valores com sucesso!")
-                            st.rerun()
-                        else:
-                            st.error(f"Esperados {current_positions} valores, mas foram colados {len(new_values)}")
-                    except Exception as e:
-                        st.error(f"Erro ao processar valores: {e}")
-                else:
-                    st.warning("Cole os valores primeiro")
-        
-        with btn_col2:
-            if st.button(":material/clear: Limpar", key=f"clear_paste_{session_key}", use_container_width=True):
-                # Limpar a área de texto
-                st.session_state[f"paste_ftm_{session_key}"] = ""
-                st.rerun()
-    
-    st.divider()
-    
-    # Editor de dados (sem cores mas funcional)
-    st.caption("Clique nos valores abaixo para editar:")
-    edited_df = st.data_editor(
-        df,
-        num_rows="fixed",
-        use_container_width=True,
-        column_config=column_config,
-        key=f"data_editor_{session_key}",
-        hide_index=True
-    )
-    
-    # Atualizar dados na sessão
-    # Manter os valores do eixo X originais (não editáveis nesta versão)
-    st.session_state[session_key]["axis_values"] = current_data["axis_values"]
-    # Extrair os valores editados do mapa
-    new_values = []
-    for col in df.columns:
-        new_values.append(edited_df[col].iloc[0])
-    st.session_state[session_key]["map_values"] = new_values
-    
-    # Validações
-    axis_valid, axis_msg = validate_map_values(
-        current_data["axis_values"], 
-        -1000, 10000  # Validação genérica ampla
-    )
-    values_valid, values_msg = validate_map_values(
-        new_values,
-        map_info["min_value"],
-        map_info["max_value"]
-    )
-    
-    if not axis_valid:
-        st.error(f"Eixo X: {axis_msg}")
-    if not values_valid:
-        st.error(f"Valores: {values_msg}")
-    
-    # Formulário para salvar
-    with st.form(f"save_form_{session_key}"):
-        st.subheader("Salvar Alterações")
-        
-        save_description = st.text_area(
-            "Descrição das alterações",
-            placeholder="Descreva as modificações realizadas no mapa...",
-            key=f"save_desc_{session_key}"
-        )
-        
-        col_save1, col_save2 = st.columns(2)
-        
-        with col_save1:
-            save_button = st.form_submit_button(
-                "Salvar Mapa",
-                type="primary",
-                use_container_width=True
-            )
-        
-        with col_save2:
-            reset_button = st.form_submit_button(
-                "Restaurar Padrão",
-                use_container_width=True
-            )
-        
-        if save_button:
-            if axis_valid and values_valid:
-                success = save_map_data(
-                    selected_vehicle_id,
-                    selected_map_type,
-                    selected_bank or "shared",
-                    current_data["axis_values"],
-                    new_values,
-                    current_data.get("axis_enabled")
-                )
-                if success:
-                    st.success("Mapa salvo com sucesso!")
-                    st.rerun()
-                else:
-                    st.error("Erro ao salvar o mapa")
-            else:
-                st.error("Corrija os erros de validação antes de salvar")
-        
-        if reset_button:
-            # Restaurar valores padrão
-            axis_enabled = get_default_enabled_positions(map_info["axis_type"], map_info["positions"])
-            st.session_state[session_key] = {
-                "axis_values": get_default_axis_values(
-                    map_info["axis_type"], 
-                    map_info["positions"]
-                ),
-                "map_values": get_default_map_values(
-                    selected_map_type,
-                    map_info["axis_type"], 
-                    map_info["positions"]
-                ),
-                "axis_enabled": axis_enabled
-            }
-            st.success("Valores padrão restaurados!")
             st.rerun()
     
 with tab2:
@@ -765,6 +679,27 @@ with tab2:
                 "Valor Médio",
                 f"{np.mean(map_values):.{decimal_places}f} {map_info['unit']}"
             )
+        
+        # Adicionar linha com desvio padrão
+        col_stats4, col_stats5, col_stats6 = st.columns(3)
+        
+        with col_stats4:
+            st.metric(
+                "Desvio Padrão",
+                f"{np.std(map_values):.{decimal_places}f} {map_info['unit']}"
+            )
+        
+        with col_stats5:
+            st.metric(
+                "Amplitude",
+                f"{max(map_values) - min(map_values):.{decimal_places}f} {map_info['unit']}"
+            )
+        
+        with col_stats6:
+            st.metric(
+                "Total de Pontos",
+                f"{len(map_values)}"
+            )
     
     else:
         st.info("Configure o mapa na aba 'Editar' para ver a visualização")
@@ -772,9 +707,111 @@ with tab2:
 with tab3:
     st.caption("Importar e exportar dados do mapa")
     
-    col_import, col_export = st.columns(2)
+    # Seções organizadas
+    section_tabs = st.tabs(["Copiar FTManager", "Colar FTManager", "Importar Dados", "Exportar Dados"])
     
-    with col_import:
+    with section_tabs[0]:  # Copiar para FTManager
+        st.subheader("Copiar para FTManager")
+        
+        if session_key in st.session_state:
+            current_data = st.session_state[session_key]
+            
+            st.caption("Copie os valores formatados para colar no FTManager")
+            
+            # Gerar string para copiar (formato FTManager com 3 casas decimais)
+            ftm_values = []
+            for val in current_data["map_values"]:
+                # Formatar valor com vírgula como separador decimal (3 casas)
+                formatted = f"{val:.3f}".replace('.', ',')
+                ftm_values.append(formatted)
+            
+            # Criar string com TAB entre valores (formato FTManager)
+            ftm_string = "\t".join(ftm_values)
+            
+            # Área de texto para copiar
+            text_area_copy = st.text_area(
+                "Valores formatados para FTManager",
+                value=ftm_string,
+                height=100,
+                key=f"copy_ftm_{session_key}",
+                help="Valores separados por TAB, prontos para FTManager"
+            )
+            
+            # Botão para copiar para área de transferência
+            if st.button("Copiar para Área de Transferência", key=f"copy_clipboard_{session_key}", use_container_width=True):
+                # Usar componente HTML com JavaScript para copiar
+                # Escapar tabs para JavaScript
+                ftm_string_js = ftm_string.replace('\\', '\\\\').replace('\t', '\\t').replace('`', '\\`')
+                components.html(
+                    f"""
+                    <script>
+                    const text = "{ftm_string_js}";
+                    navigator.clipboard.writeText(text).then(function() {{
+                        console.log('Copiado para área de transferência');
+                    }}, function(err) {{
+                        console.error('Erro ao copiar: ', err);
+                    }});
+                    </script>
+                    """,
+                    height=0
+                )
+                st.success("Valores copiados para a área de transferência!")
+        else:
+            st.info("Configure o mapa na aba 'Editar' para copiar valores")
+    
+    with section_tabs[1]:  # Colar do FTManager
+        st.subheader("Colar do FTManager")
+        
+        st.caption("Cole os valores copiados do FTManager")
+        
+        # Área para colar valores do FTManager
+        paste_text = st.text_area(
+            "Cole os valores aqui",
+            placeholder="Cole aqui os valores copiados do FTManager...",
+            height=100,
+            key=f"paste_ftm_{session_key}",
+            help="Aceita valores separados por TAB, espaços ou ponto-e-vírgula"
+        )
+        
+        # Botões em duas colunas
+        btn_col1, btn_col2 = st.columns(2)
+        
+        with btn_col1:
+            if st.button("Aplicar Valores", key=f"apply_paste_{session_key}", use_container_width=True):
+                if paste_text:
+                    try:
+                        # Processar valores colados - aceitar TAB, espaços ou ponto-e-vírgula
+                        # Substituir tabs e ponto-e-vírgula por espaços
+                        normalized_text = paste_text.replace('\t', ' ').replace(';', ' ')
+                        # Remover espaços extras e dividir
+                        values_str = normalized_text.strip().split()
+                        # Converter vírgulas para pontos e para float
+                        new_values = [float(v.replace(',', '.')) for v in values_str]
+                        
+                        # Verificar quantidade de valores
+                        if session_key in st.session_state:
+                            current_positions = len(st.session_state[session_key]["axis_values"])
+                            if len(new_values) == current_positions:
+                                # Aplicar valores
+                                st.session_state[session_key]["map_values"] = new_values
+                                st.success(f"Aplicados {len(new_values)} valores com sucesso!")
+                                st.rerun()
+                            else:
+                                st.error(f"Esperados {current_positions} valores, mas foram colados {len(new_values)}")
+                        else:
+                            st.error("Configure o mapa primeiro na aba 'Editar'")
+                    except Exception as e:
+                        st.error(f"Erro ao processar valores: {e}")
+                else:
+                    st.warning("Cole os valores primeiro")
+        
+        with btn_col2:
+            if st.button("Limpar", key=f"clear_paste_{session_key}", use_container_width=True):
+                # Limpar a área de texto
+                st.session_state[f"paste_ftm_{session_key}"] = ""
+                st.rerun()
+    
+    with section_tabs[2]:  # Importar Dados
         st.subheader("Importar Dados")
         
         # Upload de arquivo
@@ -824,50 +861,68 @@ with tab3:
             
             except Exception as e:
                 st.error(f"Erro ao processar arquivo: {str(e)}")
-        
-    with col_export:
+    
+    with section_tabs[3]:  # Exportar Dados
         st.subheader("Exportar Dados")
         
         if session_key in st.session_state:
             current_data = st.session_state[session_key]
             
-            # Exportar JSON
-            export_data = {
-                "vehicle_id": selected_vehicle_id,
-                "map_type": selected_map_type,
-                "bank_id": selected_bank,
-                "map_info": map_info,
-                "axis_values": current_data["axis_values"],
-                "map_values": current_data["map_values"],
-                "axis_enabled": current_data.get("axis_enabled"),
-                "exported_at": pd.Timestamp.now().isoformat()
-            }
+            col_export1, col_export2 = st.columns(2)
             
-            st.download_button(
-                "Exportar JSON",
-                data=json.dumps(export_data, indent=2),
-                file_name=f"mapa_2d_{selected_map_type}_{selected_vehicle_id}.json",
-                mime="application/json",
-                use_container_width=True,
-                key=f"export_json_{session_key}"
-            )
+            with col_export1:
+                # Exportar JSON
+                export_data = {
+                    "vehicle_id": selected_vehicle_id,
+                    "map_type": selected_map_type,
+                    "bank_id": selected_bank,
+                    "map_info": map_info,
+                    "axis_values": current_data["axis_values"],
+                    "map_values": current_data["map_values"],
+                    "axis_enabled": current_data.get("axis_enabled"),
+                    "exported_at": pd.Timestamp.now().isoformat()
+                }
+                
+                st.download_button(
+                    "Exportar JSON",
+                    data=json.dumps(export_data, indent=2),
+                    file_name=f"mapa_2d_{selected_map_type}_{selected_vehicle_id}.json",
+                    mime="application/json",
+                    use_container_width=True,
+                    key=f"export_json_{session_key}"
+                )
             
-            # Exportar CSV - usar apenas o tamanho real dos dados habilitados
-            num_values = len(current_data["axis_values"])
-            export_df = pd.DataFrame({
-                "posicao": range(1, num_values + 1),
-                "axis_x": current_data["axis_values"][:num_values],
-                "value": current_data["map_values"][:num_values]
-            })
-            
-            st.download_button(
-                "Exportar CSV",
-                data=export_df.to_csv(index=False),
-                file_name=f"mapa_2d_{selected_map_type}_{selected_vehicle_id}.csv",
-                mime="text/csv",
-                use_container_width=True,
-                key=f"export_csv_{session_key}"
-            )
+            with col_export2:
+                # Exportar CSV - usar apenas o tamanho real dos dados habilitados
+                # Garantir que ambos os arrays tenham o mesmo tamanho
+                axis_values = current_data.get("axis_values", [])
+                map_values = current_data.get("map_values", [])
+                
+                # Usar o menor tamanho para evitar erro
+                num_values = min(len(axis_values), len(map_values))
+                
+                if num_values > 0:
+                    export_df = pd.DataFrame({
+                        "posicao": range(1, num_values + 1),
+                        "axis_x": axis_values[:num_values],
+                        "value": map_values[:num_values]
+                    })
+                else:
+                    # DataFrame vazio se não houver dados
+                    export_df = pd.DataFrame({
+                        "posicao": [],
+                        "axis_x": [],
+                        "value": []
+                    })
+                
+                st.download_button(
+                    "Exportar CSV",
+                    data=export_df.to_csv(index=False),
+                    file_name=f"mapa_2d_{selected_map_type}_{selected_vehicle_id}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key=f"export_csv_{session_key}"
+                )
         
         else:
             st.info("Configure o mapa na aba 'Editar' para exportar")

@@ -1,0 +1,92 @@
+{
+  "main_fuel_2d_map_32": {
+    "name": "Mapa Principal de Injeção (MAP) - 32 posições",
+    "positions": 32,
+    "axis_type": "MAP",
+    "unit": "ms",
+    "min_value": 0.0,
+    "max_value": 50.0,
+    "description": "Mapa principal de combustível baseado na pressão MAP",
+    "default_enabled_count": 21
+  },
+  "main_fuel_2d_map_20": {
+    "name": "Mapa Principal de Injeção (MAP) - 20 posições",
+    "positions": 20,
+    "axis_type": "MAP",
+    "unit": "ms",
+    "min_value": 0.0,
+    "max_value": 50.0,
+    "description": "Mapa principal com 20 posições",
+    "default_enabled_count": 18
+  },
+  "main_fuel_2d_map_16": {
+    "name": "Mapa Principal de Injeção (MAP) - 16 posições",
+    "positions": 16,
+    "axis_type": "MAP",
+    "unit": "ms",
+    "min_value": 0.0,
+    "max_value": 50.0,
+    "description": "Mapa principal com 16 posições",
+    "default_enabled_count": 14
+  },
+  "main_fuel_2d_map_9": {
+    "name": "Mapa Principal de Injeção (MAP) - 9 posições",
+    "positions": 9,
+    "axis_type": "MAP",
+    "unit": "ms",
+    "min_value": 0.0,
+    "max_value": 50.0,
+    "description": "Mapa principal com 9 posições",
+    "default_enabled_count": 9
+  },
+  "main_fuel_2d_map_8": {
+    "name": "Mapa Principal de Injeção (MAP) - 8 posições",
+    "positions": 8,
+    "axis_type": "MAP",
+    "unit": "ms",
+    "min_value": 0.0,
+    "max_value": 50.0,
+    "description": "Mapa principal com 8 posições",
+    "default_enabled_count": 8
+  },
+  "tps_correction_2d": {
+    "name": "Correção por TPS",
+    "positions": 32,
+    "axis_type": "TPS",
+    "unit": "%",
+    "min_value": -50.0,
+    "max_value": 50.0,
+    "description": "Correção de combustível baseada no TPS",
+    "default_enabled_count": 16
+  },
+  "temp_correction_2d": {
+    "name": "Correção por Temperatura",
+    "positions": 32,
+    "axis_type": "TEMP",
+    "unit": "%",
+    "min_value": -30.0,
+    "max_value": 30.0,
+    "description": "Correção baseada na temperatura do motor",
+    "default_enabled_count": 12
+  },
+  "air_temp_correction_2d": {
+    "name": "Correção por Temperatura do Ar",
+    "positions": 32,
+    "axis_type": "AIR_TEMP",
+    "unit": "%",
+    "min_value": -20.0,
+    "max_value": 20.0,
+    "description": "Correção baseada na temperatura do ar de admissão",
+    "default_enabled_count": 10
+  },
+  "voltage_correction_2d": {
+    "name": "Correção por Voltagem",
+    "positions": 32,
+    "axis_type": "VOLTAGE",
+    "unit": "ms",
+    "min_value": -5.0,
+    "max_value": 5.0,
+    "description": "Correção do tempo de injeção baseada na voltagem",
+    "default_enabled_count": 8
+  }
+}
