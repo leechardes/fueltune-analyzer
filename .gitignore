@@ -160,4 +160,7 @@ Thumbs.db
 
 # Temporary files
 *.tmp
-*.tempdata/fuel_maps/
+*.temp
+
+# Fuel Maps Data
+data/fuel_maps/
