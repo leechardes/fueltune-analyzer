@@ -108,7 +108,7 @@ print_step "8. Modo de desenvolvimento"
 echo "O comando 'make dev' inicia o Streamlit com:"
 echo "- Hot reload ativado"
 echo "- Debug mode habilitado"
-echo "- Porta 8501"
+echo "- Porta 8503"
 echo "- Tema dark"
 echo
 print_info "Para testar: make dev (será executado em segundo plano)"

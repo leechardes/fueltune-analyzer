@@ -93,25 +93,22 @@ DEFAULT_RPM_AXIS = [400, 600, 800, 1000, 1200, 1400, 1600, 1800,
                     0, 0, 0, 0, 0, 0, 0, 0]  # 32 total
 RPM_ENABLED = [True] * 24 + [False] * 8  # Primeiras 24 ativas
 
-def get_default_3d_map_values(map_type: str, rpm_enabled: List[bool], map_enabled: List[bool]) -> np.ndarray:
-    """Retorna valores padrão para o mapa 3D baseado no tipo e posições ativas."""
-    # Contar posições ativas
-    active_rpm_count = sum(rpm_enabled)
-    active_map_count = sum(map_enabled)
+def get_default_3d_map_values(map_type: str, grid_size: int) -> np.ndarray:
+    """Retorna valores padrão para o mapa 3D baseado no tipo e tamanho do grid."""
     
     if map_type == "main_fuel_3d_map":
         # Valores de injeção típicos (5-20ms)
         # Aumenta com MAP (pressão) e diminui ligeiramente com RPM alto
-        rpm_factor = np.linspace(1.0, 0.9, active_rpm_count)
-        map_factor = np.linspace(0.5, 2.0, active_map_count)
+        rpm_factor = np.linspace(1.0, 0.9, grid_size)
+        map_factor = np.linspace(0.5, 2.0, grid_size)
         base_values = np.outer(map_factor, rpm_factor) * 10.0 + 5.0
         return base_values
     
     elif map_type == "lambda_target_3d_map":
         # Valores de lambda típicos (0.8-1.2)
         # Mais rico (menor lambda) em alta carga
-        rpm_factor = np.ones(active_rpm_count)
-        map_factor = np.linspace(1.2, 0.8, active_map_count)
+        rpm_factor = np.ones(grid_size)
+        map_factor = np.linspace(1.2, 0.8, grid_size)
         base_values = np.outer(map_factor, rpm_factor)
         return base_values
     
@@ -296,27 +293,45 @@ with tab1:
     session_key = f"map_3d_data_{selected_vehicle_id}_{selected_map_type}_{selected_bank}"
     
     if session_key not in st.session_state:
+        # Obter grid_size do tipo de mapa
+        grid_size = map_info["grid_size"]
+        
         # Tentar carregar dados salvos
         loaded_data = load_3d_map_data(selected_vehicle_id, selected_map_type, selected_bank)
         if loaded_data:
-            # Verificar se tem dados de enable/disable
-            rpm_enabled = loaded_data.get("rpm_enabled", RPM_ENABLED.copy())
-            map_enabled = loaded_data.get("map_enabled", MAP_ENABLED.copy())
+            # Ajustar tamanho se necessário
+            if len(loaded_data["rpm_axis"]) != grid_size:
+                # Redimensionar eixos e matriz para o grid_size correto
+                rpm_axis = DEFAULT_RPM_AXIS[:grid_size] if grid_size <= 32 else DEFAULT_RPM_AXIS + [0] * (grid_size - 32)
+                map_axis = DEFAULT_MAP_AXIS[:grid_size] if grid_size <= 32 else DEFAULT_MAP_AXIS + [0] * (grid_size - 32)
+                rpm_enabled = [True] * grid_size
+                map_enabled = [True] * grid_size
+                values_matrix = get_default_3d_map_values(selected_map_type, grid_size)
+            else:
+                rpm_axis = loaded_data["rpm_axis"]
+                map_axis = loaded_data["map_axis"]
+                rpm_enabled = loaded_data.get("rpm_enabled", [True] * grid_size)
+                map_enabled = loaded_data.get("map_enabled", [True] * grid_size)
+                values_matrix = np.array(loaded_data["values_matrix"])
+                
             st.session_state[session_key] = {
-                "rpm_axis": loaded_data["rpm_axis"],
-                "map_axis": loaded_data["map_axis"],
+                "rpm_axis": rpm_axis,
+                "map_axis": map_axis,
                 "rpm_enabled": rpm_enabled,
                 "map_enabled": map_enabled,
-                "values_matrix": np.array(loaded_data["values_matrix"])
+                "values_matrix": values_matrix
             }
         else:
-            # Criar dados padrão
+            # Criar dados padrão com o tamanho correto
+            rpm_axis = DEFAULT_RPM_AXIS[:grid_size] if grid_size <= 32 else DEFAULT_RPM_AXIS + [0] * (grid_size - 32)
+            map_axis = DEFAULT_MAP_AXIS[:grid_size] if grid_size <= 32 else DEFAULT_MAP_AXIS + [0] * (grid_size - 32)
+            
             st.session_state[session_key] = {
-                "rpm_axis": DEFAULT_RPM_AXIS.copy(),
-                "map_axis": DEFAULT_MAP_AXIS.copy(),
-                "rpm_enabled": RPM_ENABLED.copy(),
-                "map_enabled": MAP_ENABLED.copy(),
-                "values_matrix": get_default_3d_map_values(selected_map_type, RPM_ENABLED, MAP_ENABLED)
+                "rpm_axis": rpm_axis,
+                "map_axis": map_axis,
+                "rpm_enabled": [True] * grid_size,
+                "map_enabled": [True] * grid_size,
+                "values_matrix": get_default_3d_map_values(selected_map_type, grid_size)
             }
     
     current_data = st.session_state[session_key]
@@ -328,10 +343,37 @@ with tab1:
         st.caption("Edite os valores da matriz 3D")
         
         # Obter apenas valores ativos (com compatibilidade para dados antigos)
-        rpm_enabled = current_data.get("rpm_enabled", [True] * 32)
-        map_enabled = current_data.get("map_enabled", [True] * 32)
-        active_rpm_values = get_active_axis_values(current_data["rpm_axis"], rpm_enabled)
-        active_map_values = get_active_axis_values(current_data["map_axis"], map_enabled)
+        grid_size = map_info["grid_size"]
+        
+        # Ajustar enable/disable para o grid_size correto
+        rpm_enabled_raw = current_data.get("rpm_enabled", [True] * grid_size)
+        map_enabled_raw = current_data.get("map_enabled", [True] * grid_size)
+        
+        # Garantir que o tamanho está correto
+        if len(rpm_enabled_raw) != grid_size:
+            rpm_enabled = [True] * grid_size  # Para Lambda 16x16, usar todos
+        else:
+            rpm_enabled = rpm_enabled_raw
+            
+        if len(map_enabled_raw) != grid_size:
+            map_enabled = [True] * grid_size  # Para Lambda 16x16, usar todos
+        else:
+            map_enabled = map_enabled_raw
+        
+        # Ajustar também os eixos para o tamanho correto
+        rpm_axis = current_data["rpm_axis"]
+        map_axis = current_data["map_axis"]
+        
+        if len(rpm_axis) != grid_size:
+            rpm_axis = DEFAULT_RPM_AXIS[:grid_size]
+            current_data["rpm_axis"] = rpm_axis
+            
+        if len(map_axis) != grid_size:
+            map_axis = DEFAULT_MAP_AXIS[:grid_size]
+            current_data["map_axis"] = map_axis
+            
+        active_rpm_values = get_active_axis_values(rpm_axis, rpm_enabled)
+        active_map_values = get_active_axis_values(map_axis, map_enabled)
         
         st.write("**Eixo X (MAP em bar):** Valores crescentes (menor → maior)")
         st.write("**Eixo Y (RPM):** Valores decrescentes (maior → menor)")
@@ -339,10 +381,22 @@ with tab1:
         # Criar DataFrame pivotado para edição usando apenas valores ativos
         matrix = current_data["values_matrix"]
         
+        # Verificar se a matriz tem o tamanho correto, se não, redimensionar
+        if len(matrix) != grid_size or (len(matrix) > 0 and len(matrix[0]) != grid_size):
+            # Criar nova matriz com o tamanho correto
+            new_matrix = get_default_3d_map_values(selected_map_type, grid_size)
+            # Copiar valores existentes se possível
+            for i in range(min(len(matrix), grid_size)):
+                for j in range(min(len(matrix[i]) if i < len(matrix) else 0, grid_size)):
+                    new_matrix[i][j] = matrix[i][j]
+            matrix = new_matrix
+            # Atualizar na sessão
+            current_data["values_matrix"] = matrix
+        
         # Filtrar a matriz para usar apenas as posições ativas
         # Pegar apenas as linhas ativas (RPM) e colunas ativas (MAP)
-        active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled[:32]) if enabled]
-        active_map_indices = [i for i, enabled in enumerate(map_enabled[:32]) if enabled]
+        active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled[:grid_size]) if enabled]
+        active_map_indices = [i for i, enabled in enumerate(map_enabled[:grid_size]) if enabled]
         
         # Inverter a ordem do RPM para mostrar decrescente (maior para menor)
         active_rpm_values_reversed = list(reversed(active_rpm_values))
@@ -372,7 +426,8 @@ with tab1:
         format_str = "%.3f"  # Sempre 3 casas decimais
         
         # Criar versão com estilo para visualização
-        styled_df = matrix_df.style.background_gradient(cmap='RdYlBu_r', axis=None)
+        # Invertido: RdYlBu (sem _r) = vermelho para valores baixos, azul para valores altos
+        styled_df = matrix_df.style.background_gradient(cmap='RdYlBu', axis=None).format("{:.3f}")
         
         edited_matrix_df = st.data_editor(
             matrix_df,  # Usar DataFrame sem estilo para edição
@@ -393,16 +448,17 @@ with tab1:
         st.caption("Visualização com gradiente de cores:")
         st.dataframe(styled_df, use_container_width=True)
         
-        # Atualizar matriz na sessão - expandir de volta para 32x32
-        # Criar matriz 32x32 com valores padrão
-        full_matrix = np.zeros((32, 32))
+        # Atualizar matriz na sessão - expandir de volta para o grid_size
+        # Criar matriz com tamanho do grid
+        grid_size = map_info["grid_size"]
+        full_matrix = np.zeros((grid_size, grid_size))
         
         # Copiar valores editados de volta para as posições corretas
         # Considerando que o DataFrame está com RPM em ordem invertida (maior para menor)
         for i, rpm_idx in enumerate(active_rpm_indices_reversed):
-            if i < len(edited_matrix_df.values) and rpm_idx < 32:
+            if i < len(edited_matrix_df.values) and rpm_idx < grid_size:
                 for j, map_idx in enumerate(active_map_indices):
-                    if j < len(edited_matrix_df.values[i]) and map_idx < 32:
+                    if j < len(edited_matrix_df.values[i]) and map_idx < grid_size:
                         full_matrix[rpm_idx][map_idx] = edited_matrix_df.values[i][j]
         
         st.session_state[session_key]["values_matrix"] = full_matrix
@@ -451,25 +507,26 @@ with tab1:
                 st.rerun()
     
     with edit_tab2:
-        st.caption("Configure os eixos X (RPM) e Y (MAP) - 32 posições cada")
+        st.caption(f"Configure os eixos X (RPM) e Y (MAP) - {map_info['grid_size']} posições cada")
         
         col_x, col_y = st.columns(2)
         
         with col_x:
             st.subheader("Configurar Eixo X (RPM)")
             
-            # Garantir que temos 32 posições
+            # Garantir que temos o número correto de posições
+            grid_size = map_info["grid_size"]
             rpm_axis_temp = current_data["rpm_axis"].copy()
-            rpm_axis_values = [0.0] * 32  # Inicializar com 32 zeros
-            for i in range(min(len(rpm_axis_temp), 32)):
+            rpm_axis_values = [0.0] * grid_size  # Inicializar com grid_size zeros
+            for i in range(min(len(rpm_axis_temp), grid_size)):
                 rpm_axis_values[i] = rpm_axis_temp[i]
             
-            rpm_enabled_values = current_data.get("rpm_enabled", [True] * 32)
+            rpm_enabled_values = current_data.get("rpm_enabled", [True] * grid_size)
             
             # Criar DataFrame para edição
             rpm_df = pd.DataFrame({
-                "Ativo": rpm_enabled_values[:32],
-                "Posição": [f"Pos {i+1}" for i in range(32)],
+                "Ativo": rpm_enabled_values[:grid_size],
+                "Posição": [f"{i+1}" for i in range(grid_size)],
                 "RPM": rpm_axis_values
             })
             
@@ -509,18 +566,19 @@ with tab1:
         with col_y:
             st.subheader("Configurar Eixo Y (MAP em bar)")
             
-            # Garantir que temos 32 posições
+            # Garantir que temos o número correto de posições
+            grid_size = map_info["grid_size"]
             map_axis_temp = current_data["map_axis"].copy()
-            map_axis_values = [0.0] * 32  # Inicializar com 32 zeros
-            for i in range(min(len(map_axis_temp), 32)):
+            map_axis_values = [0.0] * grid_size  # Inicializar com grid_size zeros
+            for i in range(min(len(map_axis_temp), grid_size)):
                 map_axis_values[i] = map_axis_temp[i]
             
-            map_enabled_values = current_data.get("map_enabled", [True] * 32)
+            map_enabled_values = current_data.get("map_enabled", [True] * grid_size)
             
             # Criar DataFrame para edição
             map_df = pd.DataFrame({
-                "Ativo": map_enabled_values[:32],
-                "Posição": [f"Pos {i+1}" for i in range(32)],
+                "Ativo": map_enabled_values[:grid_size],
+                "Posição": [f"{i+1}" for i in range(grid_size)],
                 "MAP (bar)": map_axis_values
             })
             
@@ -593,14 +651,15 @@ with tab1:
         
         if save_button:
             if matrix_valid:
+                grid_size = MAP_TYPES_3D[selected_map_type]["grid_size"]
                 success = save_3d_map_data(
                     selected_vehicle_id,
                     selected_map_type,
                     selected_bank or "shared",
                     current_data["rpm_axis"],
                     current_data["map_axis"],
-                    current_data.get("rpm_enabled", [True] * 32),
-                    current_data.get("map_enabled", [True] * 32),
+                    current_data.get("rpm_enabled", [True] * grid_size),
+                    current_data.get("map_enabled", [True] * grid_size),
                     current_data["values_matrix"]
                 )
                 if success:
@@ -629,26 +688,42 @@ with tab2:
     if session_key in st.session_state:
         current_data = st.session_state[session_key]
         # Usar apenas valores ativos dos eixos
-        rpm_enabled = current_data.get("rpm_enabled", [True] * 32)
-        map_enabled = current_data.get("map_enabled", [True] * 32)
+        grid_size = map_info["grid_size"]
+        rpm_enabled = current_data.get("rpm_enabled", [True] * grid_size)
+        map_enabled = current_data.get("map_enabled", [True] * grid_size)
         active_rpm_values = get_active_axis_values(current_data["rpm_axis"], rpm_enabled)
         active_map_values = get_active_axis_values(current_data["map_axis"], map_enabled)
         values_matrix = current_data["values_matrix"]
         
+        # Filtrar a matriz para usar apenas os pontos habilitados
+        active_rpm_indices = [i for i in range(len(rpm_enabled)) if rpm_enabled[i]]
+        active_map_indices = [i for i in range(len(map_enabled)) if map_enabled[i]]
+        
+        # Criar matriz filtrada
+        filtered_matrix = []
+        for rpm_idx in active_rpm_indices:
+            row = []
+            for map_idx in active_map_indices:
+                if rpm_idx < len(values_matrix) and map_idx < len(values_matrix[rpm_idx]):
+                    row.append(values_matrix[rpm_idx][map_idx])
+                else:
+                    row.append(0.0)
+            filtered_matrix.append(row)
+        
         # Criar gráfico 3D Surface com gradiente invertido
         fig = go.Figure(data=[go.Surface(
-            x=active_rpm_values,
-            y=active_map_values,
-            z=values_matrix,
-            colorscale='RdYlBu_r',
+            x=active_map_values,  # MAP no eixo X
+            y=active_rpm_values,  # RPM no eixo Y
+            z=filtered_matrix,    # Matriz filtrada
+            colorscale='RdYlBu',  # Invertido: vermelho=baixo, azul=alto
             name='Mapa 3D'
         )])
         
         fig.update_layout(
             title=f"Visualização 3D - {map_info['name']}",
             scene=dict(
-                xaxis_title="RPM",
-                yaxis_title="MAP (bar)",
+                xaxis_title="MAP (bar)",  # MAP no eixo X
+                yaxis_title="RPM",         # RPM no eixo Y
                 zaxis_title=f"Valor ({map_info['unit']})",
                 camera=dict(
                     eye=dict(x=1.5, y=1.5, z=1.5)
@@ -660,41 +735,43 @@ with tab2:
         
         st.plotly_chart(fig, use_container_width=True)
         
-        # Estatísticas da matriz
+        # Estatísticas da matriz - usando apenas valores da matriz filtrada
+        filtered_values = np.array(filtered_matrix).flatten()
+        
         col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
         
         with col_stats1:
             st.metric(
                 "Valor Mínimo",
-                f"{np.min(values_matrix):.3f} {map_info['unit']}"
+                f"{np.min(filtered_values):.3f} {map_info['unit']}"
             )
         
         with col_stats2:
             st.metric(
                 "Valor Máximo",
-                f"{np.max(values_matrix):.3f} {map_info['unit']}"
+                f"{np.max(filtered_values):.3f} {map_info['unit']}"
             )
         
         with col_stats3:
             st.metric(
                 "Valor Médio",
-                f"{np.mean(values_matrix):.3f} {map_info['unit']}"
+                f"{np.mean(filtered_values):.3f} {map_info['unit']}"
             )
         
         with col_stats4:
             st.metric(
                 "Desvio Padrão",
-                f"{np.std(values_matrix):.3f} {map_info['unit']}"
+                f"{np.std(filtered_values):.3f} {map_info['unit']}"
             )
         
         # Gráfico de contorno
         st.subheader("Mapa de Contorno")
         
         contour_fig = go.Figure(data=go.Contour(
-            x=active_rpm_values,
-            y=active_map_values,
-            z=values_matrix,
-            colorscale='RdYlBu_r',
+            x=active_map_values,  # MAP no eixo X
+            y=active_rpm_values,  # RPM no eixo Y
+            z=filtered_matrix,    # Matriz filtrada
+            colorscale='RdYlBu',  # Invertido: vermelho=baixo, azul=alto
             contours=dict(
                 showlabels=True,
                 labelfont=dict(size=12, color='white')
@@ -703,8 +780,8 @@ with tab2:
         
         contour_fig.update_layout(
             title="Vista de Contorno",
-            xaxis_title="RPM",
-            yaxis_title="MAP (bar)",
+            xaxis_title="MAP (bar)",  # MAP no eixo X
+            yaxis_title="RPM",         # RPM no eixo Y
             height=400
         )
         
@@ -722,12 +799,13 @@ with tab3:
     if session_key in st.session_state:
         current_data = st.session_state[session_key]
         values_matrix = current_data["values_matrix"]
-        rpm_enabled = current_data.get("rpm_enabled", [True] * 32)
-        map_enabled = current_data.get("map_enabled", [True] * 32)
+        grid_size = map_info["grid_size"]
+        rpm_enabled = current_data.get("rpm_enabled", [True] * grid_size)
+        map_enabled = current_data.get("map_enabled", [True] * grid_size)
         
         # Obter índices ativos
-        active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled[:32]) if enabled]
-        active_map_indices = [i for i, enabled in enumerate(map_enabled[:32]) if enabled]
+        active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled[:grid_size]) if enabled]
+        active_map_indices = [i for i, enabled in enumerate(map_enabled[:grid_size]) if enabled]
         
         # Inverter a ordem do RPM para mostrar decrescente (maior para menor)
         active_rpm_indices_reversed = list(reversed(active_rpm_indices))
@@ -786,20 +864,22 @@ with tab3:
                     lines = pasted_values.strip().split("\n")
                     
                     # Obter informações sobre posições ativas
-                    rpm_enabled = current_data.get("rpm_enabled", [True] * 32)
-                    map_enabled = current_data.get("map_enabled", [True] * 32)
+                    grid_size = map_info["grid_size"]
+                    rpm_enabled = current_data.get("rpm_enabled", [True] * grid_size)
+                    map_enabled = current_data.get("map_enabled", [True] * grid_size)
                     active_rpm_count = sum(rpm_enabled)
                     active_map_count = sum(map_enabled)
                     
                     if len(lines) == active_rpm_count:
                         # Obter índices ativos
-                        active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled[:32]) if enabled]
-                        active_map_indices = [i for i, enabled in enumerate(map_enabled[:32]) if enabled]
+                        grid_size = map_info["grid_size"]
+                        active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled[:grid_size]) if enabled]
+                        active_map_indices = [i for i, enabled in enumerate(map_enabled[:grid_size]) if enabled]
                         
                         # Inverter a ordem do RPM (dados vêm em ordem decrescente)
                         active_rpm_indices_reversed = list(reversed(active_rpm_indices))
                         
-                        # Criar matriz 32x32 com valores existentes
+                        # Criar matriz com valores existentes
                         full_matrix = st.session_state[session_key]["values_matrix"].copy()
                         
                         # Aplicar valores colados nas posições corretas
@@ -915,8 +995,8 @@ with tab3:
                 "map_info": map_info,
                 "rpm_axis": current_data["rpm_axis"],
                 "map_axis": current_data["map_axis"],
-                "rpm_enabled": current_data.get("rpm_enabled", [True] * 32),
-                "map_enabled": current_data.get("map_enabled", [True] * 32),
+                "rpm_enabled": current_data.get("rpm_enabled", [True] * map_info["grid_size"]),
+                "map_enabled": current_data.get("map_enabled", [True] * map_info["grid_size"]),
                 "values_matrix": current_data["values_matrix"].tolist(),
                 "exported_at": pd.Timestamp.now().isoformat()
             }
@@ -936,8 +1016,9 @@ with tab3:
             values_matrix = current_data["values_matrix"]
             
             # Converter matriz para formato CSV usando apenas valores ativos
-            active_rpm_values = get_active_axis_values(current_data["rpm_axis"], current_data.get("rpm_enabled", [True] * 32))
-            active_map_values = get_active_axis_values(current_data["map_axis"], current_data.get("map_enabled", [True] * 32))
+            grid_size = map_info["grid_size"]
+            active_rpm_values = get_active_axis_values(current_data["rpm_axis"], current_data.get("rpm_enabled", [True] * grid_size))
+            active_map_values = get_active_axis_values(current_data["map_axis"], current_data.get("map_enabled", [True] * grid_size))
             csv_data = []
             for i, map_val in enumerate(active_map_values):
                 for j, rpm_val in enumerate(active_rpm_values):

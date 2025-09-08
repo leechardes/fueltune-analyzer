@@ -7,15 +7,15 @@ name: Release Management
 
 on:
   push:
-    tags: ['v*.*.*']
+    tags: ["v*.*.*"]
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g., v1.2.3)'
+        description: "Release version (e.g., v1.2.3)"
         required: true
         type: string
       prerelease:
-        description: 'Is this a pre-release?'
+        description: "Is this a pre-release?"
         required: false
         type: boolean
         default: false
@@ -32,73 +32,73 @@ jobs:
     name: Validate Release
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    
+
     outputs:
       version: ${{ steps.version.outputs.version }}
       is-prerelease: ${{ steps.version.outputs.is-prerelease }}
       changelog: ${{ steps.changelog.outputs.changelog }}
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # Full history for changelog
-    
-    - name: Determine version
-      id: version
-      run: |
-        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-          VERSION="${{ inputs.version }}"
-          IS_PRERELEASE="${{ inputs.prerelease }}"
-        else
-          VERSION="${GITHUB_REF#refs/tags/}"
-          # Check if it's a prerelease (alpha, beta, rc)
-          if [[ "$VERSION" =~ -(alpha|beta|rc) ]]; then
-            IS_PRERELEASE=true
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history for changelog
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+            IS_PRERELEASE="${{ inputs.prerelease }}"
           else
-            IS_PRERELEASE=false
+            VERSION="${GITHUB_REF#refs/tags/}"
+            # Check if it's a prerelease (alpha, beta, rc)
+            if [[ "$VERSION" =~ -(alpha|beta|rc) ]]; then
+              IS_PRERELEASE=true
+            else
+              IS_PRERELEASE=false
+            fi
           fi
-        fi
-        
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "is-prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
-        
-        # Validate version format
-        if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.*)?$ ]]; then
-          echo "Invalid version format: $VERSION"
-          exit 1
-        fi
-    
-    - name: Generate changelog
-      id: changelog
-      run: |
-        # Get the latest tag before current
-        PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
-        
-        if [[ -n "$PREVIOUS_TAG" ]]; then
-          CHANGELOG=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
-        else
-          CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
-        fi
-        
-        # Save changelog to file
-        cat > changelog.md << EOF
-        ## What's Changed
-        
-        $CHANGELOG
-        
-        **Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...${{ steps.version.outputs.version }}
-        EOF
-        
-        echo "changelog<<EOF" >> $GITHUB_OUTPUT
-        cat changelog.md >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
-    
-    - name: Validate tests passed
-      run: |
-        # Check if latest CI run passed
-        echo "Validating that tests passed for this commit"
-        # In a real scenario, you'd check the CI status
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "is-prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+
+          # Validate version format
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.*)?$ ]]; then
+            echo "Invalid version format: $VERSION"
+            exit 1
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the latest tag before current
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            CHANGELOG=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          else
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          fi
+
+          # Save changelog to file
+          cat > changelog.md << EOF
+          ## What's Changed
+
+          $CHANGELOG
+
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...${{ steps.version.outputs.version }}
+          EOF
+
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          cat changelog.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Validate tests passed
+        run: |
+          # Check if latest CI run passed
+          echo "Validating that tests passed for this commit"
+          # In a real scenario, you'd check the CI status
 
   # =============================================
   # Build Release Artifacts
@@ -108,112 +108,112 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [validate-release]
-    
+
     outputs:
       image-digest: ${{ steps.build.outputs.digest }}
       artifacts-path: ${{ steps.artifacts.outputs.path }}
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.12'
-    
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-    
-    - name: Log in to Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    
-    - name: Build and push release image
-      id: build
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: ./Dockerfile
-        target: production
-        push: true
-        tags: |
-          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-release.outputs.version }}
-          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-        labels: |
-          org.opencontainers.image.title=FuelTune Streamlit
-          org.opencontainers.image.description=FuelTech data analysis platform
-          org.opencontainers.image.version=${{ needs.validate-release.outputs.version }}
-          org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
-          org.opencontainers.image.revision=${{ github.sha }}
-          org.opencontainers.image.source=${{ github.repositoryUrl }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-        platforms: linux/amd64,linux/arm64
-        build-args: |
-          VERSION=${{ needs.validate-release.outputs.version }}
-          BUILD_DATE=${{ github.event.head_commit.timestamp }}
-          GIT_COMMIT=${{ github.sha }}
-    
-    - name: Create source distribution
-      run: |
-        python -m pip install build
-        python -m build --sdist --outdir dist/
-    
-    - name: Create deployment package
-      id: artifacts
-      run: |
-        mkdir -p release-artifacts
-        
-        # Copy Kubernetes manifests
-        cp -r k8s/ release-artifacts/
-        
-        # Copy Helm charts
-        if [ -d "infrastructure/helm" ]; then
-          cp -r infrastructure/helm release-artifacts/
-        fi
-        
-        # Copy scripts
-        if [ -d "scripts" ]; then
-          cp -r scripts release-artifacts/
-        fi
-        
-        # Create deployment guide
-        cat > release-artifacts/DEPLOYMENT.md << EOF
-        # FuelTune Streamlit ${{ needs.validate-release.outputs.version }} Deployment Guide
-        
-        ## Docker Deployment
-        \`\`\`bash
-        docker run -d -p 8501:8501 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-release.outputs.version }}
-        \`\`\`
-        
-        ## Kubernetes Deployment
-        \`\`\`bash
-        kubectl apply -f k8s/
-        \`\`\`
-        
-        ## Helm Deployment
-        \`\`\`bash
-        helm install fueltune ./helm/fueltune --values values-production.yaml
-        \`\`\`
-        EOF
-        
-        # Create archive
-        tar -czf release-artifacts.tar.gz release-artifacts/
-        
-        echo "path=release-artifacts.tar.gz" >> $GITHUB_OUTPUT
-    
-    - name: Upload release artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: release-artifacts-${{ needs.validate-release.outputs.version }}
-        path: |
-          release-artifacts.tar.gz
-          dist/
-        retention-days: 90
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push release image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          target: production
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-release.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          labels: |
+            org.opencontainers.image.title=FuelTune Streamlit
+            org.opencontainers.image.description=FuelTech data analysis platform
+            org.opencontainers.image.version=${{ needs.validate-release.outputs.version }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            VERSION=${{ needs.validate-release.outputs.version }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            GIT_COMMIT=${{ github.sha }}
+
+      - name: Create source distribution
+        run: |
+          python -m pip install build
+          python -m build --sdist --outdir dist/
+
+      - name: Create deployment package
+        id: artifacts
+        run: |
+          mkdir -p release-artifacts
+
+          # Copy Kubernetes manifests
+          cp -r k8s/ release-artifacts/
+
+          # Copy Helm charts
+          if [ -d "infrastructure/helm" ]; then
+            cp -r infrastructure/helm release-artifacts/
+          fi
+
+          # Copy scripts
+          if [ -d "scripts" ]; then
+            cp -r scripts release-artifacts/
+          fi
+
+          # Create deployment guide
+          cat > release-artifacts/DEPLOYMENT.md << EOF
+          # FuelTune Streamlit ${{ needs.validate-release.outputs.version }} Deployment Guide
+
+          ## Docker Deployment
+          \`\`\`bash
+          docker run -d -p 8503:8503 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-release.outputs.version }}
+          \`\`\`
+
+          ## Kubernetes Deployment
+          \`\`\`bash
+          kubectl apply -f k8s/
+          \`\`\`
+
+          ## Helm Deployment
+          \`\`\`bash
+          helm install fueltune ./helm/fueltune --values values-production.yaml
+          \`\`\`
+          EOF
+
+          # Create archive
+          tar -czf release-artifacts.tar.gz release-artifacts/
+
+          echo "path=release-artifacts.tar.gz" >> $GITHUB_OUTPUT
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-artifacts-${{ needs.validate-release.outputs.version }}
+          path: |
+            release-artifacts.tar.gz
+            dist/
+          retention-days: 90
 
   # =============================================
   # Security Scan Release Image
@@ -223,28 +223,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [validate-release, build-release]
-    
+
     steps:
-    - name: Run comprehensive security scan
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-release.outputs.version }}
-        format: 'table'
-        exit-code: '1'
-        severity: 'CRITICAL,HIGH'
-    
-    - name: Generate security report
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-release.outputs.version }}
-        format: 'json'
-        output: 'security-report.json'
-    
-    - name: Upload security report
-      uses: actions/upload-artifact@v3
-      with:
-        name: security-report-${{ needs.validate-release.outputs.version }}
-        path: security-report.json
+      - name: Run comprehensive security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-release.outputs.version }}
+          format: "table"
+          exit-code: "1"
+          severity: "CRITICAL,HIGH"
+
+      - name: Generate security report
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-release.outputs.version }}
+          format: "json"
+          output: "security-report.json"
+
+      - name: Upload security report
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-report-${{ needs.validate-release.outputs.version }}
+          path: security-report.json
 
   # =============================================
   # Create GitHub Release
@@ -254,27 +254,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [validate-release, build-release, security-scan]
-    
+
     steps:
-    - name: Download release artifacts
-      uses: actions/download-artifact@v3
-      with:
-        name: release-artifacts-${{ needs.validate-release.outputs.version }}
-    
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: ${{ needs.validate-release.outputs.version }}
-        name: FuelTune Streamlit ${{ needs.validate-release.outputs.version }}
-        body: ${{ needs.validate-release.outputs.changelog }}
-        prerelease: ${{ needs.validate-release.outputs.is-prerelease }}
-        draft: false
-        files: |
-          release-artifacts.tar.gz
-          dist/*
-        generate_release_notes: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download release artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: release-artifacts-${{ needs.validate-release.outputs.version }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.validate-release.outputs.version }}
+          name: FuelTune Streamlit ${{ needs.validate-release.outputs.version }}
+          body: ${{ needs.validate-release.outputs.changelog }}
+          prerelease: ${{ needs.validate-release.outputs.is-prerelease }}
+          draft: false
+          files: |
+            release-artifacts.tar.gz
+            dist/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # =============================================
   # Deploy to Production (if stable release)
@@ -288,37 +288,37 @@ jobs:
     environment:
       name: production
       url: https://fueltune.example.com
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Helm
-      uses: azure/setup-helm@v3
-      with:
-        version: '3.12.0'
-    
-    - name: Configure kubectl
-      run: |
-        mkdir -p ~/.kube
-        echo "${{ secrets.KUBECONFIG_PRODUCTION }}" | base64 -d > ~/.kube/config
-    
-    - name: Deploy release to production
-      run: |
-        helm upgrade --install fueltune ./infrastructure/helm/fueltune \
-          --namespace fueltune \
-          --create-namespace \
-          --values ./infrastructure/helm/fueltune/values-production.yaml \
-          --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
-          --set image.tag=${{ needs.validate-release.outputs.version }} \
-          --set app.version=${{ needs.validate-release.outputs.version }} \
-          --wait --timeout=15m
-    
-    - name: Verify production deployment
-      run: |
-        sleep 120
-        curl -f https://fueltune.example.com/_stcore/health
-        echo "Production deployment verified!"
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: "3.12.0"
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_PRODUCTION }}" | base64 -d > ~/.kube/config
+
+      - name: Deploy release to production
+        run: |
+          helm upgrade --install fueltune ./infrastructure/helm/fueltune \
+            --namespace fueltune \
+            --create-namespace \
+            --values ./infrastructure/helm/fueltune/values-production.yaml \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
+            --set image.tag=${{ needs.validate-release.outputs.version }} \
+            --set app.version=${{ needs.validate-release.outputs.version }} \
+            --wait --timeout=15m
+
+      - name: Verify production deployment
+        run: |
+          sleep 120
+          curl -f https://fueltune.example.com/_stcore/health
+          echo "Production deployment verified!"
 
   # =============================================
   # Update Documentation
@@ -328,24 +328,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [validate-release, create-release]
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Update version in documentation
-      run: |
-        # Update version in various documentation files
-        sed -i "s/version = .*/version = '${{ needs.validate-release.outputs.version }}'/" docs/conf.py
-        sed -i "s/Version: .*/Version: ${{ needs.validate-release.outputs.version }}/" README.md
-    
-    - name: Commit documentation updates
-      run: |
-        git config --global user.name 'github-actions[bot]'
-        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-        git add -A
-        git commit -m "docs: update version to ${{ needs.validate-release.outputs.version }}" || exit 0
-        git push
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Update version in documentation
+        run: |
+          # Update version in various documentation files
+          sed -i "s/version = .*/version = '${{ needs.validate-release.outputs.version }}'/" docs/conf.py
+          sed -i "s/Version: .*/Version: ${{ needs.validate-release.outputs.version }}/" README.md
+
+      - name: Commit documentation updates
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m "docs: update version to ${{ needs.validate-release.outputs.version }}" || exit 0
+          git push
 
   # =============================================
   # Notification and Reporting
@@ -356,38 +356,38 @@ jobs:
     timeout-minutes: 5
     needs: [validate-release, create-release, deploy-production]
     if: always()
-    
+
     steps:
-    - name: Notify Slack
-      uses: 8398a7/action-slack@v3
-      with:
-        status: ${{ job.status }}
-        text: |
-          🎉 New release published!
-          Version: ${{ needs.validate-release.outputs.version }}
-          Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.validate-release.outputs.version }}
-          Production URL: https://fueltune.example.com
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-    
-    - name: Send email notification
-      uses: dawidd6/action-send-mail@v3
-      with:
-        server_address: smtp.gmail.com
-        server_port: 465
-        username: ${{ secrets.EMAIL_USERNAME }}
-        password: ${{ secrets.EMAIL_PASSWORD }}
-        subject: "FuelTune Streamlit ${{ needs.validate-release.outputs.version }} Released"
-        body: |
-          A new version of FuelTune Streamlit has been released!
-          
-          Version: ${{ needs.validate-release.outputs.version }}
-          Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.validate-release.outputs.version }}
-          
-          Changes:
-          ${{ needs.validate-release.outputs.changelog }}
-        to: ${{ secrets.NOTIFICATION_EMAIL }}
-        from: FuelTune CI/CD
+      - name: Notify Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            🎉 New release published!
+            Version: ${{ needs.validate-release.outputs.version }}
+            Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.validate-release.outputs.version }}
+            Production URL: https://fueltune.example.com
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Send email notification
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "FuelTune Streamlit ${{ needs.validate-release.outputs.version }} Released"
+          body: |
+            A new version of FuelTune Streamlit has been released!
+
+            Version: ${{ needs.validate-release.outputs.version }}
+            Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.validate-release.outputs.version }}
+
+            Changes:
+            ${{ needs.validate-release.outputs.changelog }}
+          to: ${{ secrets.NOTIFICATION_EMAIL }}
+          from: FuelTune CI/CD
 
   # =============================================
   # Cleanup
@@ -398,32 +398,32 @@ jobs:
     timeout-minutes: 10
     needs: [validate-release, create-release]
     if: always()
-    
+
     steps:
-    - name: Clean up old releases
-      uses: actions/github-script@v6
-      with:
-        script: |
-          const releases = await github.rest.repos.listReleases({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-          });
-          
-          // Keep only the latest 10 releases
-          const oldReleases = releases.data.slice(10);
-          
-          for (const release of oldReleases) {
-            if (release.prerelease) {
-              await github.rest.repos.deleteRelease({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                release_id: release.id,
-              });
-              console.log(`Deleted old pre-release: ${release.tag_name}`);
+      - name: Clean up old releases
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const releases = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+
+            // Keep only the latest 10 releases
+            const oldReleases = releases.data.slice(10);
+
+            for (const release of oldReleases) {
+              if (release.prerelease) {
+                await github.rest.repos.deleteRelease({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  release_id: release.id,
+                });
+                console.log(`Deleted old pre-release: ${release.tag_name}`);
+              }
             }
-          }
-    
-    - name: Clean up old Docker images
-      run: |
-        echo "Cleaning up old Docker images"
-        # Add logic to clean up old container images
+
+      - name: Clean up old Docker images
+        run: |
+          echo "Cleaning up old Docker images"
+          # Add logic to clean up old container images

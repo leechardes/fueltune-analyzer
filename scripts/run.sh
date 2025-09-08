@@ -17,7 +17,7 @@ cd "$PROJECT_DIR"
 
 # Variáveis padrão
 DEFAULT_HOST="localhost"
-DEFAULT_PORT="8501"
+DEFAULT_PORT="8503"
 MODE="streamlit"
 
 # Função para logging
@@ -44,7 +44,7 @@ check_venv() {
         log_info "Execute: ./scripts/setup.sh --full"
         exit 1
     fi
-    
+
     if [ ! -f "venv/bin/activate" ]; then
         log_error "Ambiente virtual está corrompido!"
         log_info "Execute: ./scripts/setup.sh --venv"
@@ -62,15 +62,15 @@ activate_venv() {
 # Verificar dependências críticas
 check_dependencies() {
     log_info "Verificando dependências críticas..."
-    
+
     critical_modules=(
         "streamlit"
-        "pandas" 
+        "pandas"
         "numpy"
         "plotly"
         "sqlalchemy"
     )
-    
+
     for module in "${critical_modules[@]}"; do
         if ! python -c "import $module" 2>/dev/null; then
             log_error "Módulo crítico não encontrado: $module"
@@ -78,7 +78,7 @@ check_dependencies() {
             exit 1
         fi
     done
-    
+
     log_success "Dependências críticas OK"
 }
 
@@ -91,7 +91,7 @@ load_environment() {
     else
         log_warning "Arquivo .env não encontrado. Usando valores padrão."
     fi
-    
+
     # Definir variáveis padrão se não existirem
     export FUELTUNE_HOST="${FUELTUNE_HOST:-$DEFAULT_HOST}"
     export FUELTUNE_PORT="${FUELTUNE_PORT:-$DEFAULT_PORT}"
@@ -104,17 +104,17 @@ run_streamlit() {
     local host="${1:-$FUELTUNE_HOST}"
     local port="${2:-$FUELTUNE_PORT}"
     local debug="${3:-$FUELTUNE_DEBUG}"
-    
+
     log_info "Iniciando FuelTune Streamlit..."
     log_info "Host: $host"
     log_info "Porta: $port"
     log_info "Debug: $debug"
-    
+
     if [ "$debug" = "true" ]; then
         export FUELTUNE_DEBUG=1
         log_warning "Modo debug ativado"
     fi
-    
+
     python main.py --host "$host" --port "$port"
 }
 
@@ -122,9 +122,9 @@ run_streamlit() {
 run_tests() {
     local coverage="${1:-true}"
     local verbose="${2:-true}"
-    
+
     log_info "Executando testes..."
-    
+
     python main.py --test $([ "$coverage" = "false" ] && echo "--no-coverage")
 }
 
@@ -149,50 +149,50 @@ clean_system() {
 # Executar em modo desenvolvimento
 run_development() {
     log_info "Executando em modo desenvolvimento..."
-    
+
     export FUELTUNE_DEBUG=true
     export FUELTUNE_LOG_LEVEL=DEBUG
     export FUELTUNE_PRODUCTION=false
     export FUELTUNE_HEADLESS=false
-    
-    run_streamlit "localhost" "8501"
+
+    run_streamlit "localhost" "8503"
 }
 
 # Executar em modo produção
 run_production() {
     log_info "Executando em modo produção..."
-    
+
     export FUELTUNE_DEBUG=false
     export FUELTUNE_LOG_LEVEL=INFO
     export FUELTUNE_PRODUCTION=true
     export FUELTUNE_HEADLESS=true
-    
-    run_streamlit "${FUELTUNE_HOST:-0.0.0.0}" "${FUELTUNE_PORT:-8501}"
+
+    run_streamlit "${FUELTUNE_HOST:-0.0.0.0}" "${FUELTUNE_PORT:-8503}"
 }
 
 # Executar com Docker
 run_docker() {
     log_info "Executando com Docker..."
-    
+
     if ! command -v docker &> /dev/null; then
         log_error "Docker não está instalado!"
         exit 1
     fi
-    
+
     if [ ! -f "Dockerfile" ]; then
         log_error "Dockerfile não encontrado!"
         exit 1
     fi
-    
+
     # Build da imagem se necessário
     if ! docker images | grep -q "fueltune-streamlit"; then
         log_info "Construindo imagem Docker..."
         docker build -t fueltune-streamlit .
     fi
-    
+
     # Executar container
     docker run -it --rm \
-        -p "${FUELTUNE_PORT:-8501}:8501" \
+        -p "${FUELTUNE_PORT:-8503}:8503" \
         -v "$(pwd)/data:/app/data" \
         -v "$(pwd)/logs:/app/logs" \
         fueltune-streamlit
@@ -227,9 +227,9 @@ run_custom() {
     echo "  main.py --setup                - Setup inicial"
     echo "  main.py --clean                - Limpar sistema"
     echo
-    
+
     read -p "Digite o comando (sem 'python'): " custom_cmd
-    
+
     if [ -n "$custom_cmd" ]; then
         log_info "Executando: python $custom_cmd"
         python $custom_cmd
@@ -250,12 +250,12 @@ check_prerequisites() {
 show_system_info() {
     echo -e "${BLUE}FuelTune Streamlit${NC}"
     echo "=================="
-    
+
     if [ -f "config.py" ]; then
         version=$(python -c "from config import config; print(config.APP_VERSION)" 2>/dev/null || echo "Unknown")
         echo "Versão: $version"
     fi
-    
+
     echo "Diretório: $PROJECT_DIR"
     echo "Python: $(python --version 2>&1)"
     echo "Ambiente: $([ -n "$VIRTUAL_ENV" ] && echo "Virtual Environment" || echo "System")"
@@ -266,15 +266,15 @@ show_system_info() {
 main() {
     # Verificar pré-requisitos
     check_prerequisites
-    
+
     if [ $# -eq 0 ]; then
         # Modo interativo
         show_system_info
-        
+
         while true; do
             show_menu
             read -p "Escolha uma opção: " choice
-            
+
             case $choice in
                 1) run_streamlit; break ;;
                 2) run_development; break ;;

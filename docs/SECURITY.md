@@ -89,7 +89,7 @@ def process_user_input(data: str) -> ProcessedData:
     # Valide sempre os inputs
     if not isinstance(data, str):
         raise ValueError("Input deve ser string")
-    
+
     # Sanitize dados
     clean_data = sanitize_input(data)
     return process_data(clean_data)
@@ -167,14 +167,14 @@ def sanitize_filename(filename: str) -> str:
     """Sanitiza nome de arquivo."""
     # Remove caracteres perigosos
     safe_filename = re.sub(r'[^\w\-_\.]', '', filename)
-    
+
     # Previne path traversal
     safe_filename = Path(safe_filename).name
-    
+
     # Limite de tamanho
     if len(safe_filename) > 255:
         safe_filename = safe_filename[:255]
-    
+
     return safe_filename
 
 def sanitize_sql_input(input_str: str) -> str:
@@ -183,10 +183,10 @@ def sanitize_sql_input(input_str: str) -> str:
     # Este é apenas um exemplo
     dangerous_chars = ["'", '"', ";", "--", "/*", "*/"]
     clean_str = input_str
-    
+
     for char in dangerous_chars:
         clean_str = clean_str.replace(char, "")
-    
+
     return clean_str
 ```
 
@@ -211,7 +211,7 @@ def log_security_event(
         "timestamp": datetime.utcnow().isoformat(),
         "details": details
     }
-    
+
     if success:
         security_logger.info(f"Security event: {log_entry}")
     else:
@@ -220,7 +220,7 @@ def log_security_event(
 # Uso
 log_security_event(
     "file_upload",
-    "user123", 
+    "user123",
     {"filename": "data.csv", "size": 1024},
     success=True
 )
@@ -236,28 +236,28 @@ from typing import Optional
 
 class SecurityConfig:
     """Configurações de segurança para produção."""
-    
+
     # Autenticação
     REQUIRE_AUTH: bool = True
     AUTH_METHOD: str = "oauth2"  # oauth2, basic, custom
-    
+
     # Rate limiting
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_REQUESTS: int = 100
     RATE_LIMIT_WINDOW: int = 60  # seconds
-    
+
     # File uploads
     MAX_FILE_SIZE: int = 100 * 1024 * 1024  # 100MB
     ALLOWED_EXTENSIONS: set = {".csv", ".txt"}
-    
+
     # Database
     DB_ENCRYPTION: bool = True
     DB_BACKUP_ENCRYPTION: bool = True
-    
+
     # Logging
     LOG_SENSITIVE_DATA: bool = False
     AUDIT_LOG_RETENTION: int = 90  # days
-    
+
     @classmethod
     def get_secret_key(cls) -> str:
         """Recupera chave secreta."""
@@ -281,7 +281,7 @@ security_events = Counter(
 )
 
 failed_logins = Counter(
-    'failed_logins_total', 
+    'failed_logins_total',
     'Total failed login attempts',
     ['user_id', 'ip_address']
 )
@@ -312,7 +312,7 @@ groups:
           severity: warning
         annotations:
           summary: "High failed login rate detected"
-          
+
       - alert: LargeFileUpload
         expr: file_upload_size_bytes > 50000000  # 50MB
         for: 0s
@@ -320,7 +320,7 @@ groups:
           severity: info
         annotations:
           summary: "Large file upload detected"
-          
+
       - alert: SecurityEventSpike
         expr: rate(security_events_total{success="false"}[5m]) > 5
         for: 2m
@@ -359,29 +359,29 @@ export AUDIT_LOG_ENABLED=true
 server {
     listen 443 ssl http2;
     server_name fueltune.example.com;
-    
+
     # SSL Configuration
     ssl_certificate /path/to/certificate.crt;
     ssl_certificate_key /path/to/private.key;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:DHE+CHACHA20:!aNULL:!MD5:!DSS;
-    
+
     # Security Headers
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    
+
     # Rate Limiting
     limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
     limit_req zone=api burst=20 nodelay;
-    
+
     # File Upload Limits
     client_max_body_size 100M;
-    
+
     location / {
-        proxy_pass http://127.0.0.1:8501;
+        proxy_pass http://127.0.0.1:8503;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -425,10 +425,10 @@ ENV PYTHONPATH=/app
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8501/health')"
+    CMD python -c "import requests; requests.get('http://localhost:8503/health')"
 
 # Expor porta
-EXPOSE 8501
+EXPOSE 8503
 
 # Comando de inicialização
 CMD ["python", "main.py", "--prod"]
@@ -441,20 +441,20 @@ CMD ["python", "main.py", "--prod"]
 # Data protection utilities
 class GDPRCompliance:
     """Utilitários para compliance com GDPR."""
-    
+
     @staticmethod
     def anonymize_data(df: pd.DataFrame) -> pd.DataFrame:
         """Anonimiza dados pessoais."""
         # Remove colunas identificáveis
         sensitive_columns = ['user_id', 'license_plate', 'location']
         return df.drop(columns=sensitive_columns, errors='ignore')
-    
+
     @staticmethod
     def hash_identifier(identifier: str) -> str:
         """Hash identificadores para pseudônimos."""
         import hashlib
         return hashlib.sha256(identifier.encode()).hexdigest()
-    
+
     @staticmethod
     def log_data_access(user_id: str, data_type: str):
         """Log acesso a dados pessoais."""
@@ -469,10 +469,10 @@ class GDPRCompliance:
 ```python
 class AuditTrail:
     """Sistema de auditoria."""
-    
+
     def __init__(self):
         self.audit_logger = logging.getLogger("audit")
-    
+
     def log_action(
         self,
         user_id: str,
@@ -490,7 +490,7 @@ class AuditTrail:
             "ip_address": self._get_client_ip(),
             "user_agent": self._get_user_agent()
         }
-        
+
         self.audit_logger.info(json.dumps(audit_entry))
 ```
 

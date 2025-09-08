@@ -14,6 +14,7 @@ pytest-asyncio>=0.21.0     # Async testing
 coverage>=7.3.0            # Coverage reporting
 
 # Code Quality and Formatting
+PyYAML==6.0.1              # YAML parser (required by bandit, pre-compiled version)
 black>=23.0.0              # Code formatting
 isort>=5.12.0              # Import sorting
 pylint>=3.0.0              # Comprehensive linting
@@ -40,7 +41,7 @@ jupyterlab>=4.0.0
 
 # Debugging and Profiling  
 ipdb>=0.13.13              # Enhanced debugger
-pdb++>=0.10.3              # Better pdb
+pdbpp>=0.10.3              # Better pdb (pdb++)
 memory-profiler>=0.61.0    # Memory profiling
 line-profiler>=4.1.1       # Line-by-line profiling
 py-spy>=0.3.14             # Sampling profiler
@@ -72,7 +73,7 @@ pydantic>=2.4.0            # Data validation
 httpx>=0.25.0              # HTTP client for testing
 
 # Visualization Development
-altair>=5.1.0              # Alternative visualization
+altair>=4.2.0,<5.0.0       # Alternative visualization (limitado por streamlit-aggrid)
 bokeh>=3.3.0               # Interactive plots
 dash>=2.14.0               # Alternative to Streamlit
 
@@ -83,13 +84,13 @@ invoke>=2.2.0              # Task execution
 fabric>=3.2.2              # Remote execution
 
 # Performance Testing
-locust>=2.17.0             # Load testing
+# locust>=2.17.0             # Load testing (commented - dependency conflicts)
 pytest-benchmark>=4.0.0    # Benchmark testing
 
 # Security Development
-safety>=2.3.0              # Dependency vulnerability checker
-pip-audit>=2.6.0           # Audit pip packages
-semgrep>=1.45.0            # Static analysis security
+# safety>=2.3.0              # Dependency vulnerability checker (commented - slow resolution)
+# pip-audit>=2.6.0           # Audit pip packages (commented - dependency conflicts)
+# semgrep>=1.45.0            # Static analysis security (commented - optional)
 
 # Mock and Testing Utilities
 responses>=0.24.0          # HTTP request mocking
@@ -102,17 +103,17 @@ python-decouple>=3.8       # Environment variable handling
 environs>=10.0.0           # Environment parsing
 
 # Git Hooks and Workflow
-commitizen>=3.12.0         # Conventional commits
+# commitizen>=3.12.0         # Conventional commits (commented - dependency resolution issues)
 semantic-version>=2.10.0   # Version handling
 bump2version>=1.0.1        # Version bumping
 
 # Documentation Building
-mkdocs>=1.5.0              # Alternative documentation
-mkdocs-material>=9.4.0     # Material theme
-pdoc>=14.1.0               # Auto API docs
+# mkdocs>=1.5.0              # Alternative documentation (commented - dependency resolution issues)
+# mkdocs-material>=9.4.0     # Material theme (commented - dependency resolution issues)
+# pdoc>=14.1.0               # Auto API docs (commented - dependency resolution issues)
 
 # Container Development
-docker-compose>=1.29.0     # Container orchestration (if available)
+# docker-compose>=1.29.0     # Container orchestration (commented - not needed for dev)
 
 # IDE Integration
 python-lsp-server>=1.8.0   # Language server

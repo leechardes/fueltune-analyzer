@@ -107,11 +107,13 @@ if selected_vehicle_id:
                     a_flow = vehicle.get("bank_a_injector_flow")
                     if a_flow is None:
                         a_flow = 80
+                    # Garantir que o valor não exceda o máximo permitido
+                    a_flow_value = min(int(a_flow), 500)  # Aumentando o máximo para 500
                     bank_a_injector_flow = st.number_input(
                         "Vazão dos Bicos (lbs/h)",
                         min_value=0,
-                        max_value=300,
-                        value=int(a_flow),
+                        max_value=500,  # Aumentado de 300 para 500
+                        value=a_flow_value,
                         step=5
                     )
                     
@@ -215,11 +217,13 @@ if selected_vehicle_id:
                     b_flow = vehicle.get("bank_b_injector_flow")
                     if b_flow is None:
                         b_flow = 80
+                    # Garantir que o valor não exceda o máximo permitido
+                    b_flow_value = min(int(b_flow), 500)  # Aumentando o máximo para 500
                     bank_b_injector_flow = st.number_input(
                         "Vazão dos Bicos (lbs/h)",
                         min_value=0,
-                        max_value=300,
-                        value=int(b_flow),
+                        max_value=500,  # Aumentado de 300 para 500
+                        value=b_flow_value,
                         step=5
                     )
                     

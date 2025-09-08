@@ -25,7 +25,7 @@
 
 ### Database Support
 - **SQLite**: Development and single-user deployments
-- **PostgreSQL 15+**: Multi-user production deployments  
+- **PostgreSQL 15+**: Multi-user production deployments
 - **Psycopg2**: PostgreSQL adapter for Python
 - **SQLite3**: Built-in SQLite interface
 
@@ -37,7 +37,7 @@
 - **Mypy**: Static type checking
 - **Pre-commit**: Git hooks for code quality
 
-### Deployment & Infrastructure  
+### Deployment & Infrastructure
 - **Docker**: Containerization
 - **Docker Compose**: Multi-service orchestration
 - **Nginx**: Reverse proxy and static file serving
@@ -98,7 +98,7 @@ app/
 class Vehicle(Base):
     id: int
     name: str
-    make: str  
+    make: str
     model: str
     year: int
     engine_displacement: float
@@ -126,14 +126,14 @@ class VehicleConfig(Base):
     coil_dwell_time: float
     forced_induction_type: str
     target_lambda_idle: float
-    target_lambda_cruise: float  
+    target_lambda_cruise: float
     target_lambda_wot: float
     egt_limit: float
     knock_threshold: float
     lean_protection_lambda: float
 ```
 
-#### Log Data Models  
+#### Log Data Models
 ```python
 # Log Entry (37+ fields from FuelTech)
 class LogEntry(Base):
@@ -207,7 +207,7 @@ class Table(Base):
     type: TableType  # fuel, ignition, boost, custom
     description: str
     rpm_axis: list[float]  # JSON array
-    map_axis: list[float]  # JSON array  
+    map_axis: list[float]  # JSON array
     data: list[list[float]]  # 2D JSON array
     min_value: float
     max_value: float
@@ -236,56 +236,56 @@ class Snapshot(Base):
 ```python
 class DatabaseService:
     """Core database operations and connection management"""
-    
+
     def __init__(self, database_url: str):
         self.engine = create_engine(database_url)
         self.SessionLocal = sessionmaker(bind=self.engine)
-    
+
     def get_session(self) -> Session:
         """Get database session with proper cleanup"""
-        
+
     def init_db(self) -> None:
         """Initialize database schema"""
-        
+
     def health_check(self) -> bool:
         """Check database connectivity"""
 ```
 
-#### CSV Processing Service  
+#### CSV Processing Service
 ```python
 class CSVService:
     """Handle CSV import/export operations"""
-    
+
     def import_fueltech_csv(self, file_path: str, vehicle_id: int) -> ImportResult:
         """Import FuelTech CSV with field mapping and validation"""
-        
+
     def validate_csv_structure(self, df: pd.DataFrame) -> ValidationResult:
         """Validate CSV has required fields and data types"""
-        
+
     def map_csv_fields(self, df: pd.DataFrame) -> pd.DataFrame:
         """Map CSV columns to database fields"""
-        
+
     def batch_insert_log_data(self, session: Session, data: list[LogEntry]) -> None:
         """Efficiently insert large datasets"""
 ```
 
 #### Analysis Service
-```python  
+```python
 class AnalysisService:
     """Core data analysis and calculations"""
-    
+
     def calculate_session_statistics(self, session_id: str) -> SessionStats:
         """Calculate basic statistics for log session"""
-        
+
     def detect_knock_events(self, log_data: pd.DataFrame) -> list[KnockEvent]:
         """Analyze data for knock detection"""
-        
+
     def analyze_air_fuel_ratio(self, log_data: pd.DataFrame) -> AFRAnalysis:
         """Analyze lambda sensor data and AFR trends"""
-        
+
     def generate_tune_suggestions(self, analysis_data: dict) -> list[Suggestion]:
         """AI-powered tuning recommendations"""
-        
+
     def calculate_power_torque(self, log_data: pd.DataFrame) -> PowerCurve:
         """Calculate estimated power and torque curves"""
 ```
@@ -294,19 +294,19 @@ class AnalysisService:
 ```python
 class TableService:
     """Tuning table operations and editing"""
-    
+
     def create_table(self, vehicle_id: int, table_config: TableConfig) -> Table:
         """Create new tuning table with default values"""
-        
+
     def interpolate_table(self, table: Table, method: str = 'linear') -> Table:
         """Apply interpolation algorithm to table data"""
-        
+
     def smooth_table_region(self, table: Table, region: Region, factor: float) -> Table:
         """Smooth specific table region"""
-        
+
     def create_snapshot(self, table_id: int, name: str) -> Snapshot:
         """Create table snapshot for version control"""
-        
+
     def compare_snapshots(self, snap1_id: int, snap2_id: int) -> ComparisonResult:
         """Compare two table snapshots"""
 ```
@@ -317,10 +317,10 @@ class TableService:
 ```python
 def vehicle_manager_component():
     """Vehicle profile management interface"""
-    
+
     # Vehicle selection/creation
     st.selectbox("Select Vehicle", options=get_vehicles())
-    
+
     # Vehicle configuration form
     with st.form("vehicle_config"):
         name = st.text_input("Vehicle Name")
@@ -328,29 +328,29 @@ def vehicle_manager_component():
         model = st.text_input("Model")
         year = st.number_input("Year", min_value=1900)
         # ... additional fields
-        
+
         submitted = st.form_submit_button("Save Vehicle")
         if submitted:
             save_vehicle_config(...)
 ```
 
 #### Data Import Component
-```python  
+```python
 def data_import_component():
     """CSV data import interface"""
-    
+
     # File upload
     uploaded_file = st.file_uploader(
-        "Upload FuelTech CSV", 
+        "Upload FuelTech CSV",
         type=['csv'],
         help="Select your FuelTech log file"
     )
-    
+
     if uploaded_file:
         # Preview data
         df = pd.read_csv(uploaded_file)
         st.dataframe(df.head())
-        
+
         # Validation results
         validation = validate_csv_structure(df)
         if validation.errors:
@@ -371,32 +371,32 @@ def data_import_component():
 ```python
 def table_editor_component(table_id: int):
     """Interactive tuning table editor"""
-    
+
     table = get_table_by_id(table_id)
-    
+
     # Table visualization
     fig = create_3d_surface_plot(table)
     selected_point = plotly_events(
-        fig, 
-        click_event=True, 
+        fig,
+        click_event=True,
         key="table_click"
     )
-    
+
     # Edit controls
     if selected_point:
         row, col = get_cell_from_click(selected_point[0])
         current_value = table.data[row][col]
-        
+
         new_value = st.number_input(
             f"Edit Cell [{row},{col}]",
             value=current_value,
             step=0.1
         )
-        
+
         if st.button("Update Cell"):
             update_table_cell(table_id, row, col, new_value)
             st.experimental_rerun()
-    
+
     # Table operations
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -416,37 +416,37 @@ def table_editor_component(table_id: int):
 ```python
 class CSVImportPipeline:
     """Multi-stage CSV processing pipeline"""
-    
+
     def execute(self, file_path: str, vehicle_id: int) -> ImportResult:
         """Execute complete import pipeline"""
-        
+
         # Stage 1: Read and validate
         df = self.read_csv_file(file_path)
         validation = self.validate_structure(df)
-        
+
         if not validation.is_valid:
             return ImportResult(success=False, errors=validation.errors)
-        
+
         # Stage 2: Data cleaning
         df_clean = self.clean_data(df)
-        
+
         # Stage 3: Field mapping
         df_mapped = self.map_fields(df_clean)
-        
+
         # Stage 4: Type conversion
         df_typed = self.convert_types(df_mapped)
-        
+
         # Stage 5: Session creation
         session_id = self.create_session(df_typed, vehicle_id)
-        
+
         # Stage 6: Batch insert
         self.batch_insert_data(df_typed, session_id, vehicle_id)
-        
+
         # Stage 7: Calculate statistics
         self.calculate_session_stats(session_id)
-        
+
         return ImportResult(
-            success=True, 
+            success=True,
             session_id=session_id,
             rows_imported=len(df_typed)
         )
@@ -456,35 +456,35 @@ class CSVImportPipeline:
 ```python
 class AnalysisPipeline:
     """Real-time data analysis pipeline"""
-    
+
     def analyze_session(self, session_id: str) -> AnalysisResult:
         """Comprehensive session analysis"""
-        
+
         # Load session data
         log_data = self.load_session_data(session_id)
-        
+
         # Parallel analysis tasks
         with ThreadPoolExecutor() as executor:
             # Basic statistics
             stats_future = executor.submit(
                 self.calculate_statistics, log_data
             )
-            
-            # Knock detection  
+
+            # Knock detection
             knock_future = executor.submit(
                 self.detect_knock_events, log_data
             )
-            
+
             # AFR analysis
             afr_future = executor.submit(
-                self.analyze_afr, log_data  
+                self.analyze_afr, log_data
             )
-            
+
             # Performance metrics
             perf_future = executor.submit(
                 self.calculate_performance, log_data
             )
-        
+
         # Collect results
         return AnalysisResult(
             statistics=stats_future.result(),
@@ -520,20 +520,20 @@ def calculate_power_curve(session_id: str) -> dict:
 ```python
 class CacheService:
     """Redis-based caching for production"""
-    
+
     def __init__(self, redis_url: str):
         self.redis = redis.from_url(redis_url)
-    
+
     def get_session_analysis(self, session_id: str) -> Optional[dict]:
         """Get cached analysis results"""
         cached = self.redis.get(f"analysis:{session_id}")
         return json.loads(cached) if cached else None
-    
+
     def cache_session_analysis(self, session_id: str, analysis: dict, ttl: int = 3600):
         """Cache analysis results with TTL"""
         self.redis.setex(
-            f"analysis:{session_id}", 
-            ttl, 
+            f"analysis:{session_id}",
+            ttl,
             json.dumps(analysis, cls=CustomEncoder)
         )
 ```
@@ -547,7 +547,7 @@ class CacheService:
 - **Lazy Loading**: On-demand data loading for large datasets
 
 #### Data Processing Optimization
-- **Pandas Optimization**: Efficient data types and vectorized operations  
+- **Pandas Optimization**: Efficient data types and vectorized operations
 - **Chunked Processing**: Process large CSV files in chunks
 - **Parallel Processing**: Multi-threading for independent calculations
 - **Memory Management**: Explicit cleanup of large DataFrames
@@ -636,13 +636,13 @@ class LogEntryInput(BaseModel):
     rpm: int
     throttle_position: Optional[float]
     # ... other fields
-    
+
     @validator('rpm')
     def validate_rpm(cls, v):
         if not 0 <= v <= 20000:
             raise ValueError('RPM must be between 0 and 20000')
         return v
-    
+
     @validator('throttle_position')
     def validate_throttle(cls, v):
         if v is not None and not 0 <= v <= 100:
@@ -665,14 +665,14 @@ from unittest.mock import Mock, patch
 
 class TestCSVService:
     """Unit tests for CSV service"""
-    
+
     def test_import_valid_csv(self):
         """Test successful CSV import"""
         service = CSVService()
         result = service.import_fueltech_csv("test.csv", 1)
         assert result.success
         assert result.rows_imported > 0
-    
+
     def test_import_invalid_csv(self):
         """Test CSV validation failure"""
         service = CSVService()
@@ -680,18 +680,18 @@ class TestCSVService:
             service.import_fueltech_csv("invalid.csv", 1)
 ```
 
-#### Integration Testing  
+#### Integration Testing
 ```python
 class TestDatabaseIntegration:
     """Integration tests for database operations"""
-    
+
     @pytest.fixture
     def test_db(self):
         """Create test database"""
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
         return engine
-    
+
     def test_vehicle_crud_operations(self, test_db):
         """Test vehicle CRUD operations"""
         # Test create, read, update, delete operations
@@ -704,18 +704,18 @@ from selenium.webdriver.common.by import By
 
 class TestE2EWorkflow:
     """End-to-end workflow testing"""
-    
+
     def test_complete_import_workflow(self):
         """Test complete CSV import workflow"""
         driver = webdriver.Chrome()
-        
+
         # Navigate to application
-        driver.get("http://localhost:8501")
-        
+        driver.get("http://localhost:8503")
+
         # Upload CSV file
         upload = driver.find_element(By.XPATH, "//input[@type='file']")
         upload.send_keys("/path/to/test.csv")
-        
+
         # Verify import success
         success_msg = driver.find_element(By.CLASS_NAME, "success")
         assert "Imported" in success_msg.text

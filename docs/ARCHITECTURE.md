@@ -13,31 +13,31 @@ graph TB
         COMP[UI Components]
         PAGES[Page Modules]
     end
-    
+
     subgraph "Application Layer"
         SRV[Services]
         CTRL[Controllers]
         VALID[Validators]
     end
-    
+
     subgraph "Domain Layer"
         MODELS[Domain Models]
         BIZ[Business Logic]
         CALC[Calculations Engine]
     end
-    
+
     subgraph "Infrastructure Layer"
         DB[Database Layer]
         FILES[File System]
         CACHE[Caching Layer]
     end
-    
+
     subgraph "External Systems"
         CSV[CSV Files]
         EXPORT[Export Files]
         REPORTS[Generated Reports]
     end
-    
+
     UI --> COMP
     COMP --> SRV
     SRV --> MODELS
@@ -108,7 +108,7 @@ graph LR
     AS[Analysis Service] --> CE[Calculation Engine]
     TS[Table Service] --> IE[Interpolation Engine]
     ES[Export Service] --> TG[Template Generator]
-    
+
     VP --> VR[Validation Rules]
     CE --> SA[Statistical Analysis]
     IE --> MA[Mathematical Algorithms]
@@ -202,7 +202,7 @@ sequenceDiagram
     participant DE as Data Engine
     participant DB as Database
     participant AS as Analysis Service
-    
+
     UI->>CS: Upload CSV File
     CS->>VP: Validate File Structure
     VP-->>CS: Validation Result
@@ -230,7 +230,7 @@ flowchart TD
     I --> J[Generate Recommendations]
     J --> K[Cache Results]
     K --> L[Update UI]
-    
+
     D --> M[Log Errors]
     M --> N[User Notification]
 ```
@@ -265,27 +265,27 @@ T = TypeVar('T')
 
 class BaseRepository(Generic[T], ABC):
     """Abstract base repository defining common data operations."""
-    
+
     @abstractmethod
     def get_by_id(self, id_value: int) -> Optional[T]:
         """Retrieve entity by ID."""
         pass
-    
+
     @abstractmethod
     def get_all(self, limit: int = 100) -> List[T]:
         """Retrieve all entities with optional limit."""
         pass
-    
+
     @abstractmethod
     def create(self, entity: T) -> T:
         """Create new entity."""
         pass
-    
+
     @abstractmethod
     def update(self, id_value: int, updates: dict) -> Optional[T]:
         """Update existing entity."""
         pass
-    
+
     @abstractmethod
     def delete(self, id_value: int) -> bool:
         """Delete entity by ID."""
@@ -293,16 +293,16 @@ class BaseRepository(Generic[T], ABC):
 
 class LogRepository(BaseRepository[LogEntry]):
     """Specialized repository for log data operations."""
-    
+
     def __init__(self, session: Session):
         self.session = session
-    
+
     def get_session_data(self, session_id: str) -> List[LogEntry]:
         """Get all log entries for a specific session."""
         return self.session.query(LogEntry).filter(
             LogEntry.session_id == session_id
         ).order_by(LogEntry.timestamp).all()
-    
+
     def get_rpm_range(self, session_id: str, rpm_min: int, rpm_max: int) -> List[LogEntry]:
         """Get log entries within RPM range."""
         return self.session.query(LogEntry).filter(
@@ -321,29 +321,29 @@ from app.engines.analysis_engine import AnalysisEngine
 
 class AnalysisService:
     """Service orchestrating data analysis operations."""
-    
+
     def __init__(self, log_repository: LogRepository, analysis_engine: AnalysisEngine):
         self.log_repo = log_repository
         self.analysis_engine = analysis_engine
-    
+
     def analyze_session(self, session_id: str) -> AnalysisResult:
         """Perform comprehensive session analysis."""
-        
+
         # 1. Retrieve session data
         log_entries = self.log_repo.get_session_data(session_id)
-        
+
         if not log_entries:
             raise ValueError(f"No data found for session {session_id}")
-        
+
         # 2. Convert to analysis format
         analysis_data = self._prepare_analysis_data(log_entries)
-        
+
         # 3. Execute analysis pipeline
         results = self.analysis_engine.analyze(analysis_data)
-        
+
         # 4. Generate recommendations
         recommendations = self._generate_recommendations(results)
-        
+
         # 5. Package results
         return AnalysisResult(
             session_id=session_id,
@@ -353,15 +353,15 @@ class AnalysisService:
             recommendations=recommendations,
             quality_score=results.quality_score
         )
-    
+
     def compare_sessions(self, session_ids: List[str]) -> ComparisonResult:
         """Compare multiple sessions for trend analysis."""
-        
+
         session_analyses = []
         for session_id in session_ids:
             analysis = self.analyze_session(session_id)
             session_analyses.append(analysis)
-        
+
         return self.analysis_engine.compare_analyses(session_analyses)
 ```
 
@@ -374,12 +374,12 @@ from dataclasses import dataclass
 
 class Command(ABC):
     """Abstract command interface."""
-    
+
     @abstractmethod
     def execute(self) -> Any:
         """Execute the command."""
         pass
-    
+
     @abstractmethod
     def undo(self) -> Any:
         """Undo the command."""
@@ -388,20 +388,20 @@ class Command(ABC):
 @dataclass
 class TableEditCommand(Command):
     """Command for table editing operations."""
-    
+
     table_id: int
     row: int
     col: int
     new_value: float
     old_value: float
     table_service: 'TableService'
-    
+
     def execute(self) -> bool:
         """Apply the table edit."""
         return self.table_service.update_cell(
             self.table_id, self.row, self.col, self.new_value
         )
-    
+
     def undo(self) -> bool:
         """Revert the table edit."""
         return self.table_service.update_cell(
@@ -410,24 +410,24 @@ class TableEditCommand(Command):
 
 class CommandInvoker:
     """Command invoker with undo/redo support."""
-    
+
     def __init__(self):
         self.command_history: List[Command] = []
         self.current_index = -1
-    
+
     def execute_command(self, command: Command) -> Any:
         """Execute command and add to history."""
         result = command.execute()
-        
+
         # Remove any commands after current position
         self.command_history = self.command_history[:self.current_index + 1]
-        
+
         # Add new command
         self.command_history.append(command)
         self.current_index += 1
-        
+
         return result
-    
+
     def undo(self) -> bool:
         """Undo last command."""
         if self.current_index >= 0:
@@ -436,7 +436,7 @@ class CommandInvoker:
             self.current_index -= 1
             return result
         return False
-    
+
     def redo(self) -> bool:
         """Redo next command."""
         if self.current_index < len(self.command_history) - 1:
@@ -458,13 +458,13 @@ graph TB
         L3[L3: Database Cache]
         L4[L4: Redis Cache]
     end
-    
+
     subgraph "Data Sources"
         DB[(Database)]
         FILES[File System]
         CALC[Calculations]
     end
-    
+
     APP[Application] --> L1
     L1 --> L2
     L2 --> L3
@@ -485,14 +485,14 @@ from functools import wraps
 
 class CacheManager:
     """Multi-tier cache manager."""
-    
+
     def __init__(self, redis_url: Optional[str] = None):
         self.memory_cache: Dict[str, tuple] = {}  # (value, expiry)
         self.redis_client = redis.from_url(redis_url) if redis_url else None
-    
+
     def get(self, key: str) -> Optional[Any]:
         """Get value from cache hierarchy."""
-        
+
         # L1: Memory cache
         if key in self.memory_cache:
             value, expiry = self.memory_cache[key]
@@ -500,7 +500,7 @@ class CacheManager:
                 return value
             else:
                 del self.memory_cache[key]
-        
+
         # L2: Redis cache
         if self.redis_client:
             try:
@@ -512,15 +512,15 @@ class CacheManager:
                     return value
             except Exception as e:
                 logger.warning(f"Redis cache error: {e}")
-        
+
         return None
-    
+
     def set(self, key: str, value: Any, ttl: int = 3600) -> None:
         """Set value in cache hierarchy."""
-        
+
         # Set in memory cache
         self.memory_cache[key] = (value, time.time() + min(ttl, 300))  # Max 5 min
-        
+
         # Set in Redis cache
         if self.redis_client:
             try:
@@ -531,7 +531,7 @@ class CacheManager:
 # Cache decorator
 def cached(ttl: int = 3600, key_func: Optional[Callable] = None):
     """Caching decorator with custom key generation."""
-    
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -540,16 +540,16 @@ def cached(ttl: int = 3600, key_func: Optional[Callable] = None):
                 cache_key = key_func(*args, **kwargs)
             else:
                 cache_key = f"{func.__module__}.{func.__name__}:{hash(str(args) + str(sorted(kwargs.items())))}"
-            
+
             # Try cache first
             cached_result = cache_manager.get(cache_key)
             if cached_result is not None:
                 return cached_result
-            
+
             # Execute function and cache result
             result = func(*args, **kwargs)
             cache_manager.set(cache_key, result, ttl)
-            
+
             return result
         return wrapper
     return decorator
@@ -567,7 +567,7 @@ from sqlalchemy.pool import QueuePool
 
 class DatabaseManager:
     """Optimized database connection management."""
-    
+
     def __init__(self, database_url: str):
         self.engine = create_engine(
             database_url,
@@ -578,9 +578,9 @@ class DatabaseManager:
             pool_recycle=3600,         # Recycle connections every hour
             echo=False                 # Set to True for SQL debugging
         )
-        
+
         self.SessionLocal = sessionmaker(bind=self.engine)
-    
+
     def get_session(self):
         """Get database session with proper cleanup."""
         session = self.SessionLocal()
@@ -601,10 +601,10 @@ from sqlalchemy.orm import selectinload, joinedload
 
 class OptimizedLogRepository:
     """Performance-optimized log data repository."""
-    
+
     def get_session_data_optimized(self, session_id: str) -> List[LogEntry]:
         """Optimized query for session data with selective loading."""
-        
+
         return self.session.query(LogEntry).filter(
             LogEntry.session_id == session_id
         ).options(
@@ -613,10 +613,10 @@ class OptimizedLogRepository:
         ).order_by(
             LogEntry.timestamp  # Use indexed column for ordering
         ).all()
-    
+
     def get_aggregated_statistics(self, session_id: str) -> Dict[str, float]:
         """Use database aggregation instead of Python processing."""
-        
+
         result = self.session.query(
             func.count(LogEntry.id).label('point_count'),
             func.avg(LogEntry.rpm).label('avg_rpm'),
@@ -627,7 +627,7 @@ class OptimizedLogRepository:
         ).filter(
             LogEntry.session_id == session_id
         ).first()
-        
+
         return {
             'point_count': result.point_count or 0,
             'avg_rpm': round(result.avg_rpm or 0, 1),
@@ -648,47 +648,47 @@ from contextlib import contextmanager
 
 class MemoryManager:
     """Memory usage monitoring and optimization."""
-    
+
     @staticmethod
     def get_memory_usage() -> float:
         """Get current memory usage in MB."""
         process = psutil.Process(os.getpid())
         return process.memory_info().rss / 1024 / 1024
-    
+
     @staticmethod
     @contextmanager
     def memory_monitor(operation_name: str, max_memory_mb: float = 1024):
         """Context manager for memory monitoring."""
         start_memory = MemoryManager.get_memory_usage()
-        
+
         try:
             yield
         finally:
             end_memory = MemoryManager.get_memory_usage()
             memory_used = end_memory - start_memory
-            
+
             logger.info(f"{operation_name}: {memory_used:.1f}MB used")
-            
+
             if memory_used > max_memory_mb:
                 logger.warning(f"{operation_name}: High memory usage ({memory_used:.1f}MB)")
                 gc.collect()  # Force garbage collection
-    
+
     @staticmethod
     def optimize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         """Optimize DataFrame memory usage."""
-        
+
         # Convert object columns to category when beneficial
         for col in df.select_dtypes(include=['object']).columns:
             if df[col].nunique() / len(df) < 0.5:  # Less than 50% unique values
                 df[col] = df[col].astype('category')
-        
+
         # Downcast numeric columns
         for col in df.select_dtypes(include=['int']).columns:
             df[col] = pd.to_numeric(df[col], downcast='integer')
-        
+
         for col in df.select_dtypes(include=['float']).columns:
             df[col] = pd.to_numeric(df[col], downcast='float')
-        
+
         return df
 ```
 
@@ -703,19 +703,19 @@ import re
 
 class SecureLogEntry(BaseModel):
     """Secure log entry model with comprehensive validation."""
-    
+
     timestamp: float = Field(..., ge=0.0, description="Timestamp must be positive")
     rpm: int = Field(..., ge=0, le=20000, description="RPM must be 0-20000")
     throttle_position: Optional[float] = Field(None, ge=0.0, le=100.0)
     lambda_sensor: Optional[float] = Field(None, ge=0.5, le=2.0)
-    
+
     @validator('timestamp')
     def validate_timestamp_format(cls, v):
         """Validate timestamp is reasonable."""
         if v > 999999:  # More than 11 days of logging
             raise ValueError("Timestamp too large")
         return v
-    
+
     @validator('lambda_sensor')
     def validate_lambda_sensor(cls, v):
         """Validate lambda sensor reading is physically possible."""
@@ -725,21 +725,21 @@ class SecureLogEntry(BaseModel):
 
 class SecureVehicle(BaseModel):
     """Secure vehicle model with sanitized inputs."""
-    
+
     name: str = Field(..., min_length=1, max_length=100)
     make: str = Field(..., min_length=1, max_length=50)
     model: str = Field(..., min_length=1, max_length=50)
     year: int = Field(..., ge=1900, le=2030)
-    
+
     @validator('name', 'make', 'model')
     def sanitize_text_fields(cls, v):
         """Sanitize text fields to prevent injection."""
         # Remove potential SQL injection patterns
         sanitized = re.sub(r'[<>"\';\\]', '', v.strip())
-        
+
         if not sanitized:
             raise ValueError("Field cannot be empty after sanitization")
-        
+
         return sanitized
 ```
 
@@ -751,39 +751,39 @@ from sqlalchemy.orm import Session
 
 class SecureDatabaseOperations:
     """Secure database operations with parameterized queries."""
-    
+
     def __init__(self, session: Session):
         self.session = session
-    
+
     def get_session_data_secure(self, session_id: str, user_id: int) -> List[LogEntry]:
         """Secure session data retrieval with user authorization."""
-        
+
         # Use parameterized query to prevent SQL injection
         query = text("""
             SELECT le.* FROM log_entries le
             JOIN log_sessions ls ON le.session_id = ls.session_id
             JOIN vehicles v ON ls.vehicle_id = v.id
-            WHERE le.session_id = :session_id 
+            WHERE le.session_id = :session_id
             AND v.user_id = :user_id
             ORDER BY le.timestamp
         """)
-        
+
         result = self.session.execute(
-            query, 
+            query,
             {'session_id': session_id, 'user_id': user_id}
         )
-        
+
         return [LogEntry(**row._asdict()) for row in result.fetchall()]
-    
+
     def sanitize_search_term(self, search_term: str) -> str:
         """Sanitize user search input."""
         # Remove dangerous characters
         sanitized = re.sub(r'[%_\\]', '', search_term.strip())
-        
+
         # Limit length
         if len(sanitized) > 100:
             sanitized = sanitized[:100]
-        
+
         return sanitized
 ```
 
@@ -818,21 +818,21 @@ structlog.configure(
 
 class ApplicationLogger:
     """Centralized application logging."""
-    
+
     def __init__(self):
         self.logger = structlog.get_logger()
-    
+
     @contextmanager
     def operation_timer(self, operation: str, **context):
         """Time operations with structured logging."""
         start_time = time.time()
-        
+
         self.logger.info(
             "Operation started",
             operation=operation,
             **context
         )
-        
+
         try:
             yield
             duration = time.time() - start_time
@@ -852,7 +852,7 @@ class ApplicationLogger:
                 **context
             )
             raise
-    
+
     def log_csv_import(self, filename: str, rows: int, duration: float, errors: List[str]):
         """Log CSV import operation."""
         self.logger.info(
@@ -863,7 +863,7 @@ class ApplicationLogger:
             error_count=len(errors),
             errors=errors[:5] if errors else []  # Log first 5 errors
         )
-    
+
     def log_analysis_result(self, session_id: str, analysis_type: str, quality_score: float):
         """Log analysis completion."""
         self.logger.info(
@@ -893,31 +893,31 @@ class PerformanceMetric:
 
 class PerformanceMonitor:
     """Application performance monitoring."""
-    
+
     def __init__(self, max_metrics: int = 1000):
         self.metrics: deque = deque(maxlen=max_metrics)
         self.operation_stats: Dict[str, List[float]] = {}
-    
+
     def record_operation(self, metric: PerformanceMetric):
         """Record performance metric."""
         self.metrics.append(metric)
-        
+
         if metric.operation not in self.operation_stats:
             self.operation_stats[metric.operation] = []
-        
+
         self.operation_stats[metric.operation].append(metric.duration)
-        
+
         # Keep only recent metrics per operation
         if len(self.operation_stats[metric.operation]) > 100:
             self.operation_stats[metric.operation] = self.operation_stats[metric.operation][-100:]
-    
+
     def get_operation_stats(self, operation: str) -> Dict[str, float]:
         """Get statistical summary for operation."""
         if operation not in self.operation_stats:
             return {}
-        
+
         durations = self.operation_stats[operation]
-        
+
         return {
             'count': len(durations),
             'avg_duration': sum(durations) / len(durations),
@@ -925,11 +925,11 @@ class PerformanceMonitor:
             'max_duration': max(durations),
             'p95_duration': sorted(durations)[int(0.95 * len(durations))]
         }
-    
+
     def get_slow_operations(self, threshold: float = 1.0) -> List[PerformanceMetric]:
         """Get operations slower than threshold."""
         return [
-            metric for metric in self.metrics 
+            metric for metric in self.metrics
             if metric.duration > threshold
         ]
 ```
@@ -964,14 +964,14 @@ RUN useradd -m -u 1000 fueltune
 USER fueltune
 
 # Expose port
-EXPOSE 8501
+EXPOSE 8503
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8501/_stcore/health || exit 1
+    CMD curl -f http://localhost:8503/_stcore/health || exit 1
 
 # Run application
-CMD ["streamlit", "run", "main.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "main.py", "--server.port=8503", "--server.address=0.0.0.0"]
 ```
 
 ### 2. Docker Compose Configuration
@@ -984,7 +984,7 @@ services:
   fueltune-app:
     build: .
     ports:
-      - "8501:8501"
+      - "8503:8503"
     environment:
       - DATABASE_URL=postgresql://fueltune:password@postgres:5432/fueltune
       - REDIS_URL=redis://redis:6379

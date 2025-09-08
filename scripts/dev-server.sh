@@ -18,7 +18,7 @@ WHITE='\033[1;37m'
 NC='\033[0m'
 
 # Configurações
-PORT=${PORT:-8501}
+PORT=${PORT:-8503}
 HOST=${HOST:-0.0.0.0}
 DEBUG=${DEBUG:-true}
 
@@ -62,7 +62,7 @@ check_python() {
         print_error "Python não encontrado!"
         exit 1
     fi
-    
+
     print_info "Usando: $($PYTHON_CMD --version)"
 }
 
@@ -73,7 +73,7 @@ check_streamlit() {
         print_info "Execute: pip install streamlit"
         exit 1
     fi
-    
+
     local version=$($PYTHON_CMD -c "import streamlit; print(streamlit.__version__)" 2>/dev/null)
     print_info "Streamlit versão: $version"
 }
@@ -84,10 +84,10 @@ check_project_structure() {
         print_error "Arquivo principal não encontrado (app.py ou main.py)!"
         exit 1
     fi
-    
+
     # Criar diretórios necessários
     mkdir -p data logs cache
-    
+
     print_info "Estrutura do projeto verificada"
 }
 
@@ -98,7 +98,7 @@ setup_environment() {
     export LOG_LEVEL=${LOG_LEVEL:-DEBUG}
     export STREAMLIT_SERVER_PORT=$PORT
     export STREAMLIT_SERVER_ADDRESS=$HOST
-    
+
     # Configuração do Streamlit
     mkdir -p ~/.streamlit
     cat > ~/.streamlit/config.toml << EOF
@@ -132,7 +132,7 @@ messageFormat = "%(asctime)s %(levelname)s: %(message)s"
 showErrorDetails = true
 toolbarMode = "auto"
 EOF
-    
+
     print_info "Ambiente configurado"
 }
 
@@ -149,16 +149,16 @@ trap cleanup EXIT INT TERM
 # Função principal
 main() {
     print_banner
-    
+
     print_info "Iniciando servidor de desenvolvimento..."
     echo
-    
+
     # Verificações
     check_python
     check_streamlit
     check_project_structure
     setup_environment
-    
+
     echo
     print_success "🚀 Iniciando FuelTune Streamlit..."
     print_info "📍 URL: http://$HOST:$PORT"
@@ -166,19 +166,19 @@ main() {
     print_info "📁 Diretório: $(pwd)"
     print_warning "⚠️  Hot-reload ativado - arquivos serão monitorados"
     echo
-    
+
     # Determinar arquivo principal
     if [[ -f "app.py" ]]; then
         APP_FILE="app.py"
     else
         APP_FILE="main.py"
     fi
-    
+
     print_info "📄 Executando: $APP_FILE"
     echo
     print_info "Para parar o servidor: Ctrl+C"
     echo
-    
+
     # Iniciar Streamlit
     $PYTHON_CMD -m streamlit run $APP_FILE \
         --server.port=$PORT \

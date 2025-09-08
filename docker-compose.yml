@@ -2,20 +2,20 @@
 # FuelTune Streamlit - Development Environment
 # =============================================
 # Local development setup with hot reload
-version: '3.8'
+version: "3.8"
 
 services:
   # =============================================
   # FuelTune Application
   # =============================================
   fueltune-app:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
-      target: deps  # Use deps stage for development
+      target: deps # Use deps stage for development
     container_name: fueltune-dev
     ports:
-      - "8501:8501"
+      - "8503:8503"
     volumes:
       # Mount source code for hot reload
       - .:/app
@@ -26,14 +26,14 @@ services:
       - DEBUG=true
       - LOG_LEVEL=DEBUG
       - DATABASE_URL=sqlite:///data/fueltune_dev.db
-      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_PORT=8503
       - STREAMLIT_SERVER_ADDRESS=0.0.0.0
       - CACHE_EXPIRY_HOURS=1
     networks:
       - fueltune-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8503/_stcore/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -79,7 +79,7 @@ services:
   # =============================================
   # Development Tools
   # =============================================
-  
+
   # pgAdmin for database management
   pgadmin:
     image: dpage/pgadmin4:7
@@ -114,18 +114,18 @@ services:
   # =============================================
   # Monitoring & Observability (Development)
   # =============================================
-  
+
   # Prometheus for metrics
   prometheus:
     image: prom/prometheus:latest
     container_name: fueltune-prometheus-dev
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--storage.tsdb.retention.time=200h"
+      - "--web.enable-lifecycle"
     ports:
       - "9090:9090"
     volumes:

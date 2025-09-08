@@ -23,3 +23,9 @@ xlrd>=2.0.0
 requests>=2.31.0
 Pillow>=10.0.0
 pytz>=2023.3
+
+# Streamlit Extensions
+streamlit-aggrid>=1.0.5    # Interactive data grids for Streamlit
+
+# Clipboard and System Integration
+pyperclip>=1.8.0    # Cross-platform clipboard utilities

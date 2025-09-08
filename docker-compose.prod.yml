@@ -2,7 +2,7 @@
 # FuelTune Streamlit - Production Environment
 # =============================================
 # Production-ready setup with security and monitoring
-version: '3.8'
+version: "3.8"
 
 services:
   # =============================================
@@ -44,7 +44,7 @@ services:
       - LOG_LEVEL=INFO
       - DATABASE_URL=postgresql://fueltune:${POSTGRES_PASSWORD}@postgres:5432/fueltune_prod
       - REDIS_URL=redis://redis:6379/0
-      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_PORT=8503
       - STREAMLIT_SERVER_ADDRESS=0.0.0.0
       - CACHE_EXPIRY_HOURS=24
       - APP_ENV=production
@@ -58,13 +58,13 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.0'
+          cpus: "1.0"
           memory: 1G
         reservations:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 512M
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8503/_stcore/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -86,7 +86,7 @@ services:
       - LOG_LEVEL=INFO
       - DATABASE_URL=postgresql://fueltune:${POSTGRES_PASSWORD}@postgres:5432/fueltune_prod
       - REDIS_URL=redis://redis:6379/0
-      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_PORT=8503
       - STREAMLIT_SERVER_ADDRESS=0.0.0.0
       - CACHE_EXPIRY_HOURS=24
       - APP_ENV=production
@@ -100,13 +100,13 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.0'
+          cpus: "1.0"
           memory: 1G
         reservations:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 512M
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8503/_stcore/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -138,10 +138,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
+          cpus: "2.0"
           memory: 2G
         reservations:
-          cpus: '1.0'
+          cpus: "1.0"
           memory: 1G
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U fueltune -d fueltune_prod"]
@@ -171,10 +171,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 512M
         reservations:
-          cpus: '0.25'
+          cpus: "0.25"
           memory: 256M
     healthcheck:
       test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
@@ -185,19 +185,19 @@ services:
   # =============================================
   # Monitoring & Observability
   # =============================================
-  
+
   # Prometheus
   prometheus:
     image: prom/prometheus:latest
     container_name: fueltune-prometheus
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=30d'
-      - '--web.enable-lifecycle'
-      - '--web.external-url=http://localhost:9090'
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+      - "--web.external-url=http://localhost:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
@@ -208,10 +208,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.0'
+          cpus: "1.0"
           memory: 1G
         reservations:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 512M
 
   # Grafana
@@ -235,10 +235,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 512M
         reservations:
-          cpus: '0.25'
+          cpus: "0.25"
           memory: 256M
 
   # AlertManager
@@ -246,9 +246,9 @@ services:
     image: prom/alertmanager:latest
     container_name: fueltune-alertmanager
     command:
-      - '--config.file=/etc/alertmanager/alertmanager.yml'
-      - '--storage.path=/alertmanager'
-      - '--web.external-url=http://localhost:9093'
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.external-url=http://localhost:9093"
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager_data:/alertmanager
@@ -261,9 +261,9 @@ services:
     image: prom/node-exporter:latest
     container_name: fueltune-node-exporter
     command:
-      - '--path.rootfs=/host'
+      - "--path.rootfs=/host"
     volumes:
-      - '/:/host:ro,rslave'
+      - "/:/host:ro,rslave"
     networks:
       - fueltune-network
     restart: unless-stopped
@@ -272,7 +272,7 @@ services:
   # =============================================
   # Log Management
   # =============================================
-  
+
   # Loki for log aggregation
   loki:
     image: grafana/loki:latest

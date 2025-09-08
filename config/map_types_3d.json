@@ -10,13 +10,13 @@
     "description": "Mapa principal 3D baseado em RPM vs MAP"
   },
   "lambda_target_3d_map": {
-    "name": "Mapa de Lambda Alvo 3D - 32x32",
-    "grid_size": 32,
+    "name": "Mapa de Lambda Alvo 3D - 16x16 (256 posições)",
+    "grid_size": 16,
     "x_axis_type": "RPM",
     "y_axis_type": "MAP",
     "unit": "λ",
     "min_value": 0.6,
     "max_value": 1.5,
-    "description": "Mapa 3D de lambda alvo"
+    "description": "Mapa 3D de lambda alvo com grid 16x16"
   }
 }

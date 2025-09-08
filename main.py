@@ -20,7 +20,7 @@ Usage:
 Environment Variables:
     FUELTUNE_DEBUG=1                        # Habilitar modo debug
     FUELTUNE_LOG_LEVEL=INFO                 # Nível de log
-    FUELTUNE_PORT=8501                      # Porta do Streamlit
+    FUELTUNE_PORT=8503                      # Porta do Streamlit
     FUELTUNE_HOST=localhost                 # Host do Streamlit
 
 Author: FuelTune Development Team
@@ -139,7 +139,7 @@ class FuelTuneApplication:
 
         logger.debug(f"Diretórios criados/verificados: {len(directories)}")
 
-    def run_streamlit(self, host: str = "localhost", port: int = 8501) -> NoReturn:
+    def run_streamlit(self, host: str = "localhost", port: int = 8503) -> NoReturn:
         """
         Executar a aplicação Streamlit.
 
@@ -496,7 +496,7 @@ Exemplos:
 Variáveis de ambiente:
     FUELTUNE_DEBUG=1                   # Habilitar modo debug
     FUELTUNE_LOG_LEVEL=INFO           # Nível de log (DEBUG,INFO,WARNING,ERROR)
-    FUELTUNE_PORT=8501                # Porta do Streamlit
+    FUELTUNE_PORT=8503                # Porta do Streamlit
     FUELTUNE_HOST=localhost           # Host do Streamlit
     FUELTUNE_HEADLESS=1               # Modo headless (sem browser)
     FUELTUNE_PRODUCTION=1             # Modo produção (desabilita file watcher)
@@ -505,28 +505,38 @@ Variáveis de ambiente:
 
     # Command options
     parser.add_argument(
-        "--version", action="version", version=f"FuelTune Streamlit v{config.APP_VERSION}"
+        "--version",
+        action="version",
+        version=f"FuelTune Streamlit v{config.APP_VERSION}",
     )
 
     parser.add_argument(
-        "--streamlit", action="store_true", help="Executar aplicação Streamlit (default)"
+        "--streamlit",
+        action="store_true",
+        help="Executar aplicação Streamlit (default)",
     )
 
     parser.add_argument("--test", action="store_true", help="Executar suite de testes")
 
     parser.add_argument(
-        "--no-coverage", action="store_true", help="Desabilitar relatório de cobertura nos testes"
+        "--no-coverage",
+        action="store_true",
+        help="Desabilitar relatório de cobertura nos testes",
     )
 
     parser.add_argument("--docs", action="store_true", help="Gerar documentação Sphinx")
 
     parser.add_argument(
-        "--health-check", action="store_true", help="Executar verificação de saúde do sistema"
+        "--health-check",
+        action="store_true",
+        help="Executar verificação de saúde do sistema",
     )
 
     parser.add_argument("--setup", action="store_true", help="Executar setup inicial")
 
-    parser.add_argument("--clean", action="store_true", help="Limpar caches e arquivos temporários")
+    parser.add_argument(
+        "--clean", action="store_true", help="Limpar caches e arquivos temporários"
+    )
 
     # Streamlit options
     parser.add_argument(
@@ -538,8 +548,8 @@ Variáveis de ambiente:
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.getenv("FUELTUNE_PORT", "8501")),
-        help="Porta para Streamlit (default: 8501)",
+        default=int(os.getenv("FUELTUNE_PORT", "8503")),
+        help="Porta para Streamlit (default: 8503)",
     )
 
     parser.add_argument("--debug", action="store_true", help="Habilitar modo debug")
