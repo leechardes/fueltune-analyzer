@@ -39,6 +39,297 @@ except ImportError:
         return "64b12a8c-0345-41a9-bfc4-d5d360efc8ca"
     pass
 
+# === FUEL MAP AUTO CALCULATOR FUNCTIONS ===
+
+# Presets de estratégias de tuning
+STRATEGY_PRESETS = {
+    'conservative': {
+        'name': 'Conservadora',
+        'description': 'AFR rico, margens de segurança maiores',
+        'idle': 13.5,
+        'cruise': 14.0,
+        'load': 12.5,
+        'wot': 11.5,
+        'boost': 11.0,
+        'safety_factor': 1.1
+    },
+    'balanced': {
+        'name': 'Balanceada',
+        'description': 'Valores típicos de fábrica',
+        'idle': 14.2,
+        'cruise': 14.7,
+        'load': 13.2,
+        'wot': 12.5,
+        'boost': 12.0,
+        'safety_factor': 1.0
+    },
+    'aggressive': {
+        'name': 'Agressiva',
+        'description': 'AFR pobre, eficiência máxima',
+        'idle': 14.7,
+        'cruise': 15.5,
+        'load': 13.8,
+        'wot': 13.0,
+        'boost': 12.5,
+        'safety_factor': 0.9
+    }
+}
+
+def get_vehicle_data_from_session() -> Dict[str, Any]:
+    """Obtém dados do veículo do session_state."""
+    from src.data.vehicle_database import get_vehicle_by_id
+    
+    # Tentar obter o veículo selecionado
+    selected_vehicle_id = st.session_state.get('selected_vehicle_id')
+    
+    if selected_vehicle_id:
+        vehicle = get_vehicle_by_id(selected_vehicle_id)
+        if vehicle:
+            # Calcular vazão total dos bicos em lbs/h
+            total_flow_a = vehicle.get('bank_a_total_flow', 0) if vehicle.get('bank_a_enabled') else 0
+            total_flow_b = vehicle.get('bank_b_total_flow', 0) if vehicle.get('bank_b_enabled') else 0
+            total_flow_lbs = total_flow_a + total_flow_b
+            
+            # Converter vazão de lbs/h para cc/min (1 lb/h ≈ 10.5 cc/min)
+            injector_flow_cc = total_flow_lbs * 10.5 if total_flow_lbs > 0 else 550
+            
+            # Verificar se é turbo
+            aspiration = vehicle.get('engine_aspiration', '').lower()
+            is_turbo = any(term in aspiration for term in ['turbo', 'super'])
+            
+            return {
+                'displacement': vehicle.get('engine_displacement', 2.0),  # Litros
+                'cylinders': vehicle.get('engine_cylinders', 4),
+                'injector_flow_cc': injector_flow_cc,  # cc/min
+                'injector_flow_lbs': total_flow_lbs,  # lbs/h para exibição
+                'fuel_type': vehicle.get('fuel_type', 'Gasolina'),
+                'turbo': is_turbo,
+                'boost_pressure': vehicle.get('boost_pressure', 1.0) if is_turbo else 0.0,  # bar
+                'bsfc_factor': vehicle.get('bsfc_factor', 0.50)
+            }
+    
+    # Valores padrão se não houver veículo selecionado
+    return {
+        'displacement': 2.0,  # Litros
+        'cylinders': 4,
+        'injector_flow_cc': 550,  # cc/min
+        'injector_flow_lbs': 52,  # lbs/h (550cc/min ≈ 52 lbs/h)
+        'fuel_type': 'Gasolina',
+        'turbo': False,
+        'boost_pressure': 0.0,  # bar
+        'bsfc_factor': 0.50
+    }
+
+def calculate_base_injection_time(map_kpa: float, engine_displacement: float, 
+                                cylinders: int, injector_flow_cc_min: float, 
+                                afr_target: float, boost_pressure: float = 0) -> float:
+    """Calcula tempo base de injeção baseado nos parâmetros do motor.
+    
+    A vazão do bico varia com a pressão de combustível:
+    - Vazão nominal é medida a 3 bar de pressão de combustível
+    - Com boost, a pressão de combustível aumenta (regulador 1:1)
+    - Nova vazão = Vazão nominal × √(Nova pressão / Pressão base)
+    """
+    try:
+        # MAP é pressão absoluta em kPa
+        map_bar = map_kpa / 100.0
+        
+        # Calcular pressão de combustível real
+        # Pressão base = 3 bar (padrão para medição de vazão)
+        # Com boost, pressão aumenta 1:1 (regulador de pressão referenciado)
+        fuel_pressure_base = 3.0  # bar
+        fuel_pressure_actual = fuel_pressure_base + boost_pressure
+        
+        # Ajustar vazão do bico baseado na pressão real
+        # Fórmula: Q2 = Q1 × √(P2/P1)
+        flow_correction = (fuel_pressure_actual / fuel_pressure_base) ** 0.5
+        injector_flow_corrected = injector_flow_cc_min * flow_correction
+        
+        # Calcular VE baseado na pressão MAP absoluta
+        # Agora usando valores corretos considerando 1.013 bar como atmosférico
+        if map_bar <= 0.2:  # Vácuo extremo (< 20 kPa absoluto)
+            ve = 0.25 + (map_bar * 1.0)  # 25-45% VE
+        elif map_bar <= 0.4:  # Vácuo alto (20-40 kPa)
+            ve = 0.45 + (map_bar - 0.2) * 0.5  # 45-55% VE
+        elif map_bar <= 0.6:  # Vácuo médio (40-60 kPa)
+            ve = 0.55 + (map_bar - 0.4) * 0.75  # 55-70% VE
+        elif map_bar <= 0.8:  # Vácuo baixo (60-80 kPa)
+            ve = 0.70 + (map_bar - 0.6) * 0.5  # 70-80% VE
+        elif map_bar <= 1.013:  # Próximo à atmosférica (80-101.3 kPa)
+            ve = 0.80 + (map_bar - 0.8) * 0.7  # 80-95% VE
+        elif map_bar <= 1.5:  # Boost baixo (101.3-150 kPa)
+            ve = 0.95 + (map_bar - 1.013) * 0.1  # 95-100% VE
+        elif map_bar <= 2.0:  # Boost médio (150-200 kPa)
+            ve = 1.00 + (map_bar - 1.5) * 0.2  # 100-110% VE
+        else:  # Boost alto (>200 kPa)
+            ve = 1.10 + min((map_bar - 2.0) * 0.15, 0.2)  # 110-130% VE
+        
+        # Assumindo RPM médio de 3000 para cálculo base
+        rpm = 3000
+        
+        # Volume de ar por cilindro por ciclo (L)
+        cylinder_volume = engine_displacement / cylinders
+        
+        # Taxa de fluxo de ar (L/min)
+        air_flow_per_cylinder = (cylinder_volume * ve * rpm) / 2  # /2 porque 4 tempos
+        
+        # Converter para g/min (densidade do ar ~1.2 g/L)
+        air_mass_per_min = air_flow_per_cylinder * 1.2
+        
+        # Massa de combustível necessária por minuto (g/min)
+        fuel_mass_per_min = air_mass_per_min / afr_target
+        
+        # Converter para por ciclo
+        fuel_per_cycle = fuel_mass_per_min / (rpm / 2)  # /2 porque injeta a cada 2 rotações
+        
+        # Converter vazão do bico CORRIGIDA de cc/min para g/min
+        # Densidade da gasolina ~0.75 g/cc
+        fuel_density = 0.75
+        injector_flow_g_min = (injector_flow_corrected / cylinders) * fuel_density  # Por bico, com correção de pressão
+        
+        # Calcular duty cycle necessário
+        duty_cycle = (fuel_mass_per_min / injector_flow_g_min) if injector_flow_g_min > 0 else 0
+        
+        # Tempo disponível por ciclo (ms)
+        time_per_cycle = (60000 / rpm) * 2  # *2 porque injeta a cada 2 rotações
+        
+        # Tempo de injeção (ms)
+        injection_time = time_per_cycle * duty_cycle
+        
+        # Adicionar tempo morto do bico (dead time)
+        dead_time = 1.0  # ms típico
+        injection_time += dead_time
+        
+        # Adicionar fator de escala baseado na pressão para garantir progressão correta
+        # Pressão atmosférica (1.013 bar) deve ter valores maiores que vácuo
+        pressure_factor = map_bar / 1.013  # Normalizar pela pressão atmosférica
+        if pressure_factor < 1.0:
+            # Para vácuo, reduzir proporcionalmente
+            injection_time = injection_time * (0.3 + 0.7 * pressure_factor)
+        else:
+            # Para boost, aumentar proporcionalmente
+            injection_time = injection_time * (1.0 + (pressure_factor - 1.0) * 0.5)
+        
+        return max(1.5, min(injection_time, 35.0))  # Entre 1.5ms e 35ms
+    
+    except Exception as e:
+        return 2.0  # Valor padrão seguro
+
+def get_afr_target(map_kpa: float, strategy: str) -> float:
+    """Retorna AFR alvo baseado na pressão MAP e estratégia."""
+    preset = STRATEGY_PRESETS.get(strategy, STRATEGY_PRESETS['balanced'])
+    
+    if map_kpa < 30:  # Vácuo alto (idle)
+        return preset['idle']
+    elif map_kpa < 60:  # Cruzeiro baixo
+        return preset['cruise']
+    elif map_kpa < 90:  # Carga parcial
+        return preset['load']
+    elif map_kpa < 100:  # Carga alta (atmosférico)
+        return preset['wot']
+    else:  # Boost (turbo)
+        return preset['boost']
+
+def apply_boost_correction(base_time: float, map_kpa: float, 
+                         boost_pressure_bar: float, has_turbo: bool) -> float:
+    """Aplica correção para pressão de boost."""
+    if not has_turbo or map_kpa <= 100:
+        return base_time
+    
+    # Fator de correção baseado na pressão de boost
+    boost_factor = 1.0 + (boost_pressure_bar * (map_kpa - 100) / 100)
+    return base_time * boost_factor
+
+def apply_fuel_correction(base_time: float, fuel_type: str) -> float:
+    """Aplica correção baseada no tipo de combustível."""
+    corrections = {
+        'gasoline': 1.0,
+        'gasolina': 1.0,
+        'ethanol': 1.4,  # Etanol precisa ~40% mais combustível
+        'etanol': 1.4,
+        'e85': 1.3,      # E85 precisa ~30% mais
+        'flex': 1.2,     # Flex pode variar
+        'metanol': 1.5,  # Metanol precisa mais combustível
+        'gnv': 0.9,      # GNV é mais eficiente
+        'racing': 0.95   # Combustível de corrida pode ser mais eficiente
+    }
+    return base_time * corrections.get(fuel_type.lower(), 1.0)
+
+def calculate_map_values(axis_values: List[float], vehicle_data: Dict[str, Any], 
+                        strategy: str, safety_factor: float, 
+                        apply_fuel_corr: bool = True) -> List[float]:
+    """Calcula valores do mapa para todos os pontos do eixo."""
+    calculated_values = []
+    
+    for map_value in axis_values:
+        # MAP pode ser negativo (vácuo) ou positivo (boost)
+        # Valores típicos: -1.0 a 2.0 bar (relativo à atmosfera)
+        if abs(map_value) < 10:  # Assumir que valores < 10 são em bar
+            map_bar_relative = map_value  # Valor relativo à pressão atmosférica
+        else:
+            # Se estiver em kPa, converter para bar
+            map_bar_relative = map_value / 100
+        
+        # Converter para pressão absoluta
+        # Pressão atmosférica = 1.013 bar (101.3 kPa)
+        # -1.0 bar relative = 0.013 bar absolute (vácuo quase total)
+        # -0.5 bar relative = 0.513 bar absolute (vácuo médio)
+        # 0.0 bar relative = 1.013 bar absolute (pressão atmosférica)
+        # 1.0 bar relative = 2.013 bar absolute (1 bar de boost)
+        map_bar_absolute = map_bar_relative + 1.013
+        map_absolute_kpa = map_bar_absolute * 100  # Converter para kPa para a função
+        
+        # Obter AFR alvo para este ponto usando pressão absoluta
+        afr_target = get_afr_target(map_absolute_kpa, strategy)
+        
+        # Determinar boost atual baseado no MAP
+        # Se MAP relativo > 0, temos boost
+        current_boost = max(0, map_bar_relative)  # Boost em bar
+        
+        # Calcular tempo base de injeção usando pressão absoluta
+        base_time = calculate_base_injection_time(
+            map_absolute_kpa,  # Usar pressão absoluta para cálculo
+            vehicle_data.get('displacement', 2.0),
+            vehicle_data.get('cylinders', 4),
+            vehicle_data.get('injector_flow_cc', 550),  # Usar injector_flow_cc
+            afr_target,
+            current_boost  # Passar boost atual para correção de vazão
+        )
+        
+        # Nota: A correção de boost agora é aplicada dentro de calculate_base_injection_time
+        # através do ajuste da vazão do bico com a pressão de combustível
+        
+        # Aplicar correção de combustível se habilitado
+        if apply_fuel_corr:
+            fuel_type = vehicle_data.get('fuel_type', 'gasoline').lower()
+            base_time = apply_fuel_correction(base_time, fuel_type)
+        
+        # Aplicar fator de segurança
+        final_time = base_time * safety_factor
+        
+        calculated_values.append(final_time)
+    
+    return calculated_values
+
+def validate_vehicle_data(vehicle_data: Dict[str, Any]) -> Tuple[bool, str]:
+    """Valida se os dados do veículo estão completos para cálculo."""
+    required_fields = [
+        ('displacement', 'Cilindrada'),
+        ('cylinders', 'Cilindros'),
+        ('injector_flow_cc', 'Vazão dos Bicos')
+    ]
+    missing_fields = []
+    
+    for field, display_name in required_fields:
+        value = vehicle_data.get(field, 0)
+        if value == 0 or value is None:
+            missing_fields.append(display_name)
+    
+    if missing_fields:
+        return False, f"Dados incompletos: {', '.join(missing_fields)}"
+    
+    return True, "Dados válidos"
+
 # Configuração da página
 st.title("Mapas de Injeção 2D")
 st.caption("Configure mapas de injeção bidimensionais")
@@ -51,8 +342,8 @@ def load_map_types_config():
     # Se o arquivo não existir, usar configuração padrão
     if not config_path.exists():
         return {
-            "main_fuel_2d_map_32": {
-                "name": "Mapa Principal de Injeção (MAP) - 32 posições",
+            "main_fuel_2d_map": {
+                "name": "Mapa Principal de Injeção (MAP)",
                 "positions": 32,
                 "axis_type": "MAP",
                 "unit": "ms",
@@ -141,19 +432,63 @@ def get_default_enabled_positions(axis_type: str, positions: int, map_type_key: 
         return [True] * positions  # Todas ativas para outros tipos
 
 def get_active_values(values: List[float], enabled: List[bool]) -> List[float]:
-    """Retorna apenas os valores ativos."""
-    return [values[i] for i in range(len(values)) if i < len(enabled) and enabled[i]]
+    """Retorna apenas os valores ativos (onde enabled[i] é True)."""
+    if not enabled:
+        return values  # Se não houver lista de enabled, retorna todos
+    
+    active = []
+    for i in range(min(len(values), len(enabled))):
+        if enabled[i]:  # Incluir apenas se estiver habilitado
+            active.append(values[i])
+    return active
 
-def get_default_map_values(map_type: str, axis_type: str, positions: int) -> List[float]:
-    """Retorna valores padrão para o mapa baseado no tipo e posições ativas."""
+def get_default_map_values(map_type: str, axis_type: str, positions: int, vehicle_id: str = None) -> List[float]:
+    """Retorna valores padrão para o mapa baseado no tipo, posições ativas e características do veículo.
+    
+    Os valores padrão são específicos para cada veículo baseado em suas características:
+    - Cilindrada do motor
+    - Número de cilindros
+    - Vazão dos bicos
+    - Tipo de combustível
+    - Presença de turbo
+    """
     enabled = get_default_enabled_positions(axis_type, positions)
     active_count = sum(enabled)
     
+    # Tentar obter dados do veículo para personalizar valores padrão
+    vehicle_factor = 1.0
+    if vehicle_id:
+        try:
+            vehicle = get_vehicle_by_id(vehicle_id)
+            if vehicle:
+                # Calcular fator baseado nas características do veículo
+                displacement = vehicle.get('engine_displacement', 2.0)
+                cylinders = vehicle.get('engine_cylinders', 4)
+                
+                # Fator baseado em cilindrada por cilindro
+                cc_per_cylinder = (displacement * 1000) / cylinders
+                # Motor padrão: 500cc por cilindro
+                vehicle_factor = cc_per_cylinder / 500.0
+        except:
+            pass
+    
     if "main_fuel" in map_type:
-        # Valores de injeção típicos (5-15ms)
-        return list(np.linspace(5.0, 15.0, active_count))
-    elif "compensation" in map_type:
-        # Valores de compensação (0% inicial)
+        # Valores de injeção personalizados para o veículo
+        base_min = 3.0 * vehicle_factor
+        base_max = 12.0 * vehicle_factor
+        return list(np.linspace(base_min, base_max, active_count))
+    elif "rpm_compensation" in map_type:
+        # Compensação por RPM inicial varia com características do motor
+        # Motores maiores precisam de mais compensação em altas rotações
+        return list(np.linspace(0, 10.0 * vehicle_factor, active_count))
+    elif "tps_correction" in map_type:
+        # Correção TPS baseada no veículo
+        return list(np.linspace(-5.0, 5.0, active_count))
+    elif "temp_correction" in map_type:
+        # Correção por temperatura
+        return list(np.linspace(-10.0, 10.0, active_count))
+    elif "compensation" in map_type or "correction" in map_type:
+        # Outros mapas de compensação/correção começam em 0
         return [0.0] * active_count
     else:
         return [0.0] * active_count
@@ -185,6 +520,32 @@ def load_vehicles() -> List[Dict[str, Any]]:
         return get_all_vehicles()
     except:
         return get_dummy_vehicles()
+
+def copy_map_from_vehicle(source_vehicle_id: str, target_vehicle_id: str, 
+                         map_type: str, bank_id: str) -> bool:
+    """Copia dados de mapa de um veículo para outro.
+    
+    Permite usar mapas de um veículo como template para outro,
+    mantendo cada mapa exclusivo por veículo.
+    """
+    try:
+        # Carregar dados do veículo origem
+        source_data = load_map_data(source_vehicle_id, map_type, bank_id)
+        if not source_data:
+            return False
+        
+        # Salvar para o veículo destino
+        return save_map_data(
+            target_vehicle_id,
+            map_type,
+            bank_id,
+            source_data["axis_values"],
+            source_data["map_values"],
+            source_data.get("axis_enabled")
+        )
+    except Exception as e:
+        logger.error(f"Erro ao copiar mapa: {e}")
+        return False
 
 def save_map_data(vehicle_id: str, map_type: str, bank_id: str, 
                   axis_values: List[float], map_values: List[float],
@@ -330,7 +691,7 @@ with tab1:
                 "axis_enabled": axis_enabled
             }
         else:
-            # Criar dados padrão
+            # Criar dados padrão específicos para o veículo
             axis_enabled = get_default_enabled_positions(map_info["axis_type"], map_info["positions"], selected_map_type)
             st.session_state[session_key] = {
                 "axis_values": get_default_axis_values(
@@ -340,7 +701,8 @@ with tab1:
                 "map_values": get_default_map_values(
                     selected_map_type, 
                     map_info["axis_type"],
-                    map_info["positions"]
+                    map_info["positions"],
+                    selected_vehicle_id  # Passar ID do veículo para personalizar valores
                 ),
                 "axis_enabled": axis_enabled
             }
@@ -352,21 +714,243 @@ with tab1:
     
     with edit_tab1:
         st.caption("Edite os valores do mapa usando layout horizontal")
+        
+        # Botão para calcular valores automáticos
+        if st.button(":material/calculate: Calcular Valores Automáticos", key=f"auto_calc_btn_{session_key}", type="secondary", use_container_width=True):
+            st.session_state[f"show_calculator_{session_key}"] = True
+            st.rerun()
+        
+        # Modal/Dialog do calculador automático
+        if st.session_state.get(f"show_calculator_{session_key}", False):
+            with st.container():
+                st.markdown("### Calculador Automático de Mapas")
+                st.markdown("---")
+                
+                # Obter dados do veículo
+                vehicle_data = get_vehicle_data_from_session()
+                is_valid, validation_msg = validate_vehicle_data(vehicle_data)
+                
+                if not is_valid:
+                    st.error(f"Dados do veículo incompletos: {validation_msg}")
+                    st.info("Configure os dados do veículo no menu lateral para usar o calculador automático")
+                    if st.button(":material/close: Fechar Calculador", key=f"close_calc_{session_key}"):
+                        st.session_state[f"show_calculator_{session_key}"] = False
+                        st.rerun()
+                else:
+                    # Layout em colunas para configurações
+                    calc_col1, calc_col2 = st.columns([2, 1])
+                    
+                    with calc_col1:
+                        st.subheader("Configurações de Cálculo")
+                        
+                        # Seleção de estratégia
+                        selected_strategy = st.selectbox(
+                            "Estratégia de Tuning",
+                            options=list(STRATEGY_PRESETS.keys()),
+                            format_func=lambda x: f"{STRATEGY_PRESETS[x]['name']} - {STRATEGY_PRESETS[x]['description']}",
+                            key=f"strategy_{session_key}",
+                            index=1  # Balanceada por padrão
+                        )
+                        
+                        # Fator de segurança
+                        safety_factor = st.slider(
+                            "Fator de Segurança",
+                            min_value=0.8,
+                            max_value=1.2,
+                            value=STRATEGY_PRESETS[selected_strategy]['safety_factor'],
+                            step=0.05,
+                            key=f"safety_factor_{session_key}",
+                            help="Multiplica todos os valores calculados"
+                        )
+                        
+                        # Opções avançadas
+                        st.subheader("Configurações Avançadas")
+                        
+                        advanced_col1, advanced_col2 = st.columns(2)
+                        
+                        with advanced_col1:
+                            consider_boost = st.checkbox(
+                                "Considerar Boost",
+                                value=vehicle_data['turbo'],
+                                key=f"consider_boost_{session_key}",
+                                help="Aplica correção para pressão de turbo"
+                            )
+                        
+                        with advanced_col2:
+                            fuel_correction_enabled = st.checkbox(
+                                "Correção de Combustível",
+                                value=True,
+                                key=f"fuel_correction_{session_key}",
+                                help="Aplica correção baseada no tipo de combustível"
+                            )
+                    
+                    with calc_col2:
+                        st.subheader("Dados do Veículo")
+                        st.metric("Cilindrada", f"{vehicle_data['displacement']:.1f}L")
+                        st.metric("Cilindros", vehicle_data['cylinders'])
+                        st.metric("Vazão Bicos", f"{vehicle_data.get('injector_flow_lbs', 0):.0f} lbs/h")
+                        st.metric("Combustível", vehicle_data['fuel_type'].title())
+                        if vehicle_data['turbo']:
+                            st.metric("Boost", f"{vehicle_data['boost_pressure']:.1f} bar")
+                    
+                    st.markdown("---")
+                    
+                    # Preview dos valores calculados
+                    st.subheader("Preview dos Valores Calculados")
+                    
+                    # Calcular valores preview
+                    axis_values = current_data["axis_values"]
+                    enabled = current_data.get("enabled", [True] * len(axis_values))
+                    preview_values = calculate_map_values(
+                        axis_values, 
+                        vehicle_data, 
+                        selected_strategy, 
+                        safety_factor,
+                        fuel_correction_enabled
+                    )
+                    
+                    # Criar DataFrame no mesmo formato do mapa principal (uma linha, múltiplas colunas)
+                    # Primeiro criar os headers com o valor do eixo
+                    column_headers = {}
+                    for i, (axis_val, enabled_flag) in enumerate(zip(axis_values, enabled)):
+                        if enabled_flag:
+                            # Para valores habilitados, mostrar o valor do eixo
+                            header = f"{axis_val:.1f}"
+                        else:
+                            # Para desabilitados, mostrar com indicação
+                            header = f"[{axis_val:.1f}]"
+                        column_headers[header] = preview_values[i]
+                    
+                    # Criar DataFrame com uma única linha
+                    preview_df = pd.DataFrame([column_headers])
+                    
+                    # Aplicar formatação similar ao mapa principal
+                    st.write(f"**Preview dos valores calculados** ({map_info['unit']})")
+                    st.caption(f"Valores com 3 casas decimais - Total: {len(preview_values)} valores")
+                    
+                    # Aplicar formatação de 3 casas decimais
+                    formatted_preview_df = preview_df.copy()
+                    for col in formatted_preview_df.columns:
+                        formatted_preview_df[col] = formatted_preview_df[col].apply(lambda x: round(x, 3))
+                    
+                    # Filtrar apenas valores habilitados para o gradiente
+                    enabled_cols = [col for i, col in enumerate(preview_df.columns) if enabled[i]]
+                    if enabled_cols:
+                        enabled_values = [preview_df[col].iloc[0] for col in enabled_cols]
+                        vmin = min(enabled_values)
+                        vmax = max(enabled_values)
+                    else:
+                        vmin = min(formatted_preview_df.iloc[0].values)
+                        vmax = max(formatted_preview_df.iloc[0].values)
+                    
+                    # Aplicar estilo com gradiente de cores RdYlBu
+                    styled_preview = formatted_preview_df.style.background_gradient(
+                        cmap='RdYlBu',  # Red-Yellow-Blue (vermelho para baixo, azul para alto)
+                        axis=1,  # Gradiente horizontal
+                        vmin=vmin,
+                        vmax=vmax,
+                        subset=None
+                    )
+                    
+                    # Adicionar formato de 3 casas decimais
+                    styled_preview = styled_preview.format("{:.3f}")
+                    
+                    # Exibir com dataframe estilizado
+                    st.dataframe(
+                        styled_preview, 
+                        use_container_width=True, 
+                        hide_index=True,
+                        height=100  # Altura menor para uma linha
+                    )
+                    
+                    # Estatísticas do preview
+                    preview_stats_col1, preview_stats_col2, preview_stats_col3 = st.columns(3)
+                    
+                    with preview_stats_col1:
+                        st.metric("Mínimo", f"{min(preview_values):.3f} {map_info['unit']}")
+                    with preview_stats_col2:
+                        st.metric("Médio", f"{np.mean(preview_values):.3f} {map_info['unit']}")
+                    with preview_stats_col3:
+                        st.metric("Máximo", f"{max(preview_values):.3f} {map_info['unit']}")
+                    
+                    st.markdown("---")
+                    
+                    # Botões de ação
+                    action_col1, action_col2, action_col3 = st.columns(3)
+                    
+                    with action_col1:
+                        if st.button(":material/check: Aplicar Cálculo", key=f"apply_calc_{session_key}", type="primary", use_container_width=True):
+                            # Aplicar valores calculados
+                            st.session_state[session_key]["map_values"] = preview_values
+                            st.session_state[f"show_calculator_{session_key}"] = False
+                            st.success("Valores calculados aplicados com sucesso!")
+                            st.rerun()
+                    
+                    with action_col2:
+                        if st.button(":material/analytics: Preview Gráfico", key=f"preview_graph_{session_key}", use_container_width=True):
+                            # Mostrar gráfico de preview
+                            fig_preview = go.Figure()
+                            
+                            # Valores atuais
+                            fig_preview.add_trace(go.Scatter(
+                                x=axis_values,
+                                y=current_data["map_values"],
+                                mode='lines+markers',
+                                name='Atual',
+                                line=dict(color='gray', width=2),
+                                marker=dict(size=6)
+                            ))
+                            
+                            # Valores calculados
+                            fig_preview.add_trace(go.Scatter(
+                                x=axis_values,
+                                y=preview_values,
+                                mode='lines+markers',
+                                name='Calculado',
+                                line=dict(color='blue', width=3),
+                                marker=dict(size=8, color='blue')
+                            ))
+                            
+                            fig_preview.update_layout(
+                                title=f"Comparação: Atual vs Calculado ({STRATEGY_PRESETS[selected_strategy]['name']})",
+                                xaxis_title=f"Eixo X ({map_info['axis_type']})",
+                                yaxis_title=f"Valor ({map_info['unit']})",
+                                height=400
+                            )
+                            
+                            st.plotly_chart(fig_preview, use_container_width=True)
+                    
+                    with action_col3:
+                        if st.button(":material/cancel: Cancelar", key=f"cancel_calc_{session_key}", use_container_width=True):
+                            st.session_state[f"show_calculator_{session_key}"] = False
+                            st.rerun()
+        
+        st.divider()
     
     
         # Criar DataFrame horizontal usando apenas valores ativos
-        active_axis_values = current_data["axis_values"]  # Já filtrados
-        active_map_values = current_data["map_values"]    # Já filtrados
+        # Filtrar baseado em axis_enabled
+        axis_enabled = current_data.get("axis_enabled", [True] * len(current_data["axis_values"]))
+        active_axis_values = get_active_values(current_data["axis_values"], axis_enabled)
+        active_map_values = get_active_values(current_data["map_values"], axis_enabled)
         
         st.write(f"**Eixo X ({map_info['axis_type']}):** Valores numéricos")
         st.caption(f"Total de {len(active_axis_values)} posições ativas")
         
         # Criar dicionário com os valores do eixo X como chaves (apenas valores numéricos)
         data_dict = {}
+        col_name_to_index = {}  # Mapear nome da coluna para índice original
+        
         for i, axis_val in enumerate(active_axis_values):
             # Usar formatação 3 casas decimais para colunas
             col_name = format_value_3_decimals(axis_val)
+            
+            # Se já existe uma coluna com esse nome (ex: múltiplos 0.000), adicionar sufixo
+            if col_name in data_dict:
+                col_name = f"{col_name}_{i}"
+            
             data_dict[col_name] = [active_map_values[i] if i < len(active_map_values) else 0.0]
+            col_name_to_index[col_name] = i  # Guardar índice original
         
         # Criar DataFrame horizontal com uma única linha de valores
         df = pd.DataFrame(data_dict)
@@ -424,11 +1008,54 @@ with tab1:
         # Atualizar dados na sessão
         # Manter os valores do eixo X originais (não editáveis nesta versão)
         st.session_state[session_key]["axis_values"] = current_data["axis_values"]
-        # Extrair os valores editados do mapa
+        # Extrair os valores editados do mapa preservando a ordem original
+        # IMPORTANTE: Manter a ordem original dos valores baseado em active_axis_values
         new_values = []
-        for col in df.columns:
-            new_values.append(edited_df[col].iloc[0])
-        st.session_state[session_key]["map_values"] = new_values
+        
+        # Recriar o mapeamento para garantir consistência
+        for i, axis_val in enumerate(active_axis_values):
+            col_name = format_value_3_decimals(axis_val)
+            
+            # Verificar se há duplicatas (múltiplos valores 0.000 por exemplo)
+            if list(df.columns).count(col_name) > 1 or col_name not in df.columns:
+                # Procurar com sufixo
+                col_name_with_suffix = f"{col_name}_{i}"
+                if col_name_with_suffix in edited_df.columns:
+                    col_name = col_name_with_suffix
+            
+            try:
+                if col_name in edited_df.columns:
+                    value = edited_df[col_name].iloc[0]
+                    # Garantir que não seja None ou NaN
+                    if value is None or (isinstance(value, float) and pd.isna(value)):
+                        # Usar o valor original
+                        if i < len(active_map_values):
+                            value = active_map_values[i]
+                        else:
+                            value = 0.0
+                else:
+                    # Coluna não encontrada, usar valor original
+                    value = active_map_values[i] if i < len(active_map_values) else 0.0
+                
+                new_values.append(float(value))
+            except Exception as e:
+                # Em caso de erro, usar o valor original
+                if i < len(active_map_values):
+                    new_values.append(float(active_map_values[i]))
+                else:
+                    new_values.append(0.0)
+        
+        # Atualizar valores no session_state mantendo a estrutura completa
+        full_values = list(current_data["map_values"])  # Começar com valores originais
+        
+        # Atualizar apenas os valores ativos
+        active_indices = [i for i, enabled in enumerate(current_data.get("axis_enabled", [True] * len(current_data["axis_values"]))) if enabled]
+        
+        for i, new_val in enumerate(new_values):
+            if i < len(active_indices):
+                full_values[active_indices[i]] = new_val
+        
+        st.session_state[session_key]["map_values"] = full_values
     
     
         # Validações
@@ -473,6 +1100,10 @@ with tab1:
                 )
             
             if save_button:
+                # Debug info (comentado para produção)
+                # st.write(f"Debug - axis_valid: {axis_valid}, values_valid: {values_valid}")
+                # st.write(f"Debug - Values to save: {new_values[:5]}...")  # Primeiros 5 valores
+                
                 if axis_valid and values_valid:
                     success = save_map_data(
                         selected_vehicle_id,
@@ -484,11 +1115,15 @@ with tab1:
                     )
                     if success:
                         st.success("Mapa salvo com sucesso!")
+                        st.balloons()  # Feedback visual
+                        # Aguardar um pouco antes de rerun
+                        import time
+                        time.sleep(0.5)
                         st.rerun()
                     else:
-                        st.error("Erro ao salvar o mapa")
+                        st.error("Erro ao salvar o mapa - Verifique as permissões do diretório data/fuel_maps")
                 else:
-                    st.error("Corrija os erros de validação antes de salvar")
+                    st.error(f"Corrija os erros de validação antes de salvar\nAxis: {axis_msg}\nValues: {values_msg}")
             
             if reset_button:
                 # Restaurar valores padrão
@@ -580,7 +1215,7 @@ with tab1:
         st.session_state[session_key]["axis_enabled"] = new_axis_enabled
         
         # Botão para aplicar apenas valores ativos
-        if st.button("Aplicar Valores Ativos", key=f"apply_active_{session_key}"):
+        if st.button(":material/done_all: Aplicar Valores Ativos", key=f"apply_active_{session_key}"):
             # Filtrar apenas valores ativos
             active_axis = get_active_values(new_axis_values, new_axis_enabled)
             active_map = get_active_values(
@@ -814,53 +1449,116 @@ with tab3:
     with section_tabs[2]:  # Importar Dados
         st.subheader("Importar Dados")
         
-        # Upload de arquivo
-        uploaded_file = st.file_uploader(
-            "Arquivo de mapa",
-            type=['json', 'csv'],
-            help="Formatos suportados: JSON, CSV",
-            key=f"upload_{session_key}"
-        )
+        # Tabs para diferentes tipos de importação
+        import_tabs = st.tabs(["De Arquivo", "De Outro Veículo"])
         
-        if uploaded_file is not None:
-            try:
-                if uploaded_file.name.endswith('.json'):
-                    data = json.loads(uploaded_file.read())
-                    if "axis_values" in data and "map_values" in data:
-                        if (len(data["axis_values"]) == map_info["positions"] and 
-                            len(data["map_values"]) == map_info["positions"]):
-                            
-                            if st.button("Importar JSON", key=f"import_json_{session_key}"):
-                                st.session_state[session_key] = {
-                                    "axis_values": data["axis_values"],
-                                    "map_values": data["map_values"]
-                                }
-                                st.success("Dados importados com sucesso!")
-                                st.rerun()
+        with import_tabs[0]:
+            # Upload de arquivo
+            uploaded_file = st.file_uploader(
+                "Arquivo de mapa",
+                type=['json', 'csv'],
+                help="Formatos suportados: JSON, CSV",
+                key=f"upload_{session_key}"
+            )
+        
+            if uploaded_file is not None:
+                try:
+                    if uploaded_file.name.endswith('.json'):
+                        data = json.loads(uploaded_file.read())
+                        if "axis_values" in data and "map_values" in data:
+                            if (len(data["axis_values"]) == map_info["positions"] and 
+                                len(data["map_values"]) == map_info["positions"]):
+                                
+                                if st.button("Importar JSON", key=f"import_json_{session_key}"):
+                                    st.session_state[session_key] = {
+                                        "axis_values": data["axis_values"],
+                                        "map_values": data["map_values"]
+                                    }
+                                    st.success("Dados importados com sucesso!")
+                                    st.rerun()
+                            else:
+                                st.error(f"Arquivo deve conter {map_info['positions']} valores")
                         else:
-                            st.error(f"Arquivo deve conter {map_info['positions']} valores")
-                    else:
-                        st.error("Formato JSON inválido")
+                            st.error("Formato JSON inválido")
+                    
+                    elif uploaded_file.name.endswith('.csv'):
+                        df_import = pd.read_csv(uploaded_file)
+                        if len(df_import) == map_info["positions"]:
+                            required_cols = ["axis_x", "value"]
+                            if all(col in df_import.columns for col in required_cols):
+                                if st.button("Importar CSV", key=f"import_csv_{session_key}"):
+                                    st.session_state[session_key] = {
+                                        "axis_values": df_import["axis_x"].tolist(),
+                                        "map_values": df_import["value"].tolist()
+                                    }
+                                    st.success("Dados importados com sucesso!")
+                                    st.rerun()
+                            else:
+                                st.error("CSV deve ter colunas: axis_x, value")
+                        else:
+                            st.error(f"CSV deve ter {map_info['positions']} linhas")
                 
-                elif uploaded_file.name.endswith('.csv'):
-                    df_import = pd.read_csv(uploaded_file)
-                    if len(df_import) == map_info["positions"]:
-                        required_cols = ["axis_x", "value"]
-                        if all(col in df_import.columns for col in required_cols):
-                            if st.button("Importar CSV", key=f"import_csv_{session_key}"):
-                                st.session_state[session_key] = {
-                                    "axis_values": df_import["axis_x"].tolist(),
-                                    "map_values": df_import["value"].tolist()
-                                }
-                                st.success("Dados importados com sucesso!")
-                                st.rerun()
-                        else:
-                            st.error("CSV deve ter colunas: axis_x, value")
-                    else:
-                        st.error(f"CSV deve ter {map_info['positions']} linhas")
+                except Exception as e:
+                    st.error(f"Erro ao processar arquivo: {str(e)}")
+        
+        with import_tabs[1]:
+            st.markdown("### Copiar Mapa de Outro Veículo")
+            st.info("Use esta opção para copiar configurações de mapa de outro veículo como template")
             
-            except Exception as e:
-                st.error(f"Erro ao processar arquivo: {str(e)}")
+            # Listar veículos disponíveis (exceto o atual)
+            all_vehicles = load_vehicles()
+            other_vehicles = [v for v in all_vehicles if v["id"] != selected_vehicle_id]
+            
+            if other_vehicles:
+                source_vehicle = st.selectbox(
+                    "Selecione o veículo de origem:",
+                    options=other_vehicles,
+                    format_func=lambda v: f"{v.get('nickname', v['name'])} ({v['name']})",
+                    key=f"source_vehicle_{session_key}"
+                )
+                
+                if source_vehicle:
+                    # Verificar se existe mapa para este tipo no veículo origem
+                    source_data = load_map_data(source_vehicle["id"], selected_map_type, selected_bank)
+                    
+                    if source_data:
+                        st.success(f"Mapa encontrado no veículo {source_vehicle.get('nickname', source_vehicle['name'])}")
+                        
+                        # Preview dos dados
+                        with st.expander("Visualizar dados do mapa origem"):
+                            preview_values = source_data["map_values"][:10] if len(source_data["map_values"]) > 10 else source_data["map_values"]
+                            st.json({
+                                "primeiros_valores": preview_values,
+                                "total_valores": len(source_data["map_values"])
+                            })
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.button("Copiar Mapa", type="primary", key=f"copy_map_{session_key}", use_container_width=True):
+                                if copy_map_from_vehicle(
+                                    source_vehicle["id"], 
+                                    selected_vehicle_id,
+                                    selected_map_type,
+                                    selected_bank
+                                ):
+                                    # Atualizar session state
+                                    st.session_state[session_key] = {
+                                        "axis_values": source_data["axis_values"],
+                                        "map_values": source_data["map_values"],
+                                        "axis_enabled": source_data.get("axis_enabled")
+                                    }
+                                    st.success(f"Mapa copiado com sucesso!")
+                                    time.sleep(1)
+                                    st.rerun()
+                                else:
+                                    st.error("Erro ao copiar mapa")
+                        
+                        with col2:
+                            st.warning("Esta ação irá substituir os valores atuais")
+                    else:
+                        st.warning(f"Nenhum mapa '{map_info['name']}' encontrado neste veículo")
+            else:
+                st.info("Nenhum outro veículo disponível para copiar mapas")
     
     with section_tabs[3]:  # Exportar Dados
         st.subheader("Exportar Dados")

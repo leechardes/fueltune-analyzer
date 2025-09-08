@@ -1,6 +1,6 @@
 {
   "vehicle_id": "20ee5a0d-ca56-4d3d-b6c9-f9598a647e6c",
-  "map_type": "main_fuel_2d_map_32",
+  "map_type": "main_fuel_2d_map",
   "bank_id": "A",
   "axis_values": [
     -1.0,
@@ -93,6 +93,6 @@
     false,
     false
   ],
-  "timestamp": "2025-09-08T01:20:33.273354",
+  "timestamp": "2025-09-08T01:43:19.512226",
   "version": "1.0"
 }
