@@ -22,6 +22,8 @@ import logging
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 # Imports do módulo refatorado
@@ -1132,156 +1134,275 @@ def render_tools(map_type: str, map_config: Dict[str, Any], vehicle_id: str,
                  bank_id: str, vehicle_data: Dict[str, Any], dimension: str):
     """Renderiza ferramentas avançadas unificadas para 2D e 3D."""
     
-    st.subheader("Ferramentas")
+    # Presets de estratégias de tuning
+    STRATEGY_PRESETS = {
+        "conservative": {
+            "name": "Conservadora",
+            "description": "AFR rico, margens de segurança maiores",
+            "safety_factor": 1.1,
+        },
+        "balanced": {
+            "name": "Balanceada", 
+            "description": "Valores típicos de fábrica",
+            "safety_factor": 1.0,
+        },
+        "aggressive": {
+            "name": "Agressiva",
+            "description": "AFR pobre, eficiência máxima",
+            "safety_factor": 0.9,
+        },
+        "economy": {
+            "name": "Econômica", 
+            "description": "Foco em economia de combustível",
+            "safety_factor": 1.05,
+        },
+        "sport": {
+            "name": "Esportiva",
+            "description": "Máxima performance",
+            "safety_factor": 0.95,
+        }
+    }
     
-    col1, col2 = st.columns(2)
+    # Obter dados do veículo da sessão
+    vehicle_data_session = get_vehicle_data_from_session()
     
-    with col1:
-        st.write("**Geração Automática**")
+    # Duas colunas principais para Configurações e Dados do Veículo
+    calc_col1, calc_col2 = st.columns(2)
+    
+    # SEÇÃO 1: Configurações de Cálculo (coluna esquerda)
+    with calc_col1:
+        st.subheader("Configurações de Cálculo")
         
-        # Estratégia com nomes em português
-        strategy = st.selectbox(
-            "Estratégia de Combustível",
-            ["Conservador", "Balanceado", "Agressivo"],
-            key=f"fuel_strategy_{dimension}_{map_type}"
+        # Seleção de estratégia
+        selected_strategy = st.selectbox(
+            "Estratégia de Tuning",
+            options=list(STRATEGY_PRESETS.keys()),
+            format_func=lambda x: f"{STRATEGY_PRESETS[x]['name']} - {STRATEGY_PRESETS[x]['description']}",
+            key=f"strategy_{dimension}_{map_type}_{bank_id}",
+            index=1  # Balanceada por padrão
         )
         
+        # Fator de segurança
         safety_factor = st.slider(
             "Fator de Segurança",
             min_value=0.8,
-            max_value=1.5,
-            value=1.0,
-            step=0.1,
-            key=f"safety_factor_{dimension}_{map_type}"
+            max_value=1.2,
+            value=STRATEGY_PRESETS[selected_strategy]["safety_factor"],
+            step=0.01,
+            key=f"safety_factor_{dimension}_{map_type}_{bank_id}",
+            help="Ajuste fino dos valores calculados"
         )
         
-        if st.button("Gerar Mapa Automático", key=f"generate_{dimension}_{map_type}"):
+        # Configurações específicas
+        st.write("**Configurações Específicas**")
+        col_check1, col_check2 = st.columns(2)
+        
+        with col_check1:
+            boost_enabled = st.checkbox(
+                "Considerar Boost",
+                value=vehicle_data_session.get("turbo", False),
+                key=f"boost_enabled_{dimension}_{map_type}_{bank_id}",
+                help="Considerar pressão de turbo nos cálculos"
+            )
+        
+        with col_check2:
+            fuel_correction_enabled = st.checkbox(
+                "Correção de Combustível", 
+                value=True,
+                key=f"fuel_corr_{dimension}_{map_type}_{bank_id}",
+                help="Aplicar correção baseada no tipo de combustível"
+            )
+    
+    # SEÇÃO 2: Dados do Veículo (coluna direita)
+    with calc_col2:
+        st.subheader("Dados do Veículo")
+        
+        # Primeira linha: Cilindrada, Cilindros, Vazão
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Cilindrada", f"{vehicle_data_session.get('displacement', 2.0):.1f}L")
+        with col2:
+            st.metric("Cilindros", vehicle_data_session.get('cylinders', 4))
+        with col3:
+            st.metric("Vazão", f"{vehicle_data_session.get('injector_flow', 250)} l/h")
+        
+        # Segunda linha: Combustível, Boost
+        col4, col5 = st.columns(2)
+        with col4:
+            st.metric("Combustível", vehicle_data_session.get('fuel_type', 'Flex'))
+        with col5:
+            if vehicle_data_session.get('turbo', False):
+                st.metric("Boost", f"{vehicle_data_session.get('boost_pressure', 1.0):.1f} bar")
+            else:
+                st.metric("Aspiração", "Natural")
+    
+    st.markdown("---")
+    
+    # SEÇÃO 3: Preview dos Valores Calculados
+    st.subheader("Preview dos Valores Calculados")
+    
+    try:
+        # Calcular valores baseado na dimensão
+        if dimension == "2D":
+            # Carregar dados 2D atuais
+            map_data = load_2d_map_data_local(vehicle_id, map_type, bank_id)
+            if map_data:
+                axis_values = map_data.get("axis_values", [])
+                enabled = map_data.get("enabled", [True] * len(axis_values))
+                
+                # Usar função universal de cálculo 2D
+                from src.ui.pages.fuel_maps_2d import calculate_map_values_universal
+                preview_values = calculate_map_values_universal(
+                    map_type, axis_values, vehicle_data_session,
+                    selected_strategy, safety_factor,
+                    apply_fuel_corr=fuel_correction_enabled
+                )
+                
+                # Criar DataFrame linha única para 2D
+                column_headers = {}
+                for i, (axis_val, enabled_flag) in enumerate(zip(axis_values, enabled)):
+                    if enabled_flag:
+                        header = f"{axis_val:.1f}"
+                    else:
+                        header = f"[{axis_val:.1f}]"
+                    column_headers[header] = preview_values[i]
+                
+                preview_df = pd.DataFrame([column_headers])
+                unit = map_config.get("unit", "ms")
+                
+        else:  # 3D
+            # Carregar dados 3D atuais
+            map_data = persistence_manager.load_3d_map_data(vehicle_id, map_type, bank_id)
+            if map_data:
+                rpm_axis = map_data.get("rpm_axis", [])
+                map_axis = map_data.get("map_axis", [])
+                rpm_enabled = map_data.get("rpm_enabled", [True] * len(rpm_axis))
+                map_enabled = map_data.get("map_enabled", [True] * len(map_axis))
+                
+                # Calcular matriz 3D usando função universal
+                calculated_matrix = calculate_3d_map_values_universal(
+                    map_type, rpm_axis, map_axis, vehicle_data_session,
+                    strategy=selected_strategy, safety_factor=safety_factor
+                )
+                
+                # Filtrar apenas valores ativos
+                active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled) if enabled]
+                active_map_indices = [i for i, enabled in enumerate(map_enabled) if enabled]
+                active_rpm_values = [rpm_axis[i] for i in active_rpm_indices]
+                active_map_values = [map_axis[i] for i in active_map_indices]
+                
+                # Criar matriz filtrada para preview
+                preview_matrix = []
+                for rpm_idx in active_rpm_indices:
+                    row = []
+                    for map_idx in active_map_indices:
+                        row.append(calculated_matrix[rpm_idx][map_idx])
+                    preview_matrix.append(row)
+                
+                # Criar DataFrame matriz para 3D
+                preview_df = pd.DataFrame(
+                    preview_matrix,
+                    columns=[f"{m:.2f}" for m in active_map_values],
+                    index=[f"{int(r)}" for r in reversed(active_rpm_values)]
+                )
+                unit = map_config.get("unit", "ms")
+                preview_values = [val for row in preview_matrix for val in row]  # Flatten para stats
+        
+        if 'preview_df' in locals():
+            # Aplicar gradiente RdYlBu
+            styled_df = preview_df.style.background_gradient(
+                cmap="RdYlBu", 
+                axis=1 if dimension == "2D" else None
+            ).format("{:.3f}")
+            
+            st.write(f"**Preview dos valores calculados** ({unit})")
+            st.caption(f"Valores com 3 casas decimais - Total: {len(preview_values)} valores")
+            st.dataframe(styled_df, use_container_width=True)
+            
+            # Estatísticas
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Mínimo", f"{min(preview_values):.3f} {unit}")
+            with col2:
+                st.metric("Médio", f"{np.mean(preview_values):.3f} {unit}")
+            with col3:
+                st.metric("Máximo", f"{max(preview_values):.3f} {unit}")
+        else:
+            st.warning("Não foi possível carregar dados para preview")
+    
+    except Exception as e:
+        st.error(f"Erro ao calcular preview: {e}")
+        return
+    
+    st.markdown("---")
+    
+    # SEÇÃO 4: Botões de Ação
+    action_col1, action_col2 = st.columns(2)
+    
+    with action_col1:
+        if st.button(":material/check: Aplicar Cálculo", type="primary", use_container_width=True,
+                     key=f"apply_{dimension}_{map_type}_{bank_id}"):
             try:
                 if dimension == "2D":
-                    # Para mapas 2D
-                    map_data = load_2d_map_data_local(vehicle_id, map_type, bank_id)
-                    if map_data:
-                        axis_values = map_data.get("axis_values", [])
-                        enabled = map_data.get("enabled", [])
-                        
-                        # Usar função 2D do core
-                        from src.core.fuel_maps import calculate_2d_map_values
-                        new_values = calculate_2d_map_values(
-                            axis_values, map_config, vehicle_data, 
-                            strategy=strategy.lower()
-                        )
-                        
-                        # Aplicar fator de segurança
-                        if safety_factor != 1.0:
-                            new_values = [v * safety_factor for v in new_values]
-                        
-                        # Salvar novo mapa 2D
-                        if save_2d_map_data(
-                            vehicle_id, map_type, bank_id,
-                            axis_values, new_values, enabled, map_config
-                        ):
-                            st.success("Mapa 2D gerado e salvo com sucesso!")
-                            st.rerun()
-                        else:
-                            st.error("Erro ao salvar mapa 2D gerado")
-                else:
-                    # Para mapas 3D
-                    map_data = persistence_manager.load_3d_map_data(vehicle_id, map_type, bank_id)
-                    if map_data:
-                        rpm_axis = map_data.get("rpm_axis", [])
-                        map_axis = map_data.get("map_axis", [])
-                        
-                        new_matrix = calculate_3d_map_values_universal(
-                            map_type, rpm_axis, map_axis, vehicle_data,
-                            strategy=strategy.lower(), safety_factor=safety_factor
-                        )
-                        
-                        # Salvar novo mapa 3D
-                        if save_map_data(vehicle_id, map_type, bank_id, rpm_axis, map_axis,
-                                        [True] * len(rpm_axis), [True] * len(map_axis), new_matrix):
-                            st.success("Mapa 3D gerado e salvo com sucesso!")
-                            st.rerun()
-                        else:
-                            st.error("Erro ao salvar mapa 3D gerado")
-                            
-            except Exception as e:
-                st.error(f"Erro na geração: {e}")
-    
-    with col2:
-        st.write("**Operações**")
-        
-        # Interpolação
-        if st.button("Aplicar Interpolação", key=f"interpolate_{dimension}_{map_type}"):
-            if dimension == "2D":
-                # Interpolação 2D
-                map_data = load_2d_map_data_local(vehicle_id, map_type, bank_id)
-                if map_data:
-                    axis_values = map_data.get("axis_values", [])
-                    values = map_data.get("values", [])
-                    enabled = map_data.get("enabled", [])
-                    
-                    # Aplicar interpolação simples para 2D
-                    try:
-                        from src.utils.map_interpolation import MapInterpolator
-                        interpolator = MapInterpolator()
-                        _, interpolated_values = interpolator.interpolate_missing_points(axis_values, values)
-                        
-                        if save_2d_map_data(vehicle_id, map_type, bank_id,
-                                           axis_values, interpolated_values, enabled, map_config):
-                            st.success("Interpolação 2D aplicada!")
-                            st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro na interpolação 2D: {e}")
-            else:
-                # Interpolação 3D
-                map_data = persistence_manager.load_3d_map_data(vehicle_id, map_type, bank_id)
-                if map_data:
-                    rpm_axis = map_data.get("rpm_axis", [])
-                    map_axis = map_data.get("map_axis", [])
-                    values_matrix = np.array(map_data.get("values_matrix", []))
-                    
-                    interpolated = interpolate_3d_matrix(values_matrix)
-                    if save_map_data(vehicle_id, map_type, bank_id, rpm_axis, map_axis,
-                                    [True] * len(rpm_axis), [True] * len(map_axis), interpolated):
-                        st.success("Interpolação 3D aplicada!")
+                    # Salvar valores 2D
+                    if save_2d_map_data(vehicle_id, map_type, bank_id, 
+                                       axis_values, preview_values, enabled, map_config):
+                        st.success("Valores aplicados com sucesso!")
                         st.rerun()
-        
-        # Validação
-        if st.button("Validar Mapa", key=f"validate_{dimension}_{map_type}"):
-            if dimension == "2D":
-                # Validação 2D
-                map_data = load_2d_map_data_local(vehicle_id, map_type, bank_id)
-                if map_data:
-                    axis_values = map_data.get("axis_values", [])
-                    values = map_data.get("values", [])
-                    enabled = map_data.get("enabled", [])
-                    
-                    errors = validate_2d_map(axis_values, values, enabled, map_config)
-                    if not errors:
-                        st.success("Mapa 2D válido!")
                     else:
-                        st.error("Erros encontrados no mapa 2D:")
-                        for error in errors:
-                            st.write(f"- {error}")
-            else:
-                # Validação 3D
-                map_data = persistence_manager.load_3d_map_data(vehicle_id, map_type, bank_id)
-                if map_data:
-                    values_matrix = np.array(map_data.get("values_matrix", []))
-                    is_valid, errors = validate_3d_map_values(values_matrix, map_type)
-                    if is_valid:
-                        st.success("Mapa 3D válido!")
+                        st.error("Erro ao salvar valores")
+                else:
+                    # Salvar matriz 3D 
+                    if save_map_data(vehicle_id, map_type, bank_id,
+                                   rpm_axis, map_axis, rpm_enabled, 
+                                   map_enabled, calculated_matrix):
+                        st.success("Valores aplicados com sucesso!")
+                        st.rerun()
                     else:
-                        st.error("Erros encontrados no mapa 3D:")
-                        for error in errors:
-                            st.write(f"- {error}")
-        
-        # Backup
-        if st.button("Criar Backup", key=f"backup_{dimension}_{map_type}"):
-            if persistence_manager.backup_map(vehicle_id, map_type, bank_id):
-                st.success("Backup criado com sucesso!")
-            else:
-                st.error("Erro ao criar backup")
+                        st.error("Erro ao salvar valores")
+            except Exception as e:
+                st.error(f"Erro ao aplicar cálculo: {e}")
+    
+    with action_col2:
+        if st.button(":material/analytics: Preview Gráfico", use_container_width=True,
+                     key=f"preview_{dimension}_{map_type}_{bank_id}"):
+            try:
+                if dimension == "2D":
+                    # Gráfico de linha 2D
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=axis_values, y=preview_values, 
+                        mode='lines+markers', name='Calculado',
+                        line=dict(color='blue', width=3),
+                        marker=dict(size=8)
+                    ))
+                    fig.update_layout(
+                        title=f"Preview 2D - {map_type}",
+                        xaxis_title="Eixo X",
+                        yaxis_title=f"Valor ({unit})",
+                        height=400
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    # Gráfico 3D Surface
+                    fig = go.Figure(data=[go.Surface(
+                        z=preview_matrix, 
+                        x=active_map_values, 
+                        y=active_rpm_values,
+                        colorscale="RdYlBu"
+                    )])
+                    fig.update_layout(
+                        title=f"Preview 3D - {map_type}",
+                        scene=dict(
+                            xaxis_title="MAP (bar)",
+                            yaxis_title="RPM", 
+                            zaxis_title=f"Valor ({unit})"
+                        ),
+                        height=600
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.error(f"Erro ao gerar gráfico: {e}")
 
 def render_statistics(values_matrix: np.ndarray, map_config: Dict[str, Any]):
     """Renderiza estatísticas do mapa."""
