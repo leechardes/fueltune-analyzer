@@ -480,72 +480,98 @@ def calculate_lambda_3d_matrix(
 ) -> np.ndarray:
     """Calcula matriz 3D de valores de lambda considerando RPM e MAP.
     
-    Lambda alvo varia de 0.8 (rico/potência) a 1.2 (pobre/economia)
-    - 0.8-0.9: Proteção/potência máxima (WOT, boost alto)
-    - 1.0: Estequiométrico (cruzeiro, carga média)
-    - 1.05-1.2: Economia (idle, cruzeiro leve)
+    Implementa cálculo realista por zonas de operação:
+    - Zona 1 (Vácuo alto): -1.0 a -0.4 bar -> Lambda 1.00-1.05 (economia)
+    - Zona 2 (Carga parcial): -0.4 a 0.2 bar -> Lambda 0.88-0.94 (transição)
+    - Zona 3 (Boost): 0.2+ bar -> Lambda 0.68-0.85 (proteção)
+    
+    Considera tipo de combustível e correções por RPM.
     """
     matrix = np.zeros((len(map_axis), len(rpm_axis)))
     
-    # Definir AFR estequiométrico baseado no combustível
-    afr_stoich = 9.0 if vehicle_data.get('fuel_type') == 'Ethanol' else 14.7
+    # Configurações por combustível
+    fuel_type = vehicle_data.get('fuel_type', 'Gasolina')
+    is_ethanol = fuel_type == 'Ethanol'
+    
+    # Limites mínimos de lambda por combustível
+    lambda_min = 0.68 if is_ethanol else 0.78
+    
+    # Fator de combustível para cálculo em boost
+    fuel_factor = 0.08 if is_ethanol else 0.12
+    
+    # Boost máximo configurado
+    boost_max = vehicle_data.get('boost_pressure', 1.0)
 
     for i, map_value in enumerate(map_axis):
-        # Converter MAP de bar para kPa
-        map_kpa = (map_value + 1.013) * 100
-        
-        # Normalizar MAP de 0 a 1 (0 = vácuo máximo, 1 = boost máximo)
-        map_normalized = (map_value + 1.0) / 3.0  # -1 a 2 bar normalizado para 0 a 1
-        map_normalized = max(0, min(1, map_normalized))
-
         for j, rpm_value in enumerate(rpm_axis):
             if rpm_value > 0:
-                # Normalizar RPM de 0 a 1 (idle a redline)
-                rpm_normalized = min(rpm_value / 8000.0, 1.0)
+                # === CÁLCULO BASE POR ZONA DE OPERAÇÃO ===
                 
-                # Calcular lambda baseado em MAP e RPM
-                # Idle/cruzeiro leve (baixo MAP, baixo RPM): lambda 1.05-1.2
-                # Carga média (médio MAP, médio RPM): lambda 1.0
-                # WOT/boost (alto MAP, alto RPM): lambda 0.8-0.9
+                # Zona 1: Vácuo alto (-1.0 a -0.4 bar)
+                if map_value <= -0.4:
+                    # Lambda = 0.95 + (|MAP| × 0.05)
+                    # Resulta em valores de 1.00-1.05 para economia
+                    lambda_value = 0.95 + (abs(map_value) * 0.05)
                 
-                if map_kpa < 40:  # Vácuo alto (idle, desaceleração)
-                    if rpm_value < 1500:
-                        lambda_value = 1.0  # Idle - estequiométrico para catalisador
-                    else:
-                        lambda_value = 1.1  # Desaceleração - corte de combustível ou pobre
+                # Zona 2: Carga parcial (-0.4 a 0.2 bar)
+                elif map_value <= 0.2:
+                    # Lambda = 0.90 - (MAP × 0.1)
+                    # Transição suave entre economia e potência
+                    # Em -0.4: 0.90 - (-0.4 × 0.1) = 0.94
+                    # Em 0.0: 0.90 - (0.0 × 0.1) = 0.90
+                    # Em 0.2: 0.90 - (0.2 × 0.1) = 0.88
+                    lambda_value = 0.90 - (map_value * 0.1)
                 
-                elif map_kpa < 70:  # Cruzeiro leve
-                    # Lambda varia de 1.05 a 1.15 para economia
-                    lambda_value = 1.05 + (0.1 * (1 - rpm_normalized))
-                
-                elif map_kpa < 95:  # Carga parcial
-                    # Lambda varia de 0.95 a 1.05
-                    lambda_value = 1.0 + (0.05 * (1 - map_normalized))
-                
-                elif map_kpa < 105:  # Carga alta (próximo a atmosférico)
-                    # Lambda varia de 0.88 a 0.95
-                    lambda_value = 0.88 + (0.07 * (1 - rpm_normalized))
-                
-                else:  # Boost (turbo)
-                    # Lambda varia de 0.8 a 0.88 baseado em RPM e pressão de boost
-                    boost_pressure = (map_kpa - 100) / 100  # 0 a 1+ bar de boost
-                    lambda_value = 0.88 - (0.08 * min(boost_pressure, 1.0))
+                # Zona 3: Boost (0.2+ bar)
+                else:
+                    # Lambda = 0.85 - (MAP × Fator_combustível × Fator_RPM)
+                    # Fator_RPM = 1.0 + (RPM-3000)/10000
+                    rpm_factor = 1.0 + ((rpm_value - 3000) / 10000)
+                    rpm_factor = max(0.8, min(1.3, rpm_factor))  # Limitar fator RPM
                     
-                    # Ajuste adicional baseado em RPM para proteção
-                    if rpm_value > 5000:
-                        lambda_value -= 0.02  # Mais rico em altas rotações com boost
+                    lambda_value = 0.85 - (map_value * fuel_factor * rpm_factor)
+                    
+                    # Proteção adicional para boost muito alto
+                    if map_value > boost_max:
+                        # Aplicar fator de segurança adicional
+                        over_boost = map_value - boost_max
+                        lambda_value -= (over_boost * 0.05)
                 
-                # Aplicar estratégia
+                # === CORREÇÕES POR RPM ===
+                
+                # RPM baixo (< 2000): multiplicar por 0.90 para estabilidade
+                if rpm_value < 2000:
+                    # Interpolação suave: em 0 RPM fator = 0.90, em 2000 RPM fator = 1.0
+                    rpm_correction = 0.90 + (rpm_value / 2000 * 0.10)
+                    lambda_value *= rpm_correction
+                
+                # RPM alto (> 6000): multiplicar por 0.95 para resfriamento
+                elif rpm_value > 6000:
+                    # Interpolação suave: em 6000 RPM fator = 1.0, em 8000+ fator = 0.95
+                    rpm_high_factor = 1.0 - ((rpm_value - 6000) / 2000 * 0.05)
+                    rpm_high_factor = max(0.95, rpm_high_factor)
+                    lambda_value *= rpm_high_factor
+                
+                # === APLICAR ESTRATÉGIA ===
                 if strategy == "conservative":
-                    lambda_value *= 0.95  # 5% mais rico
+                    lambda_value *= 0.96  # 4% mais rico para segurança
                 elif strategy == "aggressive":
-                    lambda_value *= 1.03  # 3% mais pobre
+                    lambda_value *= 1.02  # 2% mais pobre para performance
                 
-                # Aplicar fator de segurança e limitar entre 0.8 e 1.2
-                lambda_value = lambda_value * safety_factor
-                lambda_value = max(0.8, min(1.2, lambda_value))
+                # === APLICAR FATOR DE SEGURANÇA DO USUÁRIO ===
+                lambda_value *= safety_factor
+                
+                # === VALIDAÇÃO FINAL ===
+                # Aplicar limites baseados no combustível
+                lambda_value = max(lambda_min, lambda_value)
+                
+                # Limite superior sempre 1.2 (economia máxima)
+                lambda_value = min(1.2, lambda_value)
                 
                 matrix[i, j] = lambda_value
+            else:
+                # RPM = 0, sem combustível
+                matrix[i, j] = 1.0
 
     return matrix
 
