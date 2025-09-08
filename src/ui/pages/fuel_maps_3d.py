@@ -486,7 +486,13 @@ def calculate_lambda_3d_matrix(
     - Zona 3 (Boost): 0.2+ bar -> Lambda 0.68-0.85 (proteção)
     
     Considera tipo de combustível e correções por RPM.
+    
+    IMPORTANTE: A matriz resultante tem shape (len(map_axis), len(rpm_axis))
+    Onde matrix[i][j] corresponde a map_axis[i] e rpm_axis[j]
     """
+    # Criar matriz na orientação correta
+    # Linhas = MAP, Colunas = RPM (para cálculo)
+    # Mas será transposta para exibição onde Linhas = RPM, Colunas = MAP
     matrix = np.zeros((len(map_axis), len(rpm_axis)))
     
     # Configurações por combustível
@@ -1863,15 +1869,20 @@ with tab1:
 
                 # Criar matriz filtrada - garantir que temos uma linha para cada RPM ativo (ordem invertida)
                 # IMPORTANTE: A matriz é criada como matrix[map_idx, rpm_idx] nas funções de cálculo
-                # mas precisa ser exibida com RPM nas linhas e MAP nas colunas
+                # Para exibir corretamente:
+                # - Linhas do DataFrame = RPM (decrescente)
+                # - Colunas do DataFrame = MAP (crescente)
+                # - Cada célula [linha_rpm][coluna_map] deve pegar matrix[map_idx][rpm_idx]
+                
                 filtered_matrix = []
                 for rpm_idx in active_rpm_indices_reversed:
                     row = []
                     for map_idx in active_map_indices:
-                        # Verificar se os índices estão dentro dos limites da matriz
-                        # Nota: matriz original é [map][rpm], então acessamos matrix[map_idx][rpm_idx]
-                        if map_idx < len(matrix) and rpm_idx < len(matrix[map_idx]):
-                            row.append(matrix[map_idx][rpm_idx])
+                        # A matriz original tem shape (len(map_axis), len(rpm_axis))
+                        # matrix[i][j] onde i=índice MAP, j=índice RPM
+                        if map_idx < len(matrix) and rpm_idx < len(matrix[0]):
+                            value = matrix[map_idx][rpm_idx]
+                            row.append(value)
                         else:
                             row.append(0.0)  # Valor padrão se fora dos limites
                     filtered_matrix.append(row)
