@@ -1862,13 +1862,16 @@ with tab1:
                 active_rpm_indices_reversed = list(reversed(active_rpm_indices))
 
                 # Criar matriz filtrada - garantir que temos uma linha para cada RPM ativo (ordem invertida)
+                # IMPORTANTE: A matriz é criada como matrix[map_idx, rpm_idx] nas funções de cálculo
+                # mas precisa ser exibida com RPM nas linhas e MAP nas colunas
                 filtered_matrix = []
                 for rpm_idx in active_rpm_indices_reversed:
                     row = []
                     for map_idx in active_map_indices:
                         # Verificar se os índices estão dentro dos limites da matriz
-                        if rpm_idx < len(matrix) and map_idx < len(matrix[rpm_idx]):
-                            row.append(matrix[rpm_idx][map_idx])
+                        # Nota: matriz original é [map][rpm], então acessamos matrix[map_idx][rpm_idx]
+                        if map_idx < len(matrix) and rpm_idx < len(matrix[map_idx]):
+                            row.append(matrix[map_idx][rpm_idx])
                         else:
                             row.append(0.0)  # Valor padrão se fora dos limites
                     filtered_matrix.append(row)
@@ -2692,14 +2695,15 @@ with tab2:
         active_map_indices = [i for i in range(len(map_enabled)) if map_enabled[i]]
 
         # Criar matriz filtrada
+        # IMPORTANTE: A matriz é criada como matrix[map_idx, rpm_idx]
         filtered_matrix = []
         for rpm_idx in active_rpm_indices:
             row = []
             for map_idx in active_map_indices:
-                if rpm_idx < len(values_matrix) and map_idx < len(
-                    values_matrix[rpm_idx]
+                if map_idx < len(values_matrix) and rpm_idx < len(
+                    values_matrix[map_idx]
                 ):
-                    row.append(values_matrix[rpm_idx][map_idx])
+                    row.append(values_matrix[map_idx][rpm_idx])
                 else:
                     row.append(0.0)
             filtered_matrix.append(row)
