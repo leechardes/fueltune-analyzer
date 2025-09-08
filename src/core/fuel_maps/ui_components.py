@@ -196,38 +196,14 @@ class UIComponents:
     ) -> Tuple[np.ndarray, bool]:
         """Renderiza editor interativo de matriz."""
         try:
-            st.subheader("Editor de Matriz")
+            # Título removido - interface mais limpa
             
-            # Informações da matriz
-            stats = calculate_matrix_statistics(data_matrix)
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("Mínimo", format_value_3_decimals(stats["min"]))
-            with col2:
-                st.metric("Máximo", format_value_3_decimals(stats["max"]))
-            with col3:
-                st.metric("Média", format_value_3_decimals(stats["mean"]))
-            with col4:
-                st.metric("Desvio", format_value_3_decimals(stats["std"]))
+            # Estatísticas removidas do topo - agora só aparecem embaixo
             
             # Opções de edição
-            st.write("**Opções de Edição:**")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                edit_mode = st.selectbox(
-                    "Modo de Edição",
-                    ["Visualizar", "Editar Célula", "Aplicar Fator", "Suavizar"],
-                    key=f"{key_prefix}_edit_mode"
-                )
-            
-            with col2:
-                show_enabled = st.checkbox(
-                    "Mostrar apenas células ativas",
-                    value=True,
-                    key=f"{key_prefix}_show_enabled"
-                )
+            # Opções de edição removidas - interface simplificada
+            edit_mode = "Visualizar"  # Modo padrão
+            show_enabled = True  # Sempre mostrar apenas células ativas
             
             modified = False
             result_matrix = data_matrix.copy()
@@ -324,36 +300,7 @@ class UIComponents:
                         modified = True
                         st.success("Suavização aplicada")
             
-            # Mostrar tabela de dados (limitada para performance)
-            if st.expander("Visualizar Dados da Matriz", expanded=False):
-                display_matrix = result_matrix.copy()
-                
-                # Aplicar máscara se requested
-                if show_enabled:
-                    for i in range(len(enabled_matrix)):
-                        for j in range(len(enabled_matrix[i])):
-                            if not enabled_matrix[i][j]:
-                                display_matrix[i, j] = np.nan
-                
-                # Criar DataFrame para exibição
-                if pd is None:
-                    st.write("Pandas não disponível - tabela não pode ser renderizada")
-                    return result_matrix, modified
-                    
-                df = pd.DataFrame(
-                    display_matrix,
-                    index=[f"MAP_{i}_{format_value_3_decimals(map_axis[i])}" for i in range(len(map_axis))],
-                    columns=[f"RPM_{i}_{rpm_axis[i]:.0f}" for i in range(len(rpm_axis))]
-                )
-                
-                # Mostrar apenas primeiras/últimas linhas se muito grande
-                if len(df) > 10:
-                    st.write("Primeiras 5 linhas:")
-                    st.dataframe(df.head(5), use_container_width=True)
-                    st.write("Últimas 5 linhas:")
-                    st.dataframe(df.tail(5), use_container_width=True)
-                else:
-                    st.dataframe(df, use_container_width=True)
+            # Tabela removida - mostrar apenas no editor principal
             
             return result_matrix, modified
 

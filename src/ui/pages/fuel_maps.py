@@ -189,15 +189,12 @@ def render_unified_interface(all_maps: Dict[str, Any], vehicle_data: Dict[str, A
 
 def render_edit_tab(map_type: str, map_config: Dict[str, Any], vehicle_id: str, 
                    bank_id: str, vehicle_data: Dict[str, Any], dimension: str, auto_save: bool):
-    """Renderiza a aba de edição com sub-abas Valores, Eixos e Ferramentas."""
+    """Renderiza a aba de edição com sub-abas Valores e Eixos."""
     
     st.write("Editor de dados do mapa")
     
-    # Sub-abas dentro de Editar - 3 abas para 2D, 2 abas para 3D
-    if dimension == "2D":
-        subtab1, subtab2, subtab3 = st.tabs(["Valores", "Eixos", "Ferramentas"])
-    else:
-        subtab1, subtab2 = st.tabs(["Valores", "Eixos"])
+    # Sub-abas dentro de Editar - agora 3 abas tanto para 2D quanto 3D
+    subtab1, subtab2, subtab3 = st.tabs(["Valores", "Eixos", "Ferramentas"])
     
     with subtab1:
         if dimension == "3D":
@@ -211,10 +208,9 @@ def render_edit_tab(map_type: str, map_config: Dict[str, Any], vehicle_id: str,
         else:
             render_2d_axes_editor(map_type, map_config, vehicle_id, bank_id, vehicle_data)
     
-    # Sub-aba de Ferramentas apenas para mapas 2D
-    if dimension == "2D":
-        with subtab3:
-            render_tools(map_type, map_config, vehicle_id, bank_id, vehicle_data, dimension)
+    with subtab3:
+        # Ferramentas para ambos 2D e 3D
+        render_tools(map_type, map_config, vehicle_id, bank_id, vehicle_data, dimension)
 
 def render_visualize_tab(map_type: str, map_config: Dict[str, Any], vehicle_id: str,
                         bank_id: str, vehicle_data: Dict[str, Any], dimension: str, show_statistics: bool):
@@ -242,7 +238,19 @@ def render_visualize_tab(map_type: str, map_config: Dict[str, Any], vehicle_id: 
                 render_2d_view(values_matrix, rpm_axis, map_axis, map_type, map_config, show_statistics)
     else:
         # Visualização 2D
-        render_2d_chart_view(map_type, map_config, vehicle_id, bank_id, show_statistics)
+        # Carregar dados do mapa 2D primeiro
+        map_data = load_2d_map_data_local(vehicle_id, map_type, bank_id)
+        if map_data:
+            axis_values = map_data.get("axis_values", [])
+            values = map_data.get("values", [])
+            enabled = map_data.get("enabled", [True] * len(values))
+            axis_type = map_config.get("axis_type", "RPM")
+            unit = map_config.get("unit", "ms")
+            
+            render_2d_chart_view(axis_values, values, enabled, map_type, map_config,
+                               axis_type, unit, show_statistics)
+        else:
+            st.warning("Nenhum dado de mapa 2D encontrado")
 
 def render_import_export_tab(map_type: str, map_config: Dict[str, Any], vehicle_id: str,
                             bank_id: str, vehicle_data: Dict[str, Any], dimension: str):
@@ -471,10 +479,6 @@ def render_2d_statistics(values: List[float], unit: str):
         st.metric("Média", f"{np.mean(values_array):.3f} {unit}")
     with col4:
         st.metric("Desvio", f"{np.std(values_array):.3f} {unit}")
-    
-    # Gráfico de barras dos valores
-    with st.expander("Distribuição de Valores"):
-        st.bar_chart(values)
 
 def render_2d_axis_config(axis_values: List[float], axis_type: str, 
                          vehicle_id: str, map_type: str, bank_id: str):
@@ -634,12 +638,12 @@ def render_2d_axes_editor(map_type: str, map_config: Dict[str, Any], vehicle_id:
         enabled = map_data.get("enabled", [True] * len(axis_values))
         axis_type = map_config.get("axis_type", "RPM")
         
-        st.subheader("Configuração de Eixos")
+        st.subheader("Configuração de Eixo")
         
         st.write(f"**Eixo {axis_type}**")
         
-        # Criar DataFrame para edição do eixo
         import pandas as pd
+        # Criar DataFrame para edição do eixo
         df_axis_data = {
             "Posição": list(range(1, len(axis_values) + 1)),
             f"{axis_type}": axis_values,
@@ -647,7 +651,7 @@ def render_2d_axes_editor(map_type: str, map_config: Dict[str, Any], vehicle_id:
         }
         df_axis = pd.DataFrame(df_axis_data)
         
-        # Editor de eixo - igual ao editor de valores mas sem coluna Valor
+        # Editor de eixo no formato tabela simples
         edited_axis_df = st.data_editor(
             df_axis,
             use_container_width=True,
@@ -665,41 +669,21 @@ def render_2d_axes_editor(map_type: str, map_config: Dict[str, Any], vehicle_id:
             key=f"2d_axis_editor_{map_type}_{bank_id}"
         )
         
-        # Botões de ação do eixo
-        bcol1, bcol2, bcol3 = st.columns(3)
-        
-        with bcol1:
-            if st.button("💾 Salvar Eixo", key=f"save_axis_2d_{map_type}"):
-                # Atualizar eixo com valores editados
-                new_axis_values = edited_axis_df[f"{axis_type}"].tolist()
-                new_enabled = edited_axis_df["Ativo"].tolist()
-                
-                # Carregar valores atuais do mapa
-                values = map_data.get("values", [])
-                
-                if save_2d_map_data(
-                    vehicle_id, map_type, bank_id,
-                    new_axis_values, values, new_enabled, map_config
-                ):
-                    st.success("Eixo salvo com sucesso!")
-                    st.rerun()
-        
-        with bcol2:
-            if st.button("🔄 Restaurar Eixo", key=f"reset_axis_2d_{map_type}"):
-                # Restaurar eixo para valores padrão
-                default_axis = map_config.get("default_axis_values", [])
-                if default_axis:
-                    st.info("Eixo restaurado para padrão")
-                    st.rerun()
-        
-        with bcol3:
-            if st.button("📊 Validar Eixo", key=f"validate_axis_2d_{map_type}"):
-                # Validar ordem crescente
-                if all(edited_axis_df[f"{axis_type}"].iloc[i] <= edited_axis_df[f"{axis_type}"].iloc[i+1] 
-                       for i in range(len(edited_axis_df)-1)):
-                    st.success("Eixo em ordem crescente!")
-                else:
-                    st.error("Eixo deve estar em ordem crescente!")
+        # Botão de salvar
+        if st.button("💾 Salvar Eixo", key=f"save_axis_2d_{map_type}"):
+            new_axis_values = edited_axis_df[f"{axis_type}"].tolist()
+            new_enabled = edited_axis_df["Ativo"].tolist()
+            
+            # Carregar valores atuais do mapa
+            values = map_data.get("values", [])
+            
+            # Salvar mudanças
+            if save_2d_map_data(
+                vehicle_id, map_type, bank_id,
+                new_axis_values, values, new_enabled, map_config
+            ):
+                st.success("Eixo salvo com sucesso!")
+                st.rerun()
         
 
 def render_3d_values_editor(map_type: str, map_config: Dict[str, Any], vehicle_id: str,
@@ -737,15 +721,15 @@ def render_3d_axes_editor(map_type: str, map_config: Dict[str, Any], vehicle_id:
         
         st.subheader("Configuração de Eixos")
         
-        # Para 3D, usar duas colunas - uma para cada eixo
+        # Duas colunas - uma para cada eixo
         col1, col2 = st.columns(2)
         
         # Coluna 1: Eixo RPM
         with col1:
             st.write("**Eixo RPM**")
             
-            # Criar DataFrame para edição do eixo RPM
             import pandas as pd
+            # Criar DataFrame para edição do eixo RPM
             df_rpm_data = {
                 "Posição": list(range(1, len(rpm_axis) + 1)),
                 "RPM": rpm_axis,
@@ -753,7 +737,7 @@ def render_3d_axes_editor(map_type: str, map_config: Dict[str, Any], vehicle_id:
             }
             df_rpm = pd.DataFrame(df_rpm_data)
             
-            # Editor de eixo RPM
+            # Editor de eixo RPM no formato tabela simples
             edited_rpm_df = st.data_editor(
                 df_rpm,
                 use_container_width=True,
@@ -772,14 +756,10 @@ def render_3d_axes_editor(map_type: str, map_config: Dict[str, Any], vehicle_id:
                 key=f"3d_rpm_axis_editor_{map_type}_{bank_id}"
             )
             
-            # Botões do eixo RPM
+            # Botão de salvar
             if st.button("💾 Salvar RPM", key=f"save_rpm_3d_{map_type}"):
                 new_rpm_axis = edited_rpm_df["RPM"].tolist()
                 new_rpm_enabled = edited_rpm_df["Ativo"].tolist()
-                
-                # Atualizar e salvar
-                map_data["rpm_axis"] = new_rpm_axis
-                map_data["rpm_enabled"] = new_rpm_enabled
                 
                 if persistence_manager.save_3d_map_data(
                     vehicle_id, map_type, bank_id,
@@ -801,7 +781,7 @@ def render_3d_axes_editor(map_type: str, map_config: Dict[str, Any], vehicle_id:
             }
             df_map = pd.DataFrame(df_map_data)
             
-            # Editor de eixo MAP
+            # Editor de eixo MAP no formato tabela simples
             edited_map_df = st.data_editor(
                 df_map,
                 use_container_width=True,
@@ -820,14 +800,10 @@ def render_3d_axes_editor(map_type: str, map_config: Dict[str, Any], vehicle_id:
                 key=f"3d_map_axis_editor_{map_type}_{bank_id}"
             )
             
-            # Botões do eixo MAP
+            # Botão de salvar
             if st.button("💾 Salvar MAP", key=f"save_map_3d_{map_type}"):
                 new_map_axis = edited_map_df["MAP"].tolist()
                 new_map_enabled = edited_map_df["Ativo"].tolist()
-                
-                # Atualizar e salvar
-                map_data["map_axis"] = new_map_axis
-                map_data["map_enabled"] = new_map_enabled
                 
                 if persistence_manager.save_3d_map_data(
                     vehicle_id, map_type, bank_id,
@@ -836,30 +812,6 @@ def render_3d_axes_editor(map_type: str, map_config: Dict[str, Any], vehicle_id:
                 ):
                     st.success("Eixo MAP salvo!")
                     st.rerun()
-        
-        # Botões gerais abaixo das colunas
-        st.divider()
-        col_btn1, col_btn2 = st.columns(2)
-        
-        with col_btn1:
-            if st.button("🔄 Restaurar Ambos os Eixos", key=f"reset_all_axes_3d_{map_type}"):
-                st.info("Eixos restaurados para padrão")
-                st.rerun()
-        
-        with col_btn2:
-            if st.button("📊 Validar Eixos", key=f"validate_all_axes_3d_{map_type}"):
-                rpm_valid = all(edited_rpm_df["RPM"].iloc[i] <= edited_rpm_df["RPM"].iloc[i+1] 
-                               for i in range(len(edited_rpm_df)-1))
-                map_valid = all(edited_map_df["MAP"].iloc[i] <= edited_map_df["MAP"].iloc[i+1] 
-                               for i in range(len(edited_map_df)-1))
-                
-                if rpm_valid and map_valid:
-                    st.success("Ambos os eixos estão em ordem crescente!")
-                else:
-                    if not rpm_valid:
-                        st.error("Eixo RPM deve estar em ordem crescente!")
-                    if not map_valid:
-                        st.error("Eixo MAP deve estar em ordem crescente!")
 
 def render_ftmanager_copy(map_type: str, map_config: Dict[str, Any], vehicle_id: str,
                          bank_id: str, dimension: str):
@@ -1066,49 +1018,115 @@ def render_editor_view(values_matrix: np.ndarray, rpm_axis: List[float],
     
     st.header("Editor de Mapa")
     
-    # Abas do editor
-    tab1, tab2, tab3, tab4 = st.tabs(["Matriz", "Eixo RPM", "Eixo MAP", "Ferramentas"])
+    # Editor de matriz 3D com duas visualizações
+    import pandas as pd
+    import numpy as np
     
-    with tab1:
-        # Editor de matriz
-        modified_matrix, matrix_changed = ui_components.render_matrix_editor(
-            values_matrix, [map_enabled] * len(rpm_axis), rpm_axis, map_axis, map_type
-        )
+    # Filtrar apenas valores ativos
+    active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled) if enabled]
+    active_map_indices = [i for i, enabled in enumerate(map_enabled) if enabled]
+    
+    # Obter valores ativos
+    active_rpm_values = [rpm_axis[i] for i in active_rpm_indices]
+    active_map_values = [map_axis[i] for i in active_map_indices]
+    
+    # Inverter a ordem do RPM para mostrar decrescente (maior para menor)
+    active_rpm_values_reversed = list(reversed(active_rpm_values))
+    active_rpm_indices_reversed = list(reversed(active_rpm_indices))
+    
+    # Criar matriz filtrada
+    filtered_matrix = []
+    for rpm_idx in active_rpm_indices_reversed:
+        row = []
+        for map_idx in active_map_indices:
+            if rpm_idx < len(values_matrix) and map_idx < len(values_matrix[0]):
+                value = values_matrix[rpm_idx][map_idx]
+                row.append(value)
+            else:
+                row.append(0.0)
+        filtered_matrix.append(row)
+    
+    # Criar DataFrame para edição com nomes de colunas únicos
+    column_names = []
+    column_count = {}
+    for map_val in active_map_values:
+        col_name = f"{map_val:.3f}"
+        if col_name in column_count:
+            column_count[col_name] += 1
+            col_name = f"{col_name}_{column_count[col_name]}"
+        else:
+            column_count[col_name] = 0
+        column_names.append(col_name)
+    
+    matrix_df = pd.DataFrame(
+        filtered_matrix,
+        columns=column_names,
+        index=[f"{int(rpm)}" for rpm in active_rpm_values_reversed],
+    )
+    
+    # Obter configurações do mapa
+    min_value = map_config.get("min_value", 0)
+    max_value = map_config.get("max_value", 100)
+    unit = map_config.get("unit", "ms")
+    
+    # Editor de matriz com formatação 3 casas decimais
+    edited_matrix_df = st.data_editor(
+        matrix_df,
+        use_container_width=True,
+        column_config={
+            col: st.column_config.NumberColumn(
+                col.split("_")[0] if "_" in col else col,
+                format="%.3f",
+                min_value=min_value,
+                max_value=max_value,
+                help=f"MAP: {col.split('_')[0] if '_' in col else col} bar, Valores em {unit}",
+            )
+            for col in matrix_df.columns
+        },
+        key=f"matrix_editor_{map_type}_{bank_id}",
+    )
+    
+    # Criar DataFrame para visualização com gradiente
+    display_df = pd.DataFrame(
+        filtered_matrix,
+        columns=[f"{map_val:.2f}" for map_val in active_map_values],
+        index=[f"{int(rpm)}" for rpm in active_rpm_values_reversed],
+    )
+    
+    # Aplicar estilo com gradiente
+    styled_df = display_df.style.background_gradient(
+        cmap="RdYlBu", axis=None
+    ).format("{:.3f}")
+    
+    # Mostrar visualização com gradiente
+    st.caption(f"Visualização com gradiente de cores - {unit}")
+    st.dataframe(styled_df, use_container_width=True)
+    
+    # Detectar mudanças e atualizar matriz completa
+    matrix_changed = not matrix_df.equals(edited_matrix_df)
+    
+    if matrix_changed:
+        st.success("Matriz modificada")
         
-        if matrix_changed:
-            st.success("Matriz modificada")
-            
-            # Salvar automaticamente se habilitado
-            if auto_save:
-                save_map_data(vehicle_id, map_type, bank_id, rpm_axis, map_axis,
-                              rpm_enabled, map_enabled, modified_matrix)
-                st.success("Salvo automaticamente")
-    
-    with tab2:
-        # Configuração do eixo RPM
-        new_rpm_axis, new_rpm_enabled, rpm_changed = ui_components.render_axis_config(
-            rpm_axis, "RPM", rpm_enabled, "editor_rpm"
-        )
+        # Reconstruir matriz completa com valores editados
+        grid_size = len(rpm_axis)
+        modified_matrix = values_matrix.copy()
         
-        if rpm_changed:
-            st.success("Eixo RPM modificado")
-            rpm_axis = new_rpm_axis
-            rpm_enabled = new_rpm_enabled
-    
-    with tab3:
-        # Configuração do eixo MAP
-        new_map_axis, new_map_enabled, map_changed = ui_components.render_axis_config(
-            map_axis, "MAP", map_enabled, "editor_map"
-        )
+        for i, rpm_idx in enumerate(active_rpm_indices_reversed):
+            if i < len(edited_matrix_df.values) and rpm_idx < grid_size:
+                for j, map_idx in enumerate(active_map_indices):
+                    if j < len(edited_matrix_df.values[i]) and map_idx < grid_size:
+                        modified_matrix[rpm_idx][map_idx] = edited_matrix_df.values[i][j]
         
-        if map_changed:
-            st.success("Eixo MAP modificado")
-            map_axis = new_map_axis
-            map_enabled = new_map_enabled
+        # Salvar automaticamente se habilitado
+        if auto_save:
+            save_map_data(vehicle_id, map_type, bank_id, rpm_axis, map_axis,
+                          rpm_enabled, map_enabled, modified_matrix)
+            st.success("Salvo automaticamente")
     
-    with tab4:
-        # Converter dados para o novo formato de render_tools
-        render_tools(map_type, map_config, vehicle_id, bank_id, vehicle_data, "3D")
+    # Estatísticas embaixo
+    st.divider()
+    render_statistics(values_matrix, map_config)
 
 def render_tools(map_type: str, map_config: Dict[str, Any], vehicle_id: str, 
                  bank_id: str, vehicle_data: Dict[str, Any], dimension: str):
@@ -1287,11 +1305,6 @@ def render_statistics(values_matrix: np.ndarray, map_config: Dict[str, Any]):
     with col4:
         st.metric("Desvio Padrão", format_value_3_decimals(stats["std"]), 
                  delta=None)
-    
-    # Gráfico de distribuição
-    with st.expander("Distribuição de Valores"):
-        flat_values = values_matrix.flatten()
-        st.bar_chart(flat_values)
 
 def save_map_data(vehicle_id: str, map_type: str, bank_id: str,
                   rpm_axis: List[float], map_axis: List[float],

@@ -710,12 +710,18 @@ def ensure_all_maps_exist(vehicle_id: str) -> None:
     """
     # Carregar configuração de tipos de mapas
     config_file = (
-        Path(__file__).parent.parent.parent.parent / "config" / "map_types_2d.json"
+        Path(__file__).parent.parent.parent.parent / "config" / "map_types.json"
     )
 
     try:
         with open(config_file, "r", encoding="utf-8") as f:
-            map_types_config = json.load(f)
+            all_maps = json.load(f)
+            # Filtrar apenas os mapas 2D
+            map_types_config = {
+                map_type: map_config 
+                for map_type, map_config in all_maps.items() 
+                if map_config.get("dimension") == "2D"
+            }
     except:
         # Se não conseguir carregar config, usar padrão mínimo
         return
@@ -784,7 +790,7 @@ st.caption("Configure mapas de injeção bidimensionais")
 # Carregar configuração de tipos de mapas 2D do arquivo externo
 def load_map_types_config():
     """Carrega a configuração de tipos de mapas do arquivo JSON."""
-    config_path = Path("config/map_types_2d.json")
+    config_path = Path("config/map_types.json")
 
     # Se o arquivo não existir, usar configuração padrão
     if not config_path.exists():
@@ -823,7 +829,14 @@ def load_map_types_config():
 
     try:
         with open(config_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            all_maps = json.load(f)
+            # Filtrar apenas os mapas 2D
+            maps_2d = {
+                map_type: map_config 
+                for map_type, map_config in all_maps.items() 
+                if map_config.get("dimension") == "2D"
+            }
+            return maps_2d
     except Exception as e:
         st.warning(f"Erro ao carregar configuração: {e}. Usando valores padrão.")
         return load_map_types_config.__defaults__[0]
@@ -1268,8 +1281,8 @@ with tab1:
                     map_info["axis_type"], map_info["positions"], selected_map_type
                 )
             st.session_state[session_key] = {
-                "axis_values": loaded_data["axis_values"],
-                "map_values": loaded_data["map_values"],
+                "axis_values": loaded_data.get("axis_values", []),
+                "map_values": loaded_data.get("values", loaded_data.get("map_values", [])),  # Compatibilidade com ambos os nomes
                 "axis_enabled": axis_enabled,
             }
         else:
