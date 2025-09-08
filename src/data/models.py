@@ -366,10 +366,26 @@ class Vehicle(Base):
     bank_b_injector_count = Column(Integer, comment="Quantidade de bicos na bancada B")
     bank_b_total_flow = Column(Float, comment="Vazão total calculada (lb/h)")
     bank_b_dead_time = Column(Float, comment="Dead time dos injetores em ms")
+    bank_b_initial_pressure = Column(Float, comment="Pressão inicial da bancada B em bar")
     
     # Limites operacionais para mapas
     max_map_pressure = Column(Float, default=5.0, comment="Pressão MAP máxima em bar")
     min_map_pressure = Column(Float, default=-1.0, comment="Pressão MAP mínima em bar")
+    
+    # Configurações de Boost e Motor
+    boost_pressure = Column(Float, comment="Pressão máxima de boost em bar")
+    standard_boost_pressure = Column(Float, comment="Pressão padrão de boost em bar")
+    compression_ratio = Column(String(20), comment="Taxa de compressão do motor")
+    camshaft_profile = Column(String(50), comment="Perfil do comando de válvulas")
+    
+    # Análise de Potência
+    bsfc_factor = Column(Float, default=0.50, comment="Fator BSFC para cálculo de potência")
+    required_hp_na = Column(Float, comment="Potência requerida naturalmente aspirada")
+    required_hp_boost = Column(Float, comment="Potência requerida com boost máximo")
+    required_hp_standard = Column(Float, comment="Potência requerida com boost padrão")
+    max_supported_hp = Column(Float, comment="Potência máxima suportada pelos bicos")
+    hp_margin = Column(Float, comment="Margem de potência absoluta")
+    hp_margin_percent = Column(Float, comment="Margem de potência percentual")
     
     # Metadados de Sistema
     created_at = Column(DateTime, default=func.now(), comment="Data de criação")

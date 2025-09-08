@@ -135,6 +135,18 @@ if selected_vehicle_id:
                     help="Potência em modo aspirado ou base",
                     key="power_input"
                 )
+                
+                system_options = ['Injeção Eletrônica', 'Carburador', 'Injeção Direta', 'Port Injection']
+                current_system = vehicle.get('fuel_system', 'Injeção Eletrônica')
+                if current_system not in system_options:
+                    system_options.append(current_system)
+                    
+                fuel_system = st.selectbox(
+                    "Sistema",
+                    options=system_options,
+                    index=system_options.index(current_system) if current_system in system_options else 0,
+                    key="system_input"
+                )
             
             with col4:
                 fuel_options = ['Gasolina', 'Etanol', 'Flex', 'Metanol', 'GNV', 'E85']
@@ -149,16 +161,39 @@ if selected_vehicle_id:
                     key="fuel_input"
                 )
                 
-                system_options = ['Injeção Eletrônica', 'Carburador', 'Injeção Direta', 'Port Injection']
-                current_system = vehicle.get('fuel_system', 'Injeção Eletrônica')
-                if current_system not in system_options:
-                    system_options.append(current_system)
-                    
-                fuel_system = st.selectbox(
-                    "Sistema",
-                    options=system_options,
-                    index=system_options.index(current_system) if current_system in system_options else 0,
-                    key="system_input"
+                # Taxa de compressão
+                compression_options = ['Baixa compressão', 'Média compressão', 'Alta compressão']
+                current_compression = vehicle.get('compression_ratio', 'Baixa compressão')
+                # Garantir que o valor está na lista
+                if current_compression not in compression_options:
+                    # Se for um valor como "10.5:1", tentar mapear
+                    if current_compression and ':' in str(current_compression):
+                        current_compression = 'Média compressão'  # Valor padrão para valores numéricos
+                    else:
+                        current_compression = 'Baixa compressão'
+                
+                compression_ratio = st.radio(
+                    "Taxa de Compressão",
+                    options=compression_options,
+                    index=compression_options.index(current_compression),
+                    key="compression_input",
+                    horizontal=True
+                )
+                
+                # Comando de válvulas
+                camshaft_options = ['Baixa graduação', 'Alta graduação']
+                current_camshaft = vehicle.get('camshaft_profile', 'Baixa graduação')
+                # Garantir que o valor está na lista
+                if current_camshaft not in camshaft_options:
+                    # Se for um valor diferente como "Original", mapear para baixa graduação
+                    current_camshaft = 'Baixa graduação'
+                
+                camshaft_profile = st.radio(
+                    "Comando de Válvulas",
+                    options=camshaft_options,
+                    index=camshaft_options.index(current_camshaft),
+                    key="camshaft_input",
+                    horizontal=True
                 )
             
             # Botão para salvar informações do veículo
@@ -175,7 +210,9 @@ if selected_vehicle_id:
                     'engine_aspiration': engine_aspiration,
                     'estimated_power': estimated_power,
                     'fuel_type': fuel_type,
-                    'fuel_system': fuel_system
+                    'fuel_system': fuel_system,
+                    'compression_ratio': compression_ratio,
+                    'camshaft_profile': camshaft_profile
                 }
                 
                 if update_vehicle(selected_vehicle_id, vehicle_update):
@@ -227,10 +264,30 @@ if selected_vehicle_id:
                         value=float(current_boost),
                         step=0.1,
                         format="%.1f",
-                        help="Pressão máxima de boost para cálculo"
+                        help="Pressão máxima de boost para cálculo de potência máxima"
+                    )
+                    
+                    # Pressão padrão/normal de uso
+                    current_standard_boost = vehicle.get('standard_boost_pressure', boost_pressure * 0.7)
+                    # Garantir que current_standard_boost não seja None
+                    if current_standard_boost is None:
+                        current_standard_boost = boost_pressure * 0.7
+                    # Garantir que a pressão padrão não exceda a pressão máxima atual
+                    if current_standard_boost > boost_pressure:
+                        current_standard_boost = boost_pressure * 0.7
+                    
+                    standard_boost_pressure = st.number_input(
+                        "Pressão Padrão (bar)",
+                        min_value=0.1,
+                        max_value=float(boost_pressure),  # Usar boost_pressure em vez de current_boost
+                        value=float(current_standard_boost),
+                        step=0.1,
+                        format="%.1f",
+                        help="Pressão típica de uso diário/normal"
                     )
                 else:
                     boost_pressure = 0.0
+                    standard_boost_pressure = 0.0
                     st.info("Motor aspirado - sem pressão de boost")
                 
                 # Informativo sobre BSFC
@@ -261,36 +318,56 @@ if selected_vehicle_id:
                 base_hp = vehicle.get('estimated_power', 250)
                 max_supported_hp = calculate_max_supported_hp(total_flow, bsfc_factor)
                 
-                # Sempre mostrar potência aspirada (base)
-                st.metric("Potência Aspirada", f"{base_hp:.0f} hp")
+                # Primeira linha: Potências do motor
+                st.divider()
+                power_cols = st.columns(3)
+                
+                with power_cols[0]:
+                    st.metric("Potência Aspirada", f"{base_hp:.0f} hp")
                 
                 if is_forced_induction and boost_pressure > 0:
+                    # Calcular potências
+                    standard_hp = calculate_turbo_hp(base_hp, standard_boost_pressure)
                     turbo_hp = calculate_turbo_hp(base_hp, boost_pressure)
-                    # Mostrar potência total (já é o valor calculado com turbo)
-                    st.metric("Potência Total c/ Turbo", f"{turbo_hp:.0f} hp", 
-                             delta=f"+{(turbo_hp - base_hp):.0f} hp",
-                             help=f"Ganho de {((turbo_hp/base_hp - 1) * 100):.1f}% com {boost_pressure:.1f} bar")
+                    
+                    with power_cols[1]:
+                        st.metric("Potência Padrão", f"{standard_hp:.0f} hp", 
+                                 delta=f"+{(standard_hp - base_hp):.0f}",
+                                 help=f"Com {standard_boost_pressure:.1f} bar")
+                    
+                    with power_cols[2]:
+                        st.metric("Potência Máxima", f"{turbo_hp:.0f} hp", 
+                                 delta=f"+{(turbo_hp - base_hp):.0f}",
+                                 help=f"Com {boost_pressure:.1f} bar")
+                    
                     required_hp = turbo_hp
                 else:
-                    # Para aspirados, potência total = potência base
-                    st.metric("Potência Total", f"{base_hp:.0f} hp", 
-                             help="Motor aspirado - sem ganho de pressão")
+                    # Para aspirados, apenas mostrar na primeira coluna
+                    with power_cols[1]:
+                        st.empty()
+                    with power_cols[2]:
+                        st.empty()
                     required_hp = base_hp
                 
-                st.metric("Máximo Suportado", f"{max_supported_hp:.0f} hp")
-                
-                # Calcular e exibir margem
+                # Segunda linha: Análise de capacidade
+                st.divider()
                 if total_flow > 0:
                     margin_abs, margin_percent = calculate_hp_margin(max_supported_hp, required_hp)
                     margin_color = get_margin_color(margin_percent)
+                    margin_status = "Seguro" if margin_percent >= 20 else "Adequado" if margin_percent >= 10 else "Limite"
                     
-                    col2a, col2b = st.columns(2)
-                    with col2a:
+                    capacity_cols = st.columns(3)
+                    
+                    with capacity_cols[0]:
+                        st.metric("Máximo Suportado", f"{max_supported_hp:.0f} hp",
+                                 help="Baseado na vazão total dos bicos")
+                    
+                    with capacity_cols[1]:
                         st.metric("Margem", f"{margin_abs:.0f} hp",
-                                 help=f"Diferença entre máximo suportado ({max_supported_hp:.0f} hp) e potência requerida ({required_hp:.0f} hp)")
-                    with col2b:
-                        margin_status = "Seguro" if margin_percent >= 20 else "Adequado" if margin_percent >= 10 else "Limite"
-                        st.metric("Margem %", f"{margin_percent:.1f}%", 
+                                 help=f"Diferença para potência máxima")
+                    
+                    with capacity_cols[2]:
+                        st.metric("Margem %", f"{margin_percent:.1f}%",
                                  delta=margin_status,
                                  delta_color=margin_color,
                                  help="Verde > 20% | Amarelo 10-20% | Vermelho < 10%")
@@ -307,9 +384,11 @@ if selected_vehicle_id:
                 
                 if is_forced_induction:
                     update_data['boost_pressure'] = boost_pressure
+                    update_data['standard_boost_pressure'] = standard_boost_pressure
                 
                 # Salvar cálculos atuais
                 turbo_hp_value = turbo_hp if (is_forced_induction and boost_pressure > 0 and 'turbo_hp' in locals()) else base_hp
+                standard_hp_value = standard_hp if (is_forced_induction and standard_boost_pressure > 0 and 'standard_hp' in locals()) else base_hp
                 margin_abs_value = margin_abs if (total_flow > 0 and 'margin_abs' in locals()) else 0
                 margin_percent_value = margin_percent if (total_flow > 0 and 'margin_percent' in locals()) else 0
                 
@@ -317,6 +396,7 @@ if selected_vehicle_id:
                     'max_supported_hp': max_supported_hp,
                     'required_hp_na': base_hp,
                     'required_hp_boost': turbo_hp_value,
+                    'required_hp_standard': standard_hp_value,
                     'hp_margin': margin_abs_value,
                     'hp_margin_percent': margin_percent_value
                 })
@@ -482,6 +562,20 @@ if selected_vehicle_id:
                         max_value=16,
                         value=int(b_count)
                     )
+                    
+                    # Pressão inicial da bancada B
+                    initial_pressure_value = vehicle.get("bank_b_initial_pressure", 0.0)
+                    if initial_pressure_value is None:
+                        initial_pressure_value = 0.0
+                    bank_b_initial_pressure = st.number_input(
+                        "Pressão Inicial Bancada B",
+                        min_value=0.0,
+                        max_value=10.0,
+                        value=float(initial_pressure_value),
+                        step=0.1,
+                        format="%.1f",
+                        help="Pressão inicial para ativação da bancada B em bar"
+                    )
             
             with col2:
                 if bank_b_enabled:
@@ -522,6 +616,7 @@ if selected_vehicle_id:
                 bank_b_injector_count = 0
                 bank_b_injector_flow = 0
                 bank_b_dead_time = 0
+                bank_b_initial_pressure = 0.0
                 total_flow_b = 0
             
             # Botão de salvar
@@ -536,6 +631,7 @@ if selected_vehicle_id:
                         "bank_b_injector_count": bank_b_injector_count,
                         "bank_b_injector_flow": bank_b_injector_flow,
                         "bank_b_dead_time": bank_b_dead_time,
+                        "bank_b_initial_pressure": bank_b_initial_pressure,
                         "bank_b_total_flow": total_flow_b
                     })
                 else:
@@ -545,6 +641,7 @@ if selected_vehicle_id:
                         "bank_b_injector_count": 0,
                         "bank_b_injector_flow": 0,
                         "bank_b_dead_time": 0,
+                        "bank_b_initial_pressure": 0.0,
                         "bank_b_total_flow": 0
                     })
                 

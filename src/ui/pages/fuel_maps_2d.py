@@ -41,6 +41,221 @@ except ImportError:
 
 # === FUEL MAP AUTO CALCULATOR FUNCTIONS ===
 
+# Funções de cálculo específicas para cada tipo de mapa
+
+def calculate_tps_correction(tps_values: List[float], strategy: str = 'balanced') -> List[float]:
+    """Calcula valores de correção baseados no TPS (Throttle Position Sensor).
+    
+    Comportamento baseado em física de motores:
+    - 0-20%: zona de economia, correção negativa para melhor combustão
+    - 20-70%: zona neutra, sem grandes correções
+    - 70-100%: zona de potência, correção positiva para mais combustível
+    - WOT (100%): correção máxima para potência
+    """
+    corrections = []
+    
+    strategy_factors = {
+        'conservative': {'economy': -2.0, 'neutral': 0.0, 'power': 8.0, 'wot': 12.0},
+        'balanced': {'economy': -5.0, 'neutral': 0.0, 'power': 10.0, 'wot': 15.0},
+        'aggressive': {'economy': -8.0, 'neutral': 0.0, 'power': 15.0, 'wot': 20.0}
+    }
+    
+    factors = strategy_factors.get(strategy, strategy_factors['balanced'])
+    
+    for tps in tps_values:
+        if tps <= 20:  # Zona de economia
+            # Interpolação linear entre 0% e -X% baseado na estratégia
+            correction = factors['economy'] * (tps / 20.0)
+        elif tps <= 70:  # Zona neutra
+            # Transição suave da economia para neutro
+            transition = (tps - 20) / 50.0  # 0 a 1
+            correction = factors['economy'] * (1 - transition)
+        elif tps < 100:  # Zona de potência
+            # Transição do neutro para potência
+            transition = (tps - 70) / 30.0  # 0 a 1
+            correction = factors['power'] * transition
+        else:  # WOT (Wide Open Throttle)
+            correction = factors['wot']
+        
+        corrections.append(correction)
+    
+    return corrections
+
+def calculate_temp_correction(temp_values: List[float], 
+                            cooling_type: str = 'water',
+                            climate: str = 'temperate') -> List[float]:
+    """Calcula correção por temperatura do motor.
+    
+    Baseado em física de combustão:
+    - < 40°C: motor frio, precisa enriquecimento
+    - 80-90°C: temperatura ideal, sem correção
+    - > 100°C: motor quente, pode precisar enriquecimento para resfriamento
+    """
+    corrections = []
+    
+    # Fatores baseados no tipo de refrigeração e clima
+    cooling_factors = {
+        'water': {'cold_max': 25.0, 'hot_max': 8.0},
+        'air': {'cold_max': 30.0, 'hot_max': 12.0}
+    }
+    
+    climate_factors = {
+        'cold': 0.8,
+        'temperate': 1.0,
+        'hot': 1.3
+    }
+    
+    cool_factor = cooling_factors.get(cooling_type, cooling_factors['water'])
+    climate_mult = climate_factors.get(climate, 1.0)
+    
+    for temp in temp_values:
+        if temp < 40:  # Motor frio
+            # Enriquecimento máximo no frio, reduzindo conforme esquenta
+            cold_factor = (40 - temp) / 40.0  # 1.0 a 0°C, 0.0 a 40°C
+            correction = cool_factor['cold_max'] * cold_factor * climate_mult
+        elif temp <= 80:  # Aquecendo
+            # Transição do enriquecimento para neutro
+            warm_factor = (80 - temp) / 40.0  # 1.0 a 40°C, 0.0 a 80°C
+            correction = cool_factor['cold_max'] * 0.3 * warm_factor * climate_mult
+        elif temp <= 95:  # Temperatura ideal
+            correction = 0.0
+        elif temp <= 105:  # Começando a esquentar demais
+            # Pequeno enriquecimento para resfriamento
+            hot_factor = (temp - 95) / 10.0  # 0.0 a 95°C, 1.0 a 105°C
+            correction = cool_factor['hot_max'] * 0.3 * hot_factor * climate_mult
+        else:  # Motor muito quente
+            # Enriquecimento para proteção térmica
+            overheat_factor = min((temp - 105) / 20.0, 1.0)  # Max em 125°C
+            correction = cool_factor['hot_max'] * (0.3 + 0.7 * overheat_factor) * climate_mult
+        
+        corrections.append(correction)
+    
+    return corrections
+
+def calculate_air_temp_correction(air_temp_values: List[float]) -> List[float]:
+    """Calcula correção por temperatura do ar de admissão.
+    
+    Baseado na lei dos gases ideais - densidade do ar varia com temperatura:
+    - Ar frio (< 20°C): mais denso, precisa menos combustível
+    - Ar quente (> 40°C): menos denso, precisa mais combustível
+    """
+    corrections = []
+    
+    # Temperatura de referência: 25°C (padrão para calibração)
+    ref_temp = 25.0
+    
+    for air_temp in air_temp_values:
+        # Calcular densidade relativa do ar
+        # Densidade = P / (R * T) onde T é temperatura absoluta
+        temp_absolute = air_temp + 273.15
+        ref_temp_absolute = ref_temp + 273.15
+        
+        # Fator de densidade (relativo à temperatura de referência)
+        density_ratio = ref_temp_absolute / temp_absolute
+        
+        # Conversão para percentual de correção
+        # Se densidade é maior (ar frio), precisamos reduzir combustível
+        # Se densidade é menor (ar quente), precisamos aumentar combustível
+        correction = (density_ratio - 1.0) * 100.0
+        
+        # Limitar correção para valores práticos
+        correction = max(-15.0, min(15.0, correction))
+        
+        corrections.append(correction)
+    
+    return corrections
+
+def calculate_voltage_correction(voltage_values: List[float], 
+                               injector_impedance: str = 'high') -> List[float]:
+    """Calcula correção por voltagem (dead time dos bicos).
+    
+    Dead time varia com voltagem - bicos precisam de tempo mínimo para abrir:
+    - < 12V: dead time maior, precisa compensação
+    - 13-14V: voltagem nominal
+    - > 14V: dead time menor
+    """
+    corrections = []
+    
+    # Dead time característico por tipo de bico (em ms)
+    dead_time_base = {
+        'high': 1.0,    # Bicos de alta impedância (12-16Ω)
+        'low': 0.6      # Bicos de baixa impedância (2-3Ω)
+    }
+    
+    base_voltage = 13.5  # Voltagem de referência
+    base_dead_time = dead_time_base.get(injector_impedance, dead_time_base['high'])
+    
+    for voltage in voltage_values:
+        if voltage <= 8.0:  # Voltagem muito baixa
+            # Dead time muito alto, precisa muita compensação
+            dead_time = base_dead_time * 2.5
+        elif voltage <= 10.0:  # Voltagem baixa
+            # Interpolação entre 8V e 10V
+            factor = 2.5 - (voltage - 8.0) * 0.75  # 2.5 a 1.0
+            dead_time = base_dead_time * factor
+        elif voltage <= 12.0:  # Voltagem um pouco baixa
+            # Interpolação entre 10V e 12V
+            factor = 1.75 - (voltage - 10.0) * 0.375  # 1.75 a 1.0
+            dead_time = base_dead_time * factor
+        elif voltage <= 16.0:  # Faixa normal
+            # Dead time padrão com pequena variação
+            factor = 1.0 - (voltage - 13.5) * 0.05  # Pequena redução com maior voltagem
+            dead_time = base_dead_time * factor
+        else:  # Voltagem alta
+            # Dead time reduzido, mas limitado
+            dead_time = base_dead_time * 0.7
+        
+        # Diferença em relação ao dead time base
+        correction = dead_time - base_dead_time
+        
+        corrections.append(correction)
+    
+    return corrections
+
+def calculate_rpm_compensation(rpm_values: List[float], 
+                             has_turbo: bool = False,
+                             redline: int = 7000,
+                             idle_rpm: int = 800) -> List[float]:
+    """Calcula compensação por RPM baseada na eficiência volumétrica.
+    
+    Padrão FTManager:
+    - Baixa rotação (idle até ~2400): 0% (sem correção)
+    - Média rotação (~2400-4500): correção positiva crescente
+    - Pico (~4000-4500): máxima correção
+    - Alta rotação (>4500): correção decrescente
+    """
+    corrections = []
+    
+    # Pontos de referência do comportamento FTManager
+    start_correction_rpm = 2400  # Onde começa a correção
+    peak_rpm = 4200 if not has_turbo else 4500  # Pico de correção
+    
+    for rpm in rpm_values:
+        if rpm <= start_correction_rpm:  
+            # Sem correção em baixas rotações (idle até 2400)
+            correction = 0.0
+        elif rpm <= peak_rpm:  
+            # Correção crescente até o pico
+            progress = (rpm - start_correction_rpm) / (peak_rpm - start_correction_rpm)
+            max_correction = 12.0 if has_turbo else 10.0
+            correction = progress * max_correction  # 0% a 10-12%
+        elif rpm <= redline * 0.9:  
+            # Correção decrescente após o pico
+            progress = (rpm - peak_rpm) / (redline * 0.9 - peak_rpm)
+            max_correction = 12.0 if has_turbo else 10.0
+            correction = max_correction * (1.0 - progress * 0.7)  # Cai para ~30% do máximo
+        elif rpm <= redline:  
+            # Próximo ao limitador, correção mínima mas ainda presente
+            max_correction = 12.0 if has_turbo else 10.0
+            correction = max_correction * 0.3  # ~3-4% de correção
+        else:  # Acima do limitador (não deveria acontecer normalmente)
+            # Correção mínima de segurança
+            correction = 2.0
+        
+        corrections.append(correction)
+    
+    return corrections
+
 # Presets de estratégias de tuning
 STRATEGY_PRESETS = {
     'conservative': {
@@ -97,6 +312,14 @@ def get_vehicle_data_from_session() -> Dict[str, Any]:
             aspiration = vehicle.get('engine_aspiration', '').lower()
             is_turbo = any(term in aspiration for term in ['turbo', 'super'])
             
+            # Usar boost_pressure (pressão máxima) para o calculador
+            boost_value = 0.0
+            if is_turbo:
+                boost_value = vehicle.get('boost_pressure') or vehicle.get('max_boost_pressure') or 1.0
+                # Garantir que não seja None
+                if boost_value is None:
+                    boost_value = 1.0
+            
             return {
                 'displacement': vehicle.get('engine_displacement', 2.0),  # Litros
                 'cylinders': vehicle.get('engine_cylinders', 4),
@@ -104,8 +327,14 @@ def get_vehicle_data_from_session() -> Dict[str, Any]:
                 'injector_flow_lbs': total_flow_lbs,  # lbs/h para exibição
                 'fuel_type': vehicle.get('fuel_type', 'Gasolina'),
                 'turbo': is_turbo,
-                'boost_pressure': vehicle.get('boost_pressure', 1.0) if is_turbo else 0.0,  # bar
-                'bsfc_factor': vehicle.get('bsfc_factor', 0.50)
+                'boost_pressure': boost_value,  # Usar pressão máxima salva
+                'bsfc_factor': vehicle.get('bsfc_factor', 0.50),
+                # Novos campos para cálculos específicos
+                'injector_impedance': vehicle.get('injector_impedance', 'high'),  # high/low
+                'cooling_type': vehicle.get('cooling_type', 'water'),  # water/air
+                'redline_rpm': vehicle.get('redline_rpm', 7000),
+                'idle_rpm': vehicle.get('idle_rpm', 800),
+                'climate': vehicle.get('climate', 'temperate')  # cold/temperate/hot
             }
     
     # Valores padrão se não houver veículo selecionado
@@ -117,7 +346,13 @@ def get_vehicle_data_from_session() -> Dict[str, Any]:
         'fuel_type': 'Gasolina',
         'turbo': False,
         'boost_pressure': 0.0,  # bar
-        'bsfc_factor': 0.50
+        'bsfc_factor': 0.50,
+        # Valores padrão para novos campos
+        'injector_impedance': 'high',  # high/low
+        'cooling_type': 'water',  # water/air
+        'redline_rpm': 7000,
+        'idle_rpm': 800,
+        'climate': 'temperate'  # cold/temperate/hot
     }
 
 def calculate_base_injection_time(map_kpa: float, engine_displacement: float, 
@@ -255,6 +490,80 @@ def apply_fuel_correction(base_time: float, fuel_type: str) -> float:
     }
     return base_time * corrections.get(fuel_type.lower(), 1.0)
 
+def calculate_map_values_universal(
+    map_type: str,
+    axis_values: List[float],
+    vehicle_data: Dict[str, Any],
+    strategy: str = 'balanced',
+    safety_factor: float = 1.0,
+    **kwargs
+) -> List[float]:
+    """Função universal para calcular valores de qualquer tipo de mapa 2D.
+    
+    Args:
+        map_type: Tipo do mapa (ex: "main_fuel_2d_map", "tps_correction_2d")
+        axis_values: Valores do eixo X
+        vehicle_data: Dados do veículo
+        strategy: Estratégia de tuning
+        safety_factor: Fator de segurança
+        **kwargs: Parâmetros específicos para cada tipo de mapa
+    
+    Returns:
+        Lista com valores calculados
+    """
+    # Obter informações do tipo de mapa
+    map_info = MAP_TYPES_2D.get(map_type, {})
+    axis_type = map_info.get('axis_type', '')
+    unit = map_info.get('unit', '%')
+    
+    # Calcular valores baseado no tipo de mapa
+    if map_type == "main_fuel_2d_map":
+        # Usar função existente para mapa principal
+        return calculate_map_values(
+            axis_values, 
+            vehicle_data, 
+            strategy, 
+            safety_factor,
+            kwargs.get('apply_fuel_corr', True)
+        )
+    
+    elif map_type == "tps_correction_2d":
+        # Correção por TPS
+        calculated_values = calculate_tps_correction(axis_values, strategy)
+        return [val * safety_factor for val in calculated_values]
+    
+    elif map_type == "temp_correction_2d":
+        # Correção por temperatura do motor
+        cooling_type = kwargs.get('cooling_type', vehicle_data.get('cooling_type', 'water'))
+        climate = kwargs.get('climate', vehicle_data.get('climate', 'temperate'))
+        calculated_values = calculate_temp_correction(axis_values, cooling_type, climate)
+        return [val * safety_factor for val in calculated_values]
+    
+    elif map_type == "air_temp_correction_2d":
+        # Correção por temperatura do ar
+        calculated_values = calculate_air_temp_correction(axis_values)
+        return [val * safety_factor for val in calculated_values]
+    
+    elif map_type == "voltage_correction_2d":
+        # Correção por voltagem (dead time)
+        injector_impedance = kwargs.get('injector_impedance', 
+                                       vehicle_data.get('injector_impedance', 'high'))
+        calculated_values = calculate_voltage_correction(axis_values, injector_impedance)
+        return [val * safety_factor for val in calculated_values]
+    
+    elif map_type == "rpm_compensation_2d":
+        # Compensação por RPM
+        has_turbo = vehicle_data.get('turbo', False)
+        redline = kwargs.get('redline', vehicle_data.get('redline_rpm', 7000))
+        idle_rpm = kwargs.get('idle_rpm', vehicle_data.get('idle_rpm', 800))
+        calculated_values = calculate_rpm_compensation(axis_values, has_turbo, redline, idle_rpm)
+        return [val * safety_factor for val in calculated_values]
+    
+    else:
+        # Tipo de mapa não reconhecido, retornar valores padrão
+        st.warning(f"Tipo de mapa '{map_type}' não suportado pelo calculador automático")
+        return [0.0] * len(axis_values)
+
 def calculate_map_values(axis_values: List[float], vehicle_data: Dict[str, Any], 
                         strategy: str, safety_factor: float, 
                         apply_fuel_corr: bool = True) -> List[float]:
@@ -330,6 +639,73 @@ def validate_vehicle_data(vehicle_data: Dict[str, Any]) -> Tuple[bool, str]:
     
     return True, "Dados válidos"
 
+def ensure_all_maps_exist(vehicle_id: str) -> None:
+    """Verifica e cria arquivos de mapa padrão para todos os tipos se não existirem.
+    
+    Ao iniciar a tela, verifica se existem arquivos para todos os tipos de mapas 2D.
+    Se não existir, cria com valores de eixo padrão e valores de mapa zerados.
+    """
+    # Carregar configuração de tipos de mapas
+    config_file = Path(__file__).parent.parent.parent.parent / "config" / "map_types_2d.json"
+    
+    try:
+        with open(config_file, 'r', encoding='utf-8') as f:
+            map_types_config = json.load(f)
+    except:
+        # Se não conseguir carregar config, usar padrão mínimo
+        return
+    
+    # Para cada tipo de mapa configurado
+    for map_type_key, map_config in map_types_config.items():
+        # Verificar para bancada A
+        for bank_id in ['A', 'B']:
+            # Verificar se já existe arquivo salvo
+            existing_data = load_map_data(vehicle_id, map_type_key, bank_id)
+            
+            if not existing_data:
+                # Criar dados padrão usando valores do config
+                default_axis = map_config.get('default_axis_values', [])
+                default_enabled = map_config.get('default_enabled', [])
+                positions = map_config.get('positions', 32)
+                
+                # Se não tiver valores padrão no config, criar genéricos
+                if not default_axis:
+                    default_axis = [0.0] * positions
+                    default_enabled = [True] * min(20, positions) + [False] * max(0, positions - 20)
+                
+                # Criar valores de mapa zerados para posições ativas
+                active_count = sum(default_enabled)
+                default_map_values = [0.0] * active_count
+                
+                # Ajustar para motor aspirado se necessário
+                vehicle = get_vehicle_by_id(vehicle_id)
+                if vehicle and map_type_key == "main_fuel_2d_map":
+                    aspiration = vehicle.get('engine_aspiration', '')
+                    is_turbo = any(term in aspiration.lower() for term in ['turbo', 'super'])
+                    
+                    if not is_turbo:
+                        # Para aspirado, desabilitar valores positivos de MAP
+                        turbo_config = map_config.get('turbo_adjustment', {})
+                        aspirated_max = turbo_config.get('aspirated_max_index', 10)
+                        
+                        # Desabilitar valores após o índice máximo para aspirados
+                        for i in range(aspirated_max + 1, len(default_enabled)):
+                            default_enabled[i] = False
+                        
+                        # Recalcular valores ativos
+                        active_count = sum(default_enabled)
+                        default_map_values = [0.0] * active_count
+                
+                # Salvar o mapa com valores padrão
+                save_map_data(
+                    vehicle_id,
+                    map_type_key,
+                    bank_id,
+                    default_axis,
+                    default_map_values,
+                    default_enabled
+                )
+
 # Configuração da página
 st.title("Mapas de Injeção 2D")
 st.caption("Configure mapas de injeção bidimensionais")
@@ -384,8 +760,17 @@ def load_map_types_config():
 # Carregar configuração de tipos de mapas
 MAP_TYPES_2D = load_map_types_config()
 
-def get_default_axis_values(axis_type: str, positions: int) -> List[float]:
-    """Retorna valores padrão para 32 posições com sistema enable/disable."""
+def get_default_axis_values(axis_type: str, positions: int, map_type_key: str = None) -> List[float]:
+    """Retorna valores padrão do eixo usando configuração do JSON quando disponível."""
+    
+    # Primeiro tentar usar valores do arquivo de configuração
+    if map_type_key and map_type_key in MAP_TYPES_2D:
+        map_config = MAP_TYPES_2D[map_type_key]
+        default_values = map_config.get('default_axis_values', [])
+        if default_values and len(default_values) == positions:
+            return default_values
+    
+    # Fallback para valores anteriores se não houver no config
     if axis_type == "MAP":
         # Valores MAP para 32 posições: -1.00 a 2.00 bar (21 ativas) + zeros
         return [-1.00, -0.90, -0.80, -0.70, -0.60, -0.50, -0.40, -0.30, 
@@ -393,9 +778,10 @@ def get_default_axis_values(axis_type: str, positions: int) -> List[float]:
                 1.20, 1.40, 1.60, 1.80, 2.00, 0.0, 0.0, 0.0,
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     elif axis_type == "TPS":
-        # TPS para 20 posições: 0 a 100%
+        # TPS para posições variáveis: 0 a 100%
         if positions == 20:
-            return list(np.linspace(0, 100, 20))
+            return [0, 5, 10, 15, 20, 25, 30, 35, 40, 45,
+                   50, 55, 60, 65, 70, 75, 80, 85, 90, 100]
         else:
             return list(np.linspace(0, 100, positions))
     elif axis_type == "RPM":
@@ -405,22 +791,40 @@ def get_default_axis_values(axis_type: str, positions: int) -> List[float]:
                 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000,
                 0, 0, 0, 0, 0, 0, 0, 0]
     elif axis_type == "TEMP":
-        # Temperatura para 16 posições
-        return list(np.linspace(-10, 120, positions))
+        # Temperatura do motor
+        if positions == 16:
+            return [-20, -10, 0, 10, 20, 30, 40, 50,
+                    60, 70, 80, 90, 100, 110, 120, 130]
+        else:
+            return list(np.linspace(-20, 130, positions))
     elif axis_type == "AIR_TEMP":
-        # Temperatura do ar para 9 posições
-        return list(np.linspace(-20, 60, positions))
+        # Temperatura do ar
+        if positions == 16:
+            return [-10, 0, 10, 15, 20, 25, 30, 35,
+                    40, 45, 50, 60, 70, 80, 90, 100]
+        else:
+            return list(np.linspace(-10, 100, positions))
     elif axis_type == "VOLTAGE":
-        # Tensão para 8 posições
-        return list(np.linspace(8, 16, positions))
+        # Tensão do sistema
+        if positions == 9:
+            return [8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]
+        else:
+            return list(np.linspace(8, 16, positions))
     else:
         return [0.0] * positions
 
 def get_default_enabled_positions(axis_type: str, positions: int, map_type_key: str = None) -> List[bool]:
-    """Retorna posições habilitadas por padrão."""
-    # Usar configuração do JSON se disponível
+    """Retorna posições habilitadas por padrão usando configuração do JSON quando disponível."""
+    
+    # Primeiro tentar usar valores do arquivo de configuração
     if map_type_key and map_type_key in MAP_TYPES_2D:
-        default_count = MAP_TYPES_2D[map_type_key].get("default_enabled_count", positions)
+        map_config = MAP_TYPES_2D[map_type_key]
+        default_enabled = map_config.get('default_enabled', [])
+        if default_enabled and len(default_enabled) == positions:
+            return default_enabled
+        
+        # Se não tiver array de enabled, usar default_enabled_count
+        default_count = map_config.get("default_enabled_count", positions)
         return [True] * min(default_count, positions) + [False] * max(0, positions - default_count)
     
     # Fallback para lógica anterior
@@ -615,6 +1019,9 @@ if not selected_vehicle_id:
     st.warning("Selecione um veículo no menu lateral para configurar os mapas de injeção")
     st.stop()
 
+# Garantir que todos os mapas padrão existam para este veículo
+ensure_all_maps_exist(selected_vehicle_id)
+
 # Obter informações do veículo selecionado
 vehicles = load_vehicles()
 if vehicles:
@@ -696,7 +1103,8 @@ with tab1:
             st.session_state[session_key] = {
                 "axis_values": get_default_axis_values(
                     map_info["axis_type"], 
-                    map_info["positions"]
+                    map_info["positions"],
+                    selected_map_type  # Passar map_type_key para usar valores do config
                 ),
                 "map_values": get_default_map_values(
                     selected_map_type, 
@@ -763,50 +1171,186 @@ with tab1:
                             help="Multiplica todos os valores calculados"
                         )
                         
-                        # Opções avançadas
-                        st.subheader("Configurações Avançadas")
+                        # Configurações específicas para cada tipo de mapa
+                        st.subheader("Configurações Específicas")
                         
-                        advanced_col1, advanced_col2 = st.columns(2)
+                        # Inicializar variáveis padrão
+                        fuel_correction_enabled = True  # Padrão para todos os mapas
                         
-                        with advanced_col1:
-                            consider_boost = st.checkbox(
-                                "Considerar Boost",
-                                value=vehicle_data['turbo'],
-                                key=f"consider_boost_{session_key}",
-                                help="Aplica correção para pressão de turbo"
+                        # Controles específicos baseados no tipo de mapa selecionado
+                        if selected_map_type == "main_fuel_2d_map":
+                            # Controles para mapa principal
+                            advanced_col1, advanced_col2 = st.columns(2)
+                            
+                            with advanced_col1:
+                                consider_boost = st.checkbox(
+                                    "Considerar Boost",
+                                    value=vehicle_data['turbo'],
+                                    key=f"consider_boost_{session_key}",
+                                    help="Aplica correção para pressão de turbo"
+                                )
+                            
+                            with advanced_col2:
+                                fuel_correction_enabled = st.checkbox(
+                                    "Correção de Combustível",
+                                    value=True,
+                                    key=f"fuel_correction_{session_key}",
+                                    help="Aplica correção baseada no tipo de combustível"
+                                )
+                        
+                        elif selected_map_type == "tps_correction_2d":
+                            # Controles para correção TPS
+                            st.write("**Estratégia de Aceleração:**")
+                            tps_strategy_help = {
+                                'conservative': 'Correções suaves, economia de combustível',
+                                'balanced': 'Correções padrão, equilíbrio entre economia e potência',
+                                'aggressive': 'Correções intensas, foco em potência'
+                            }
+                            
+                            st.radio(
+                                "Sensibilidade do TPS",
+                                options=['conservative', 'balanced', 'aggressive'],
+                                format_func=lambda x: f"{STRATEGY_PRESETS[x]['name']} - {tps_strategy_help[x]}",
+                                index=1,  # Balanceada por padrão
+                                key=f"tps_sensitivity_{session_key}",
+                                help="Define o comportamento da correção TPS"
                             )
                         
-                        with advanced_col2:
-                            fuel_correction_enabled = st.checkbox(
-                                "Correção de Combustível",
-                                value=True,
-                                key=f"fuel_correction_{session_key}",
-                                help="Aplica correção baseada no tipo de combustível"
-                            )
+                        elif selected_map_type == "temp_correction_2d":
+                            # Controles para correção de temperatura
+                            temp_col1, temp_col2 = st.columns(2)
+                            
+                            with temp_col1:
+                                cooling_type = st.radio(
+                                    "Tipo de Refrigeração",
+                                    options=['water', 'air'],
+                                    format_func=lambda x: 'Água' if x == 'water' else 'Ar',
+                                    index=0 if vehicle_data.get('cooling_type', 'water') == 'water' else 1,
+                                    key=f"cooling_type_{session_key}",
+                                    help="Tipo de sistema de refrigeração do motor"
+                                )
+                            
+                            with temp_col2:
+                                climate = st.selectbox(
+                                    "Clima Predominante",
+                                    options=['cold', 'temperate', 'hot'],
+                                    format_func=lambda x: {'cold': 'Frio', 'temperate': 'Temperado', 'hot': 'Quente'}[x],
+                                    index=['cold', 'temperate', 'hot'].index(vehicle_data.get('climate', 'temperate')),
+                                    key=f"climate_{session_key}",
+                                    help="Clima onde o veículo será usado predominantemente"
+                                )
+                        
+                        elif selected_map_type == "air_temp_correction_2d":
+                            # Controles para temperatura do ar
+                            st.info("Correção automática baseada na densidade do ar")
+                            st.caption("Baseia-se na lei dos gases ideais para calcular a densidade relativa do ar")
+                        
+                        elif selected_map_type == "voltage_correction_2d":
+                            # Controles para correção de voltagem
+                            voltage_col1, voltage_col2 = st.columns(2)
+                            
+                            with voltage_col1:
+                                injector_impedance = st.radio(
+                                    "Tipo de Bico",
+                                    options=['high', 'low'],
+                                    format_func=lambda x: 'Alta Impedância (12-16Ω)' if x == 'high' else 'Baixa Impedância (2-3Ω)',
+                                    index=0 if vehicle_data.get('injector_impedance', 'high') == 'high' else 1,
+                                    key=f"injector_impedance_{session_key}",
+                                    help="Tipo de impedância dos bicos injetores"
+                                )
+                            
+                            with voltage_col2:
+                                st.metric("Voltagem de Referência", "13.5V")
+                                st.caption("Dead time varia com a voltagem da bateria")
+                        
+                        elif selected_map_type == "rpm_compensation_2d":
+                            # Controles para compensação RPM
+                            rpm_col1, rpm_col2 = st.columns(2)
+                            
+                            with rpm_col1:
+                                redline_rpm = st.number_input(
+                                    "Limitador de RPM",
+                                    min_value=4000,
+                                    max_value=12000,
+                                    value=vehicle_data.get('redline_rpm', 7000),
+                                    step=250,
+                                    key=f"redline_rpm_{session_key}",
+                                    help="RPM máximo do motor"
+                                )
+                            
+                            with rpm_col2:
+                                idle_rpm = st.number_input(
+                                    "RPM de Marcha Lenta",
+                                    min_value=500,
+                                    max_value=1500,
+                                    value=vehicle_data.get('idle_rpm', 800),
+                                    step=50,
+                                    key=f"idle_rpm_{session_key}",
+                                    help="RPM de marcha lenta"
+                                )
+                        
+                        else:
+                            # Para tipos não implementados
+                            st.info(f"Configurações específicas para '{map_info['name']}' não disponíveis")
                     
                     with calc_col2:
                         st.subheader("Dados do Veículo")
-                        st.metric("Cilindrada", f"{vehicle_data['displacement']:.1f}L")
-                        st.metric("Cilindros", vehicle_data['cylinders'])
-                        st.metric("Vazão Bicos", f"{vehicle_data.get('injector_flow_lbs', 0):.0f} lbs/h")
-                        st.metric("Combustível", vehicle_data['fuel_type'].title())
-                        if vehicle_data['turbo']:
-                            st.metric("Boost", f"{vehicle_data['boost_pressure']:.1f} bar")
+                        
+                        # Primeira linha: Cilindrada, Cilindros, Vazão Bicos
+                        vehicle_col1, vehicle_col2, vehicle_col3 = st.columns(3)
+                        with vehicle_col1:
+                            st.metric("Cilindrada", f"{vehicle_data['displacement']:.1f}L")
+                        with vehicle_col2:
+                            st.metric("Cilindros", vehicle_data['cylinders'])
+                        with vehicle_col3:
+                            st.metric("Vazão", f"{vehicle_data.get('injector_flow_lbs', 0):.0f} lbs/h")
+                        
+                        # Segunda linha: Combustível e Boost
+                        vehicle_col4, vehicle_col5 = st.columns(2)
+                        with vehicle_col4:
+                            st.metric("Combustível", vehicle_data['fuel_type'].title())
+                        with vehicle_col5:
+                            if vehicle_data['turbo']:
+                                boost_val = vehicle_data.get('boost_pressure', 1.0)
+                                if boost_val is None:
+                                    boost_val = 1.0
+                                st.metric("Boost", f"{boost_val:.1f} bar")
+                            else:
+                                st.metric("Aspiração", "Natural")
                     
                     st.markdown("---")
                     
                     # Preview dos valores calculados
                     st.subheader("Preview dos Valores Calculados")
                     
-                    # Calcular valores preview
+                    # Calcular valores preview usando função universal
                     axis_values = current_data["axis_values"]
                     enabled = current_data.get("enabled", [True] * len(axis_values))
-                    preview_values = calculate_map_values(
-                        axis_values, 
-                        vehicle_data, 
-                        selected_strategy, 
+                    
+                    # Preparar parâmetros específicos para cada tipo de mapa usando controles da interface
+                    calc_kwargs = {}
+                    if selected_map_type == "main_fuel_2d_map":
+                        calc_kwargs['apply_fuel_corr'] = fuel_correction_enabled
+                    elif selected_map_type == "tps_correction_2d":
+                        # Usar estratégia específica do TPS se diferente
+                        tps_strategy = st.session_state.get(f"tps_sensitivity_{session_key}", selected_strategy)
+                        selected_strategy = tps_strategy  # Sobrescrever para este tipo
+                    elif selected_map_type == "temp_correction_2d":
+                        calc_kwargs['cooling_type'] = st.session_state.get(f"cooling_type_{session_key}", vehicle_data.get('cooling_type', 'water'))
+                        calc_kwargs['climate'] = st.session_state.get(f"climate_{session_key}", vehicle_data.get('climate', 'temperate'))
+                    elif selected_map_type == "voltage_correction_2d":
+                        calc_kwargs['injector_impedance'] = st.session_state.get(f"injector_impedance_{session_key}", vehicle_data.get('injector_impedance', 'high'))
+                    elif selected_map_type == "rpm_compensation_2d":
+                        calc_kwargs['redline'] = st.session_state.get(f"redline_rpm_{session_key}", vehicle_data.get('redline_rpm', 7000))
+                        calc_kwargs['idle_rpm'] = st.session_state.get(f"idle_rpm_{session_key}", vehicle_data.get('idle_rpm', 800))
+                    
+                    preview_values = calculate_map_values_universal(
+                        selected_map_type,
+                        axis_values,
+                        vehicle_data,
+                        selected_strategy,
                         safety_factor,
-                        fuel_correction_enabled
+                        **calc_kwargs
                     )
                     
                     # Criar DataFrame no mesmo formato do mapa principal (uma linha, múltiplas colunas)
@@ -1046,16 +1590,9 @@ with tab1:
                     new_values.append(0.0)
         
         # Atualizar valores no session_state mantendo a estrutura completa
-        full_values = list(current_data["map_values"])  # Começar com valores originais
-        
-        # Atualizar apenas os valores ativos
-        active_indices = [i for i, enabled in enumerate(current_data.get("axis_enabled", [True] * len(current_data["axis_values"]))) if enabled]
-        
-        for i, new_val in enumerate(new_values):
-            if i < len(active_indices):
-                full_values[active_indices[i]] = new_val
-        
-        st.session_state[session_key]["map_values"] = full_values
+        # Os map_values salvos contêm apenas valores para posições ativas
+        # então simplesmente atualizar com os novos valores editados
+        st.session_state[session_key]["map_values"] = new_values
     
     
         # Validações
