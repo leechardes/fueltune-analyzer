@@ -79,8 +79,38 @@ def load_map_types_config():
 # Carregar configuração de tipos de mapas
 MAP_TYPES_3D = load_map_types_config()
 
-# Eixos padrão - 32 posições com sistema enable/disable
-# MAP (bar) - 32 posições totais, 21 ativas por padrão
+def get_map_config_values(map_type: str, key: str, grid_size: int = 32):
+    """Obtém valores de configuração do mapa específico do arquivo JSON.
+    
+    Args:
+        map_type: Tipo do mapa (ex: 'main_fuel_3d_map')
+        key: Chave da configuração (ex: 'default_rpm_values')
+        grid_size: Tamanho do grid
+        
+    Returns:
+        Lista com os valores da configuração ou valores padrão
+    """
+    if map_type in MAP_TYPES_3D:
+        config_value = MAP_TYPES_3D[map_type].get(key)
+        if config_value is not None:
+            # Ajustar tamanho se necessário
+            if len(config_value) != grid_size:
+                if len(config_value) > grid_size:
+                    return config_value[:grid_size]
+                else:
+                    # Preencher com valores padrão se menor
+                    if 'enabled' in key:
+                        return config_value + [False] * (grid_size - len(config_value))
+                    else:
+                        # Para valores numéricos, repetir o último valor
+                        if config_value:
+                            last_value = config_value[-1]
+                            return config_value + [last_value] * (grid_size - len(config_value))
+            return config_value
+    return None
+
+# DEPRECATED: Eixos padrão - Manter apenas para compatibilidade
+# Usar get_map_config_values() em vez destas constantes
 DEFAULT_MAP_AXIS = [
     -1.00,
     -0.90,
@@ -910,12 +940,12 @@ def ensure_all_3d_maps_exist(vehicle_id: str, vehicle_data: Dict[str, Any]) -> b
                     grid_size = map_config.get("grid_size", 32)
 
                     # Obter configurações padrão
-                    rpm_axis = map_config.get(
-                        "default_rpm_values", DEFAULT_RPM_AXIS[:grid_size]
-                    )
-                    map_axis = map_config.get(
-                        "default_map_values", DEFAULT_MAP_AXIS[:grid_size]
-                    )
+                    rpm_axis = get_map_config_values(
+                        selected_map_type, "default_rpm_values", grid_size
+                    ) or DEFAULT_RPM_AXIS[:grid_size]
+                    map_axis = get_map_config_values(
+                        selected_map_type, "default_map_values", grid_size
+                    ) or DEFAULT_MAP_AXIS[:grid_size]
 
                     # Ajustar tamanhos
                     if len(rpm_axis) != grid_size:
@@ -1093,12 +1123,12 @@ with tab1:
         map_config = config.get(selected_map_type, {})
 
         # Obter valores enabled padrão da configuração
-        default_rpm_enabled = map_config.get(
-            "default_rpm_enabled", RPM_ENABLED[:grid_size]
-        )
-        default_map_enabled = map_config.get(
-            "default_map_enabled", MAP_ENABLED[:grid_size]
-        )
+        default_rpm_enabled = get_map_config_values(
+            selected_map_type, "default_rpm_enabled", grid_size
+        ) or RPM_ENABLED[:grid_size]
+        default_map_enabled = get_map_config_values(
+            selected_map_type, "default_map_enabled", grid_size
+        ) or MAP_ENABLED[:grid_size]
 
         # Ajustar tamanhos dos defaults
         if len(default_rpm_enabled) != grid_size:
@@ -1767,12 +1797,12 @@ with tab1:
         map_config = config.get(selected_map_type, {})
 
         # Usar valores padrão da configuração se não houver dados salvos
-        default_rpm_enabled = map_config.get(
-            "default_rpm_enabled", RPM_ENABLED[:grid_size]
-        )
-        default_map_enabled = map_config.get(
-            "default_map_enabled", MAP_ENABLED[:grid_size]
-        )
+        default_rpm_enabled = get_map_config_values(
+            selected_map_type, "default_rpm_enabled", grid_size
+        ) or RPM_ENABLED[:grid_size]
+        default_map_enabled = get_map_config_values(
+            selected_map_type, "default_map_enabled", grid_size
+        ) or MAP_ENABLED[:grid_size]
 
         # Ajustar tamanhos dos defaults se necessário
         if len(default_rpm_enabled) != grid_size:
@@ -1810,11 +1840,15 @@ with tab1:
         map_axis = current_data["map_axis"]
 
         if len(rpm_axis) != grid_size:
-            rpm_axis = DEFAULT_RPM_AXIS[:grid_size]
+            rpm_axis = get_map_config_values(
+                selected_map_type, "default_rpm_values", grid_size
+            ) or DEFAULT_RPM_AXIS[:grid_size]
             current_data["rpm_axis"] = rpm_axis
 
         if len(map_axis) != grid_size:
-            map_axis = DEFAULT_MAP_AXIS[:grid_size]
+            map_axis = get_map_config_values(
+                selected_map_type, "default_map_values", grid_size
+            ) or DEFAULT_MAP_AXIS[:grid_size]
             current_data["map_axis"] = map_axis
 
         active_rpm_values = get_active_axis_values(rpm_axis, rpm_enabled)
@@ -1868,18 +1902,12 @@ with tab1:
                 active_rpm_indices_reversed = list(reversed(active_rpm_indices))
 
                 # Criar matriz filtrada - garantir que temos uma linha para cada RPM ativo (ordem invertida)
-                # IMPORTANTE: A matriz é criada como matrix[map_idx, rpm_idx] nas funções de cálculo
-                # Para exibir corretamente:
-                # - Linhas do DataFrame = RPM (decrescente)
-                # - Colunas do DataFrame = MAP (crescente)
-                # - Cada célula [linha_rpm][coluna_map] deve pegar matrix[map_idx][rpm_idx]
-                
                 filtered_matrix = []
                 for rpm_idx in active_rpm_indices_reversed:
                     row = []
                     for map_idx in active_map_indices:
                         # A matriz original tem shape (len(map_axis), len(rpm_axis))
-                        # matrix[i][j] onde i=índice MAP, j=índice RPM
+                        # matrix[map_idx][rpm_idx] onde map_idx e rpm_idx são os índices originais
                         if map_idx < len(matrix) and rpm_idx < len(matrix[0]):
                             value = matrix[map_idx][rpm_idx]
                             row.append(value)
@@ -2158,15 +2186,16 @@ with tab1:
                                 if enabled
                             ]
 
-                            # A matriz calculada tem dimensões len(active_rpm_values) x len(active_map_values)
+                            # A matriz calculada tem dimensões (len(active_map_values), len(active_rpm_values))
                             # Precisamos mapear corretamente para a matriz completa
-                            for i, rpm_idx in enumerate(active_rpm_indices):
-                                for j, map_idx in enumerate(active_map_indices):
+                            # calculated_matrix[map_idx][rpm_idx] -> full_matrix[map_idx][rpm_idx]
+                            for i, map_idx in enumerate(active_map_indices):
+                                for j, rpm_idx in enumerate(active_rpm_indices):
                                     if (
                                         i < calculated_matrix.shape[0]
                                         and j < calculated_matrix.shape[1]
                                     ):
-                                        full_matrix[rpm_idx, map_idx] = (
+                                        full_matrix[map_idx, rpm_idx] = (
                                             calculated_matrix[i, j]
                                         )
 
@@ -2192,12 +2221,22 @@ with tab1:
 
                 # Visualização do Preview
                 if st.session_state.get(f"show_preview_{session_key}", False):
+                    # Botão para mostrar/ocultar gráfico 3D do preview
+                    if st.button(
+                        ":material/view_in_ar: Mostrar Gráfico 3D do Preview",
+                        key=f"toggle_preview_3d_{session_key}",
+                        use_container_width=True,
+                    ):
+                        st.session_state[f"show_preview_3d_{session_key}"] = not st.session_state.get(
+                            f"show_preview_3d_{session_key}", False
+                        )
+                    
                     preview_matrix = st.session_state.get(
                         f"preview_matrix_{session_key}"
                     )
-                    if preview_matrix is not None:
+                    if preview_matrix is not None and st.session_state.get(f"show_preview_3d_{session_key}", False):
                         st.divider()
-                        st.markdown("#### :material/analytics: Visualização do Preview")
+                        st.markdown("#### :material/analytics: Visualização 3D do Preview")
 
                         # Estatísticas
                         col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
@@ -2671,14 +2710,27 @@ with tab1:
                 st.error("Corrija os erros de validação antes de salvar")
 
         if reset_button:
-            # Restaurar valores padrão
+            # Restaurar valores padrão do arquivo de configuração
+            rpm_axis = get_map_config_values(
+                selected_map_type, "default_rpm_values", grid_size
+            ) or DEFAULT_RPM_AXIS[:grid_size]
+            map_axis = get_map_config_values(
+                selected_map_type, "default_map_values", grid_size
+            ) or DEFAULT_MAP_AXIS[:grid_size]
+            rpm_enabled = get_map_config_values(
+                selected_map_type, "default_rpm_enabled", grid_size
+            ) or RPM_ENABLED[:grid_size]
+            map_enabled = get_map_config_values(
+                selected_map_type, "default_map_enabled", grid_size
+            ) or MAP_ENABLED[:grid_size]
+            
             st.session_state[session_key] = {
-                "rpm_axis": DEFAULT_RPM_AXIS.copy(),
-                "map_axis": DEFAULT_MAP_AXIS.copy(),
-                "rpm_enabled": RPM_ENABLED.copy(),
-                "map_enabled": MAP_ENABLED.copy(),
+                "rpm_axis": rpm_axis,
+                "map_axis": map_axis,
+                "rpm_enabled": rpm_enabled,
+                "map_enabled": map_enabled,
                 "values_matrix": get_default_3d_map_values(
-                    selected_map_type, RPM_ENABLED, MAP_ENABLED
+                    selected_map_type, grid_size, rpm_enabled, map_enabled
                 ),
             }
             st.success("Valores padrão restaurados!")
