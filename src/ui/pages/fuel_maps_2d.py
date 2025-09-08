@@ -1365,7 +1365,8 @@ with tab1:
                             header = f"[{axis_val:.1f}]"
                         column_headers[header] = preview_values[i]
                     
-                    # Criar DataFrame com uma única linha
+                    # Criar DataFrame com uma única linha de dados
+                    # Usando lista com um único dicionário para garantir uma linha
                     preview_df = pd.DataFrame([column_headers])
                     
                     # Aplicar formatação similar ao mapa principal
@@ -1400,11 +1401,12 @@ with tab1:
                     styled_preview = styled_preview.format("{:.3f}")
                     
                     # Exibir com dataframe estilizado
+                    # Usar altura mínima para uma linha (35px para header + 35px para linha de dados)
                     st.dataframe(
                         styled_preview, 
                         use_container_width=True, 
                         hide_index=True,
-                        height=100  # Altura menor para uma linha
+                        height=70  # Altura mínima para header + uma linha
                     )
                     
                     # Estatísticas do preview

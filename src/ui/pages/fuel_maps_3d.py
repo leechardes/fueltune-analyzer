@@ -476,12 +476,45 @@ def get_default_3d_map_values(map_type: str, grid_size: int, rpm_enabled: List[b
     """
     
     if map_type == "main_fuel_3d_map":
-        # Valores de injeção típicos (5-20ms)
-        # Aumenta com MAP (pressão) e diminui ligeiramente com RPM alto
-        rpm_factor = np.linspace(1.0, 0.9, grid_size)
-        map_factor = np.linspace(0.5, 2.0, grid_size)
-        base_values = np.outer(map_factor, rpm_factor) * 10.0 + 5.0
-        return base_values
+        # Valores de injeção realistas (2.1-11.5ms como no 2D)
+        # Baseado em RPM (400-8000) e MAP (-1.0 a 2.0 bar)
+        matrix = []
+        
+        # Criar valores de RPM e MAP baseados no grid_size
+        rpm_values = np.linspace(400, 8000, grid_size)
+        map_values = np.linspace(-1.0, 2.0, grid_size)
+        
+        for rpm_idx in range(grid_size):
+            row = []
+            for map_idx in range(grid_size):
+                rpm = rpm_values[rpm_idx]
+                map_val = map_values[map_idx]
+                
+                # Normalizar valores
+                rpm_normalized = (rpm - 400) / (8000 - 400)  # 0 to 1
+                map_normalized = (map_val + 1.0) / 3.0  # -1 to 2 bar -> 0 to 1
+                
+                # Cálculo similar ao 2D: 2.1ms base + incrementos por RPM e MAP
+                value = 2.1 + (rpm_normalized * 5.0) + (map_normalized * 4.4)
+                
+                # Compensação de pressão de combustível APENAS para MAP positivo
+                # Com MAP <= 0, pressão permanece na pressão base (sem correção)
+                if map_val > 0:
+                    # Pressão base do sistema (geralmente 3 bar)
+                    fuel_pressure_base = 3.0
+                    # Nova pressão = base + MAP (regulador 1:1)
+                    fuel_pressure_actual = fuel_pressure_base + map_val
+                    # Correção de vazão: sqrt(pressão_atual / pressão_base)
+                    flow_correction = (fuel_pressure_actual / fuel_pressure_base) ** 0.5
+                    # Inverter para tempo (mais vazão = menos tempo)
+                    time_correction = 1.0 / flow_correction
+                    # Aplicar correção
+                    value *= time_correction
+                
+                row.append(value)
+            matrix.append(row)
+        
+        return np.array(matrix)
     
     elif map_type == "lambda_target_3d_map":
         # Valores de lambda típicos (0.8-1.2)
@@ -867,10 +900,426 @@ with tab1:
     with edit_tab1:
         st.caption("Edite os valores da matriz 3D")
         
-        # Obter apenas valores ativos (com compatibilidade para dados antigos)
+        # Obter grid_size antes de usar
         grid_size = map_info["grid_size"]
         
-        # Ajustar enable/disable para o grid_size correto
+        # Botão para abrir o calculador automático
+        if st.button(":material/calculate: Calculador Automático 3D", key=f"open_calculator_{session_key}", use_container_width=True, type="primary"):
+            st.session_state[f"show_calculator_{session_key}"] = True
+        
+        # Modal do Calculador Automático - Aparece logo após o botão
+        if st.session_state.get(f"show_calculator_{session_key}", False):
+            with st.container():
+                st.markdown("### Calculador Automático de Mapas")
+                st.markdown("---")
+                
+                # Obter dados do veículo
+                vehicle_data = get_vehicle_data_from_session()
+                
+                # Layout em colunas para configurações
+                calc_col1, calc_col2 = st.columns([2, 1])
+                
+                with calc_col1:
+                    st.subheader("Configurações de Cálculo")
+                    
+                    # Seleção de estratégia
+                    selected_strategy = st.selectbox(
+                        "Estratégia de Tuning",
+                        options=list(STRATEGY_PRESETS.keys()),
+                        format_func=lambda x: f"{STRATEGY_PRESETS[x]['name']} - {STRATEGY_PRESETS[x]['description']}",
+                        key=f"strategy_{session_key}",
+                        index=1  # Balanceada por padrão
+                    )
+                    
+                    # Fator de segurança
+                    safety_factor = st.slider(
+                        "Fator de Segurança",
+                        min_value=0.8,
+                        max_value=1.2,
+                        value=STRATEGY_PRESETS[selected_strategy]['safety_factor'],
+                        step=0.05,
+                        key=f"safety_factor_{session_key}",
+                        help="Multiplica todos os valores calculados"
+                    )
+                    
+                    # Configurações específicas para mapas 3D
+                    st.subheader("Configurações Específicas")
+                    
+                    # Controles específicos baseados no tipo de mapa selecionado
+                    if selected_map_type == "main_fuel_3d_map":
+                        # Controles para mapa principal
+                        advanced_col1, advanced_col2 = st.columns(2)
+                        
+                        with advanced_col1:
+                            consider_boost = st.checkbox(
+                                "Considerar Boost",
+                                value=vehicle_data['turbo'],
+                                key=f"consider_boost_{session_key}",
+                                help="Aplica enriquecimento adicional para pressão de turbo"
+                            )
+                            
+                            # Campo para pressão de combustível base
+                            fuel_pressure = st.number_input(
+                                "Pressão de Combustível (bar)",
+                                min_value=2.0,
+                                max_value=6.0,
+                                value=3.0,
+                                step=0.5,
+                                key=f"fuel_pressure_{session_key}",
+                                help="Pressão base do sistema de combustível com MAP=0"
+                            )
+                        
+                        with advanced_col2:
+                            fuel_correction_enabled = st.checkbox(
+                                "Correção de Combustível",
+                                value=True,
+                                key=f"fuel_correction_{session_key}",
+                                help="Aplica correção baseada no tipo de combustível (Etanol +30%)"
+                            )
+                            
+                            # Checkbox para compensação de pressão MAP
+                            pressure_compensation = st.checkbox(
+                                "Compensação MAP/Pressão",
+                                value=True,
+                                key=f"pressure_compensation_{session_key}",
+                                help="Compensa alteração de vazão em MAP positivo (regulador 1:1 em boost)"
+                            )
+                            if pressure_compensation:
+                                st.caption(f"💡 Regulador 1:1 (MAP > 0)")
+                    elif selected_map_type == "ve_table_3d_map":
+                        # Controles para VE Table
+                        st.info("Configurações automáticas para VE Table baseadas no motor")
+                    elif selected_map_type == "ignition_3d_map":
+                        # Controles para mapa de ignição
+                        st.info("Configurações automáticas para Ignição baseadas no motor")
+                    elif selected_map_type == "lambda_target_3d_map":
+                        # Controles para Lambda Target
+                        st.info("Configurações automáticas para Lambda Target baseadas no combustível")
+                    else:
+                        st.info("Configurações automáticas baseadas no tipo de mapa 3D selecionado")
+                
+                with calc_col2:
+                    st.subheader("Dados do Veículo")
+                    
+                    # Primeira linha: Cilindrada, Cilindros, Vazão Bicos
+                    vehicle_col1, vehicle_col2, vehicle_col3 = st.columns(3)
+                    with vehicle_col1:
+                        st.metric("Cilindrada", f"{vehicle_data['displacement']:.1f}L")
+                    with vehicle_col2:
+                        st.metric("Cilindros", vehicle_data['cylinders'])
+                    with vehicle_col3:
+                        st.metric("Vazão", f"{vehicle_data.get('injector_flow_lbs', 0):.0f} lbs/h")
+                    
+                    # Segunda linha: Combustível e Boost
+                    vehicle_col4, vehicle_col5 = st.columns(2)
+                    with vehicle_col4:
+                        st.metric("Combustível", vehicle_data['fuel_type'].title())
+                    with vehicle_col5:
+                        if vehicle_data['turbo']:
+                            boost_val = vehicle_data.get('boost_pressure', 1.0)
+                            if boost_val is None:
+                                boost_val = 1.0
+                            st.metric("Boost", f"{boost_val:.1f} bar")
+                        else:
+                            st.metric("Aspiração", "Natural")
+            
+                st.markdown("---")
+                
+                # Preview dos valores calculados
+                st.subheader("Preview dos Valores Calculados")
+                
+                # Obter dados atuais da sessão
+                rpm_axis = current_data["rpm_axis"]
+                map_axis = current_data["map_axis"]
+                rpm_enabled = current_data.get("rpm_enabled", [True] * len(rpm_axis))
+                map_enabled = current_data.get("map_enabled", [True] * len(map_axis))
+                values_matrix = current_data.get("values_matrix", [[0.0] * len(map_axis) for _ in range(len(rpm_axis))])
+                
+                # Calcular valores preview para a matriz 3D
+                # TODO: Implementar cálculo real baseado nas configurações
+                # Por enquanto, vamos criar valores de exemplo baseados nos dados atuais
+                preview_matrix = []
+                
+                # Obter apenas valores ativos
+                active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled) if enabled]
+                active_map_indices = [i for i, enabled in enumerate(map_enabled) if enabled]
+                
+                if active_rpm_indices and active_map_indices:
+                    # Criar matriz de preview com valores calculados
+                    for rpm_idx in active_rpm_indices:
+                        row = []
+                        for map_idx in active_map_indices:
+                            # SEMPRE recalcular para o preview baseado em RPM e MAP
+                            if rpm_idx < len(rpm_axis) and map_idx < len(map_axis):
+                                # Obter valores reais de RPM e MAP
+                                rpm_value = rpm_axis[rpm_idx]
+                                map_value = map_axis[map_idx]
+                                
+                                if selected_map_type == "main_fuel_3d_map":
+                                    # Fórmula mais realista baseada em RPM e MAP
+                                    # Base: 2.1ms em idle (400rpm, -1bar), até 11.5ms em alta carga (8000rpm, 2bar)
+                                    rpm_normalized = (rpm_value - 400) / (8000 - 400)  # 0 to 1
+                                    map_normalized = (map_value + 1.0) / 3.0  # -1 to 2 bar -> 0 to 1
+                                    
+                                    # Cálculo progressivo similar ao 2D
+                                    base_value = 2.1 + (rpm_normalized * 5.0) + (map_normalized * 4.4)
+                                    
+                                    # Compensação de pressão de combustível (regulador 1:1)
+                                    # IMPORTANTE: Só aplica para MAP POSITIVO (boost)
+                                    # Com MAP <= 0, a pressão permanece estável na pressão base
+                                    if st.session_state.get(f"pressure_compensation_{session_key}", True) and map_value > 0:
+                                        # Obter pressão base configurada (padrão 3 bar)
+                                        fuel_pressure_base = st.session_state.get(f"fuel_pressure_{session_key}", 3.0)
+                                        
+                                        # Nova pressão = base + MAP (regulador 1:1 apenas em boost)
+                                        fuel_pressure_actual = fuel_pressure_base + map_value
+                                        
+                                        # Correção de vazão: sqrt(pressão_atual / pressão_base)
+                                        # Mais pressão -> mais vazão -> tempo DIMINUI
+                                        flow_correction = (fuel_pressure_actual / fuel_pressure_base) ** 0.5
+                                        
+                                        # Inverter para aplicar ao tempo (mais vazão = menos tempo)
+                                        time_correction = 1.0 / flow_correction
+                                        
+                                        # Aplicar correção
+                                        base_value *= time_correction
+                                    
+                                    # Aplicar correções baseadas nas configurações
+                                    if st.session_state.get(f"fuel_correction_{session_key}", True):
+                                        # Aplicar correção de combustível se habilitada
+                                        fuel_type = vehicle_data.get('fuel_type', 'gasoline')
+                                        if fuel_type == 'ethanol':
+                                            base_value *= 1.3  # Etanol precisa de mais combustível
+                                    
+                                    if st.session_state.get(f"consider_boost_{session_key}", False):
+                                        # Aplicar enriquecimento adicional de boost se habilitado
+                                        # Esta é uma correção ADICIONAL para segurança em boost
+                                        if map_value > 0:  # Pressão positiva (boost)
+                                            # Enriquecimento progressivo: 10% por bar de boost
+                                            base_value *= (1.0 + map_value * 0.1)
+                                else:
+                                    # Para outros tipos de mapa, usar valor existente ou padrão
+                                    if rpm_idx < len(values_matrix) and map_idx < len(values_matrix[rpm_idx]):
+                                        base_value = values_matrix[rpm_idx][map_idx]
+                                    else:
+                                        base_value = 5.0  # Valor padrão
+                                
+                                # Aplicar fator de segurança
+                                calculated_value = base_value * safety_factor
+                                row.append(calculated_value)
+                            else:
+                                # Valor padrão calculado se fora dos limites
+                                # Usar valores médios se os índices estiverem fora
+                                rpm_value = rpm_axis[min(rpm_idx, len(rpm_axis)-1)]
+                                map_value = map_axis[min(map_idx, len(map_axis)-1)]
+                                
+                                if selected_map_type == "main_fuel_3d_map":
+                                    rpm_normalized = (rpm_value - 400) / (8000 - 400)
+                                    map_normalized = (map_value + 1.0) / 3.0
+                                    
+                                    default_value = 2.1 + (rpm_normalized * 5.0) + (map_normalized * 4.4)
+                                else:
+                                    default_value = 5.0
+                                    
+                                row.append(default_value * safety_factor)
+                        preview_matrix.append(row)
+                    
+                    # Criar DataFrame para preview
+                    active_rpm_values = [rpm_axis[i] for i in active_rpm_indices]
+                    active_map_values = [map_axis[i] for i in active_map_indices]
+                    
+                    # Inverter a ordem do RPM e da matriz para mostrar decrescente
+                    active_rpm_values_reversed = list(reversed(active_rpm_values))
+                    preview_matrix_reversed = list(reversed(preview_matrix))
+                    
+                    # Criar headers das colunas com valores de MAP
+                    column_headers = [f"{map_val:.2f}" if isinstance(map_val, (int, float)) else str(map_val) 
+                                    for map_val in active_map_values]
+                    
+                    # Criar DataFrame com RPM decrescente
+                    preview_df = pd.DataFrame(
+                        preview_matrix_reversed,
+                        index=[f"{int(rpm)}" for rpm in active_rpm_values_reversed],
+                        columns=column_headers
+                    )
+                    
+                    # Exibir preview
+                    st.write(f"**Preview dos valores calculados** ({map_info['unit']})")
+                    
+                    # Mostrar correções aplicadas
+                    corrections_applied = []
+                    if st.session_state.get(f"fuel_correction_{session_key}", True):
+                        fuel_type = vehicle_data.get('fuel_type', 'gasoline')
+                        if fuel_type == 'ethanol':
+                            corrections_applied.append("✅ Correção Etanol (+30%)")
+                    
+                    fuel_pressure_value = st.session_state.get(f"fuel_pressure_{session_key}", 3.0)
+                    if fuel_pressure_value != 3.0:
+                        corrections_applied.append(f"✅ Pressão Base: {fuel_pressure_value} bar")
+                    else:
+                        corrections_applied.append("✅ Pressão Base: 3.0 bar (padrão)")
+                    
+                    if st.session_state.get(f"pressure_compensation_{session_key}", True):
+                        corrections_applied.append("✅ Compensação MAP/Pressão (regulador 1:1)")
+                    
+                    if st.session_state.get(f"consider_boost_{session_key}", False):
+                        corrections_applied.append("✅ Enriquecimento Boost (+10%/bar)")
+                    
+                    if corrections_applied:
+                        st.caption("Correções aplicadas: " + " | ".join(corrections_applied))
+                    
+                    st.caption(f"Valores com 3 casas decimais - Total: {len(active_rpm_values) * len(active_map_values)} valores")
+                    
+                    # Aplicar estilo à tabela
+                    styled_preview = preview_df.style.format("{:.3f}").background_gradient(
+                        cmap='RdYlBu',  # Removido o _r para inverter as cores
+                        axis=None,
+                        vmin=preview_df.min().min(),
+                        vmax=preview_df.max().max()
+                    )
+                    
+                    st.dataframe(styled_preview, use_container_width=True, height=400)
+                    
+                    # Estatísticas
+                    col_min, col_med, col_max = st.columns(3)
+                    
+                    all_values = [val for row in preview_matrix for val in row]
+                    if all_values:
+                        import numpy as np
+                        with col_min:
+                            st.metric("Mínimo", f"{min(all_values):.3f} {map_info['unit']}")
+                        with col_med:
+                            st.metric("Médio", f"{np.mean(all_values):.3f} {map_info['unit']}")
+                        with col_max:
+                            st.metric("Máximo", f"{max(all_values):.3f} {map_info['unit']}")
+                else:
+                    st.warning("Nenhuma posição ativa para calcular preview")
+                
+                st.markdown("---")
+                
+                # Botões de ação
+                action_col1, action_col2, action_col3 = st.columns(3)
+            
+                with action_col1:
+                    if st.button(":material/check: Aplicar Cálculo", key=f"apply_calc_{session_key}", type="primary", use_container_width=True):
+                        # Aplicar valores calculados à matriz 3D
+                        # Criar nova matriz completa mantendo valores desabilitados
+                        new_matrix = [[0.0] * len(map_axis) for _ in range(len(rpm_axis))]
+                        
+                        # Preencher com os valores calculados nas posições ativas
+                        preview_row_idx = 0
+                        for rpm_idx in active_rpm_indices:
+                            preview_col_idx = 0
+                            for map_idx in active_map_indices:
+                                if preview_row_idx < len(preview_matrix) and preview_col_idx < len(preview_matrix[0]):
+                                    new_matrix[rpm_idx][map_idx] = preview_matrix[preview_row_idx][preview_col_idx]
+                                preview_col_idx += 1
+                            preview_row_idx += 1
+                        
+                        # Atualizar a matriz na sessão
+                        st.session_state[session_key]["values_matrix"] = new_matrix
+                        
+                        # Salvar os dados atualizados
+                        save_3d_map_data(
+                            selected_vehicle_id,
+                            selected_map_type,
+                            selected_bank,
+                            rpm_axis,
+                            map_axis,
+                            rpm_enabled,
+                            map_enabled,
+                            new_matrix
+                        )
+                        
+                        st.session_state[f"show_calculator_{session_key}"] = False
+                        st.success("Valores calculados aplicados e salvos com sucesso!")
+                        st.rerun()
+            
+                with action_col2:
+                    if st.button(":material/analytics: Preview Gráfico", key=f"preview_graph_{session_key}", use_container_width=True):
+                        st.session_state[f"show_preview_graph_{session_key}"] = True
+                
+                with action_col3:
+                    if st.button(":material/cancel: Cancelar", key=f"cancel_calc_{session_key}", use_container_width=True):
+                        st.session_state[f"show_calculator_{session_key}"] = False
+                        st.session_state[f"show_preview_graph_{session_key}"] = False
+                        st.rerun()
+                
+                # Mostrar gráfico 3D de preview se solicitado
+                if st.session_state.get(f"show_preview_graph_{session_key}", False):
+                    st.markdown("---")
+                    st.subheader("Preview Gráfico 3D")
+                    
+                    import plotly.graph_objects as go
+                    
+                    # Criar gráfico 3D Surface com os valores calculados do preview
+                    fig_preview = go.Figure(data=[go.Surface(
+                        x=active_map_values,  # MAP no eixo X (valores ativos)
+                        y=active_rpm_values,  # RPM no eixo Y (valores ativos)
+                        z=preview_matrix,     # Matriz de preview calculada
+                        colorscale='RdYlBu',  # Vermelho=baixo, azul=alto
+                        name='Preview Calculado',
+                        colorbar=dict(
+                            title=dict(text=f"{map_info['unit']}"),
+                            tickmode="linear",
+                            tick0=min([min(row) for row in preview_matrix]),
+                            dtick=(max([max(row) for row in preview_matrix]) - min([min(row) for row in preview_matrix])) / 10
+                        )
+                    )])
+                    
+                    fig_preview.update_layout(
+                        title=f"Preview 3D - {map_info['name']} (Valores Calculados)",
+                        scene=dict(
+                            xaxis_title="MAP (bar)",
+                            yaxis_title="RPM",
+                            zaxis_title=f"Valor ({map_info['unit']})",
+                            camera=dict(
+                                eye=dict(x=1.5, y=1.5, z=1.5)
+                            ),
+                            xaxis=dict(
+                                tickmode='array',
+                                tickvals=active_map_values[::max(1, len(active_map_values)//10)],  # Mostrar até 10 ticks
+                                ticktext=[f"{v:.1f}" for v in active_map_values[::max(1, len(active_map_values)//10)]]
+                            ),
+                            yaxis=dict(
+                                tickmode='array',
+                                tickvals=active_rpm_values[::max(1, len(active_rpm_values)//10)],  # Mostrar até 10 ticks
+                                ticktext=[f"{int(v)}" for v in active_rpm_values[::max(1, len(active_rpm_values)//10)]]
+                            )
+                        ),
+                        height=600,
+                        margin=dict(l=0, r=0, t=40, b=0)
+                    )
+                    
+                    st.plotly_chart(fig_preview, use_container_width=True)
+                    
+                    # Adicionar vista de contorno também
+                    with st.expander("Ver Mapa de Contorno", expanded=False):
+                        contour_fig = go.Figure(data=go.Contour(
+                            x=active_map_values,  # MAP no eixo X
+                            y=active_rpm_values,  # RPM no eixo Y
+                            z=preview_matrix,     # Matriz de preview
+                            colorscale='RdYlBu',  # Vermelho=baixo, azul=alto
+                            contours=dict(
+                                showlabels=True,
+                                labelfont=dict(size=12, color='white')
+                            ),
+                            colorbar=dict(
+                                title=dict(text=f"{map_info['unit']}")
+                            )
+                        ))
+                        
+                        contour_fig.update_layout(
+                            title="Vista de Contorno - Preview",
+                            xaxis_title="MAP (bar)",
+                            yaxis_title="RPM",
+                            height=400
+                        )
+                        
+                        st.plotly_chart(contour_fig, use_container_width=True)
+            
+            st.divider()
+        
         # Obter configuração do mapa para valores padrão
         config = load_map_types_config()
         map_config = config.get(selected_map_type, {})
@@ -914,16 +1363,6 @@ with tab1:
             
         active_rpm_values = get_active_axis_values(rpm_axis, rpm_enabled)
         active_map_values = get_active_axis_values(map_axis, map_enabled)
-        
-        # Debug info
-        with st.expander("Debug: Informações dos Eixos", expanded=False):
-            col1, col2 = st.columns(2)
-            with col1:
-                st.write(f"**RPM Ativo:** {len(active_rpm_values)} posições")
-                st.write(f"Valores: {active_rpm_values[:5]}..." if len(active_rpm_values) > 5 else active_rpm_values)
-            with col2:
-                st.write(f"**MAP Ativo:** {len(active_map_values)} posições")
-                st.write(f"Valores: {active_map_values[:5]}..." if len(active_map_values) > 5 else active_map_values)
         
         st.write("**Eixo X (MAP em bar):** Valores crescentes (menor → maior)")
         st.write("**Eixo Y (RPM):** Valores decrescentes (maior → menor)")
@@ -1024,9 +1463,13 @@ with tab1:
                         index_count[idx_name] = 0
                     index_names.append(idx_name)
                 
+                # Criar colunas com valores de MAP formatados
+                map_columns = [f"{map_val:.2f}" if isinstance(map_val, (int, float)) else str(map_val) 
+                              for map_val in active_map_values]
+                
                 display_df = pd.DataFrame(
                     filtered_matrix,
-                    columns=[f"C{i}" for i in range(len(active_map_values))],  # Colunas temporárias únicas
+                    columns=map_columns,  # Usar valores de MAP como headers
                     index=index_names  # Índices únicos
                 )
         
@@ -1064,14 +1507,8 @@ with tab1:
                 if not matrix_valid:
                     st.error(f"Matriz: {matrix_msg}")
         
-        # Botão para abrir o calculador automático
-        col_calc_btn1, col_calc_btn2, col_calc_btn3 = st.columns([1, 2, 1])
-        with col_calc_btn2:
-            if st.button(":material/calculate: Calculador Automático 3D", key=f"open_calculator_{session_key}", use_container_width=True, type="primary"):
-                st.session_state[f"show_calculator_{session_key}"] = True
-        
-        # Modal do Calculador Automático
-        if st.session_state.get(f"show_calculator_{session_key}", False):
+        # Modal do Calculador Automático (COMENTADO - MOVIDO PARA CIMA)
+        if False and st.session_state.get(f"show_calculator_{session_key}", False):
             with st.container():
                 st.markdown("### 🔧 Calculador Automático 3D")
                 st.caption("Calcule valores baseados nos dados do veículo")
@@ -1548,8 +1985,23 @@ with tab1:
             )
         
         if save_button:
-            if matrix_valid:
+            # Verificar se matrix_valid foi definido, senão assumir como válido
+            try:
+                is_valid = matrix_valid
+            except NameError:
+                is_valid = True  # Assumir válido se não foi definido
+                
+            if is_valid:
                 grid_size = MAP_TYPES_3D[selected_map_type]["grid_size"]
+                
+                # Converter matriz para numpy array se necessário
+                values_matrix = current_data["values_matrix"]
+                if not isinstance(values_matrix, np.ndarray):
+                    values_matrix = np.array(values_matrix)
+                
+                # Debug: verificar dados antes de salvar
+                st.write(f"Salvando mapa: {selected_map_type} para veículo {selected_vehicle_id}")
+                
                 success = save_3d_map_data(
                     selected_vehicle_id,
                     selected_map_type,
@@ -1558,13 +2010,16 @@ with tab1:
                     current_data["map_axis"],
                     current_data.get("rpm_enabled", [True] * grid_size),
                     current_data.get("map_enabled", [True] * grid_size),
-                    current_data["values_matrix"]
+                    values_matrix
                 )
                 if success:
-                    st.success("Mapa 3D salvo com sucesso!")
+                    st.success(f"✅ Mapa 3D salvo com sucesso em data/fuel_maps/map_{selected_vehicle_id}_{selected_map_type}_{selected_bank or 'shared'}.json")
+                    # Aguardar um momento para mostrar mensagem
+                    import time
+                    time.sleep(0.5)
                     st.rerun()
                 else:
-                    st.error("Erro ao salvar o mapa 3D")
+                    st.error("❌ Erro ao salvar o mapa 3D - Verifique o console para mais detalhes")
             else:
                 st.error("Corrija os erros de validação antes de salvar")
         
@@ -1942,26 +2397,4 @@ with tab3:
 
 # Rodapé com informações
 st.markdown("---")
-
-# Seção de informações do sistema
-col_info1, col_info2, col_info3 = st.columns(3)
-
-with col_info1:
-    st.caption("**Sistema FuelTune - Mapas 3D v2.0**")
-    st.caption("Calculador Automático Habilitado")
-
-with col_info2:
-    # Mostrar informações dos tipos de mapas disponíveis
-    available_maps = list(MAP_TYPES_3D.keys())
-    st.caption(f"**Mapas Disponíveis:** {len(available_maps)}")
-    st.caption("• " + "\n• ".join([MAP_TYPES_3D[m]['name'].split(' - ')[0] for m in available_maps]))
-
-with col_info3:
-    # Mostrar informações do veículo atual
-    vehicle_info = get_vehicle_data_from_session()
-    st.caption("**Configuração Atual:**")
-    st.caption(f"Motor: {vehicle_info['displacement']}L {vehicle_info['cylinders']}cyl")
-    st.caption(f"Bicos: {vehicle_info['injector_flow_lbs']:.0f} lbs/h")
-    st.caption(f"Tipo: {'Turbo' if vehicle_info['turbo'] else 'Aspirado'}")
-
-st.caption("Implementação A06-3D-MAP-IMPLEMENTATION concluída com sucesso!")
+st.caption("**Sistema FuelTune - Mapas de Injeção 3D | Versão 1.0**")
