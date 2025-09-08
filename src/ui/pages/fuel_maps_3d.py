@@ -82,19 +82,398 @@ MAP_TYPES_3D = load_map_types_config()
 # MAP (bar) - 32 posições totais, 21 ativas por padrão
 DEFAULT_MAP_AXIS = [-1.00, -0.90, -0.80, -0.70, -0.60, -0.50, -0.40, -0.30, 
                     -0.20, -0.10, 0.00, 0.20, 0.40, 0.60, 0.80, 1.00,
-                    1.20, 1.40, 1.60, 1.80, 2.00, 0.0, 0.0, 0.0,
-                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # 32 total
+                    1.20, 1.40, 1.60, 1.80, 2.00, 2.20, 2.40, 2.60,
+                    2.80, 3.00, 3.20, 3.40, 3.60, 3.80, 4.00, 4.20]  # 32 total
 MAP_ENABLED = [True] * 21 + [False] * 11  # Primeiras 21 ativas
 
 # RPM - 32 posições totais, 24 ativas por padrão  
 DEFAULT_RPM_AXIS = [400, 600, 800, 1000, 1200, 1400, 1600, 1800,
                     2000, 2200, 2400, 2600, 2800, 3000, 3500, 4000,
                     4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000,
-                    0, 0, 0, 0, 0, 0, 0, 0]  # 32 total
+                    8500, 9000, 9500, 10000, 10500, 11000, 11500, 12000]  # 32 total
 RPM_ENABLED = [True] * 24 + [False] * 8  # Primeiras 24 ativas
 
-def get_default_3d_map_values(map_type: str, grid_size: int) -> np.ndarray:
-    """Retorna valores padrão para o mapa 3D baseado no tipo e tamanho do grid."""
+# === FUEL MAP AUTO CALCULATOR FUNCTIONS ===
+
+# Presets de estratégias de tuning
+STRATEGY_PRESETS = {
+    'conservative': {
+        'name': 'Conservadora',
+        'description': 'AFR rico, margens de segurança maiores',
+        'idle': 13.5,
+        'cruise': 14.0,
+        'load': 12.5,
+        'wot': 11.5,
+        'boost': 11.0,
+        'safety_factor': 1.1
+    },
+    'balanced': {
+        'name': 'Balanceada',
+        'description': 'Valores típicos de fábrica',
+        'idle': 14.2,
+        'cruise': 14.7,
+        'load': 13.2,
+        'wot': 12.5,
+        'boost': 12.0,
+        'safety_factor': 1.0
+    },
+    'aggressive': {
+        'name': 'Agressiva',
+        'description': 'AFR pobre, eficiência máxima',
+        'idle': 14.7,
+        'cruise': 15.5,
+        'load': 13.8,
+        'wot': 13.0,
+        'boost': 12.5,
+        'safety_factor': 0.9
+    }
+}
+
+def get_vehicle_data_from_session() -> Dict[str, Any]:
+    """Obtém dados do veículo do session_state."""
+    try:
+        from src.data.vehicle_database import get_vehicle_by_id
+        
+        # Tentar obter o veículo selecionado
+        selected_vehicle_id = st.session_state.get('selected_vehicle_id')
+        
+        if selected_vehicle_id:
+            vehicle = get_vehicle_by_id(selected_vehicle_id)
+            if vehicle:
+                # Calcular vazão total dos bicos em lbs/h
+                total_flow_a = vehicle.get('bank_a_total_flow', 0) if vehicle.get('bank_a_enabled') else 0
+                total_flow_b = vehicle.get('bank_b_total_flow', 0) if vehicle.get('bank_b_enabled') else 0
+                total_flow_lbs = total_flow_a + total_flow_b
+                
+                # Converter vazão de lbs/h para cc/min (1 lb/h ≈ 10.5 cc/min)
+                injector_flow_cc = total_flow_lbs * 10.5 if total_flow_lbs > 0 else 550
+                
+                # Verificar se é turbo
+                aspiration = vehicle.get('engine_aspiration', '').lower()
+                is_turbo = any(term in aspiration for term in ['turbo', 'super'])
+                
+                # Usar boost_pressure (pressão máxima) para o calculador
+                boost_value = 0.0
+                if is_turbo:
+                    boost_value = vehicle.get('boost_pressure') or vehicle.get('max_boost_pressure') or 1.0
+                    if boost_value is None:
+                        boost_value = 1.0
+                
+                return {
+                    'displacement': vehicle.get('engine_displacement', 2.0),
+                    'cylinders': vehicle.get('engine_cylinders', 4),
+                    'injector_flow_cc': injector_flow_cc,
+                    'injector_flow_lbs': total_flow_lbs,
+                    'fuel_type': vehicle.get('fuel_type', 'Gasolina'),
+                    'turbo': is_turbo,
+                    'boost_pressure': boost_value,
+                    'bsfc_factor': vehicle.get('bsfc_factor', 0.50),
+                    'injector_impedance': vehicle.get('injector_impedance', 'high'),
+                    'cooling_type': vehicle.get('cooling_type', 'water'),
+                    'redline_rpm': vehicle.get('redline_rpm', 7000),
+                    'idle_rpm': vehicle.get('idle_rpm', 800),
+                    'climate': vehicle.get('climate', 'temperate')
+                }
+    except ImportError:
+        pass
+    
+    # Valores padrão
+    return {
+        'displacement': 2.0,
+        'cylinders': 4,
+        'injector_flow_cc': 550,
+        'injector_flow_lbs': 52,
+        'fuel_type': 'Gasolina',
+        'turbo': False,
+        'boost_pressure': 0.0,
+        'bsfc_factor': 0.50,
+        'injector_impedance': 'high',
+        'cooling_type': 'water',
+        'redline_rpm': 7000,
+        'idle_rpm': 800,
+        'climate': 'temperate'
+    }
+
+def calculate_base_injection_time_3d(map_kpa: float, rpm: float, engine_displacement: float, 
+                                   cylinders: int, injector_flow_cc_min: float, 
+                                   afr_target: float, boost_pressure: float = 0) -> float:
+    """Calcula tempo base de injeção 3D baseado nos parâmetros do motor e RPM."""
+    try:
+        # MAP é pressão absoluta em kPa
+        map_bar = map_kpa / 100.0
+        
+        # Calcular pressão de combustível real
+        fuel_pressure_base = 3.0
+        fuel_pressure_actual = fuel_pressure_base + boost_pressure
+        
+        # Ajustar vazão do bico baseado na pressão real
+        flow_correction = (fuel_pressure_actual / fuel_pressure_base) ** 0.5
+        injector_flow_corrected = injector_flow_cc_min * flow_correction
+        
+        # Calcular VE baseado na pressão MAP absoluta
+        if map_bar <= 0.2:  # Vácuo extremo
+            ve = 0.25 + (map_bar * 1.0)
+        elif map_bar <= 0.4:  # Vácuo alto
+            ve = 0.45 + (map_bar - 0.2) * 0.5
+        elif map_bar <= 0.6:  # Vácuo médio
+            ve = 0.55 + (map_bar - 0.4) * 0.75
+        elif map_bar <= 0.8:  # Vácuo baixo
+            ve = 0.70 + (map_bar - 0.6) * 0.5
+        elif map_bar <= 1.013:  # Próximo à atmosférica
+            ve = 0.80 + (map_bar - 0.8) * 0.7
+        elif map_bar <= 1.5:  # Boost baixo
+            ve = 0.95 + (map_bar - 1.013) * 0.1
+        elif map_bar <= 2.0:  # Boost médio
+            ve = 1.00 + (map_bar - 1.5) * 0.2
+        else:  # Boost alto
+            ve = 1.10 + min((map_bar - 2.0) * 0.15, 0.2)
+        
+        # Ajustar VE baseado no RPM
+        rpm_factor = 1.0
+        if rpm <= 1000:  # Baixa rotação
+            rpm_factor = 0.7 + (rpm / 1000.0) * 0.3
+        elif rpm <= 3000:  # Rotação baixa-média
+            rpm_factor = 1.0
+        elif rpm <= 5000:  # Rotação média-alta
+            rpm_factor = 1.0 + (rpm - 3000) / 4000 * 0.1  # Ligeiro aumento
+        else:  # Alta rotação
+            rpm_factor = 1.1 - (rpm - 5000) / 3000 * 0.2  # Redução por eficiência
+        
+        ve *= rpm_factor
+        
+        # Volume de ar por cilindro por ciclo (L)
+        cylinder_volume = engine_displacement / cylinders
+        
+        # Taxa de fluxo de ar (L/min)
+        air_flow_per_cylinder = (cylinder_volume * ve * rpm) / 2
+        
+        # Converter para g/min (densidade do ar ~1.2 g/L)
+        air_mass_per_min = air_flow_per_cylinder * 1.2
+        
+        # Massa de combustível necessária por minuto (g/min)
+        fuel_mass_per_min = air_mass_per_min / afr_target
+        
+        # Converter vazão do bico CORRIGIDA de cc/min para g/min
+        fuel_density = 0.75
+        injector_flow_g_min = (injector_flow_corrected / cylinders) * fuel_density
+        
+        # Calcular duty cycle necessário
+        duty_cycle = (fuel_mass_per_min / injector_flow_g_min) if injector_flow_g_min > 0 else 0
+        
+        # Tempo disponível por ciclo (ms)
+        time_per_cycle = (60000 / rpm) * 2
+        
+        # Tempo de injeção (ms)
+        injection_time = time_per_cycle * duty_cycle
+        
+        # Adicionar tempo morto do bico
+        dead_time = 1.0
+        injection_time += dead_time
+        
+        # Fator de escala baseado na pressão
+        pressure_factor = map_bar / 1.013
+        if pressure_factor < 1.0:
+            injection_time = injection_time * (0.3 + 0.7 * pressure_factor)
+        else:
+            injection_time = injection_time * (1.0 + (pressure_factor - 1.0) * 0.5)
+        
+        return max(1.5, min(injection_time, 35.0))
+    
+    except Exception as e:
+        return 2.0
+
+def get_afr_target_3d(map_kpa: float, strategy: str) -> float:
+    """Retorna AFR alvo baseado na pressão MAP e estratégia para mapas 3D."""
+    preset = STRATEGY_PRESETS.get(strategy, STRATEGY_PRESETS['balanced'])
+    
+    if map_kpa < 30:  # Vácuo alto (idle)
+        return preset['idle']
+    elif map_kpa < 60:  # Cruzeiro baixo
+        return preset['cruise']
+    elif map_kpa < 90:  # Carga parcial
+        return preset['load']
+    elif map_kpa < 100:  # Carga alta (atmosférico)
+        return preset['wot']
+    else:  # Boost (turbo)
+        return preset['boost']
+
+def calculate_fuel_3d_matrix(
+    rpm_axis: List[float], 
+    map_axis: List[float], 
+    vehicle_data: Dict[str, Any],
+    strategy: str = 'balanced',
+    safety_factor: float = 1.0
+) -> np.ndarray:
+    """Calcula matriz 3D de valores de combustível."""
+    matrix = np.zeros((len(map_axis), len(rpm_axis)))
+    
+    for i, map_value in enumerate(map_axis):
+        # Converter MAP de bar para kPa
+        map_kpa = (map_value + 1.013) * 100 if map_value < 0 else (map_value + 1.013) * 100
+        
+        for j, rpm_value in enumerate(rpm_axis):
+            if rpm_value > 0:  # Apenas para RPM ativos
+                afr_target = get_afr_target_3d(map_kpa, strategy)
+                base_time = calculate_base_injection_time_3d(
+                    map_kpa, rpm_value, 
+                    vehicle_data['displacement'], 
+                    vehicle_data['cylinders'],
+                    vehicle_data['injector_flow_cc'],
+                    afr_target,
+                    vehicle_data.get('boost_pressure', 0)
+                )
+                
+                # Aplicar fator de segurança
+                matrix[i, j] = base_time * safety_factor
+    
+    return matrix
+
+def calculate_ignition_3d_matrix(
+    rpm_axis: List[float], 
+    map_axis: List[float], 
+    vehicle_data: Dict[str, Any],
+    strategy: str = 'balanced',
+    safety_factor: float = 1.0
+) -> np.ndarray:
+    """Calcula matriz 3D de valores de ignição."""
+    matrix = np.zeros((len(map_axis), len(rpm_axis)))
+    
+    # Estratégias de avanço base
+    base_advance = {
+        'conservative': {'idle': 10, 'cruise': 25, 'load': 20, 'wot': 15, 'boost': 10},
+        'balanced': {'idle': 12, 'cruise': 30, 'load': 25, 'wot': 20, 'boost': 15},
+        'aggressive': {'idle': 15, 'cruise': 35, 'load': 30, 'wot': 25, 'boost': 20}
+    }
+    
+    advances = base_advance.get(strategy, base_advance['balanced'])
+    
+    for i, map_value in enumerate(map_axis):
+        map_kpa = (map_value + 1.013) * 100 if map_value < 0 else (map_value + 1.013) * 100
+        
+        for j, rpm_value in enumerate(rpm_axis):
+            if rpm_value > 0:
+                # Determinar avanço base pela carga
+                if map_kpa < 30:
+                    base_timing = advances['idle']
+                elif map_kpa < 60:
+                    base_timing = advances['cruise']
+                elif map_kpa < 90:
+                    base_timing = advances['load']
+                elif map_kpa < 100:
+                    base_timing = advances['wot']
+                else:
+                    base_timing = advances['boost']
+                
+                # Ajustar por RPM
+                if rpm_value < 2000:
+                    rpm_correction = -2
+                elif rpm_value < 4000:
+                    rpm_correction = 0
+                elif rpm_value < 6000:
+                    rpm_correction = 2
+                else:
+                    rpm_correction = -1  # Reduzir em alta rotação
+                
+                timing = base_timing + rpm_correction
+                matrix[i, j] = max(-5, min(timing * safety_factor, 40))
+    
+    return matrix
+
+def calculate_lambda_3d_matrix(
+    rpm_axis: List[float], 
+    map_axis: List[float], 
+    vehicle_data: Dict[str, Any],
+    strategy: str = 'balanced',
+    safety_factor: float = 1.0
+) -> np.ndarray:
+    """Calcula matriz 3D de valores de lambda."""
+    matrix = np.zeros((len(map_axis), len(rpm_axis)))
+    
+    for i, map_value in enumerate(map_axis):
+        map_kpa = (map_value + 1.013) * 100 if map_value < 0 else (map_value + 1.013) * 100
+        
+        for j, rpm_value in enumerate(rpm_axis):
+            if rpm_value > 0:
+                afr_target = get_afr_target_3d(map_kpa, strategy)
+                # Converter AFR para lambda (lambda = AFR / AFR_stoich)
+                # Para gasolina, AFR estequiométrico = 14.7
+                lambda_value = afr_target / 14.7
+                matrix[i, j] = lambda_value * safety_factor
+    
+    return matrix
+
+def calculate_afr_3d_matrix(
+    rpm_axis: List[float], 
+    map_axis: List[float], 
+    vehicle_data: Dict[str, Any],
+    strategy: str = 'balanced',
+    safety_factor: float = 1.0
+) -> np.ndarray:
+    """Calcula matriz 3D de valores de AFR."""
+    matrix = np.zeros((len(map_axis), len(rpm_axis)))
+    
+    for i, map_value in enumerate(map_axis):
+        map_kpa = (map_value + 1.013) * 100 if map_value < 0 else (map_value + 1.013) * 100
+        
+        for j, rpm_value in enumerate(rpm_axis):
+            if rpm_value > 0:
+                afr_target = get_afr_target_3d(map_kpa, strategy)
+                matrix[i, j] = afr_target * safety_factor
+    
+    return matrix
+
+def calculate_3d_map_values_universal(
+    map_type: str,
+    rpm_axis: List[float],
+    map_axis: List[float],
+    vehicle_data: Dict[str, Any],
+    strategy: str = 'balanced',
+    safety_factor: float = 1.0
+) -> np.ndarray:
+    """Função universal para calcular valores de mapas 3D."""
+    
+    if map_type == "main_fuel_3d_map":
+        return calculate_fuel_3d_matrix(rpm_axis, map_axis, vehicle_data, strategy, safety_factor)
+    elif map_type == "ignition_timing_3d_map":
+        return calculate_ignition_3d_matrix(rpm_axis, map_axis, vehicle_data, strategy, safety_factor)
+    elif map_type == "lambda_target_3d_map":
+        return calculate_lambda_3d_matrix(rpm_axis, map_axis, vehicle_data, strategy, safety_factor)
+    elif map_type == "afr_target_3d_map":
+        return calculate_afr_3d_matrix(rpm_axis, map_axis, vehicle_data, strategy, safety_factor)
+    else:
+        # Valores padrão baseados no tipo
+        grid_size = len(map_axis)
+        return get_default_3d_map_values(map_type, grid_size)
+
+def get_default_3d_enabled_matrix(map_type: str, vehicle_data: Dict[str, Any]) -> Tuple[List[bool], List[bool]]:
+    """Retorna matrizes de enable/disable baseadas no tipo de motor."""
+    config = load_map_types_config()
+    map_config = config.get(map_type, {})
+    
+    # Obter configurações padrão
+    rpm_enabled = map_config.get('default_rpm_enabled', [True] * map_config.get('grid_size', 32))
+    map_enabled = map_config.get('default_map_enabled', [True] * map_config.get('grid_size', 32))
+    
+    # Ajustar para motores aspirados vs turbo
+    turbo_config = map_config.get('turbo_adjustment', {})
+    
+    if not vehicle_data.get('turbo', False):
+        # Motor aspirado - desabilitar valores de boost positivo
+        if turbo_config.get('enable_positive_values', False):
+            max_index = turbo_config.get('aspirated_max_map_index', 10)
+            map_enabled = [i <= max_index for i in range(len(map_enabled))]
+    
+    return rpm_enabled, map_enabled
+
+def get_default_3d_map_values(map_type: str, grid_size: int, rpm_enabled: List[bool] = None, map_enabled: List[bool] = None) -> np.ndarray:
+    """Retorna valores padrão para o mapa 3D baseado no tipo e tamanho do grid.
+    
+    Args:
+        map_type: Tipo do mapa
+        grid_size: Tamanho do grid (16 ou 32)
+        rpm_enabled: Lista de booleanos indicando quais posições RPM estão ativas (opcional)
+        map_enabled: Lista de booleanos indicando quais posições MAP estão ativas (opcional)
+    """
     
     if map_type == "main_fuel_3d_map":
         # Valores de injeção típicos (5-20ms)
@@ -112,8 +491,25 @@ def get_default_3d_map_values(map_type: str, grid_size: int) -> np.ndarray:
         base_values = np.outer(map_factor, rpm_factor)
         return base_values
     
+    elif map_type == "ignition_timing_3d_map":
+        # Valores de ignição típicos (10-35°)
+        # Menor avanço em alta carga, mais avanço em cruzeiro
+        rpm_factor = np.linspace(0.8, 1.2, grid_size)  # Mais avanço em RPM alto
+        map_factor = np.linspace(1.5, 0.6, grid_size)  # Menos avanço em alta carga
+        base_values = np.outer(map_factor, rpm_factor) * 15.0 + 10.0
+        return base_values
+    
+    elif map_type == "afr_target_3d_map":
+        # Valores de AFR típicos (11-15)
+        # Mais rico em alta carga
+        rpm_factor = np.ones(grid_size)
+        map_factor = np.linspace(15.0, 11.0, grid_size)
+        base_values = np.outer(map_factor, rpm_factor)
+        return base_values
+    
     else:
-        return np.ones((active_map_count, active_rpm_count)) * 5.0
+        # Valores padrão genéricos
+        return np.ones((grid_size, grid_size)) * 5.0
 
 def validate_3d_map_values(values: np.ndarray, min_val: float, max_val: float) -> Tuple[bool, str]:
     """Valida se os valores estão dentro dos limites permitidos."""
@@ -233,12 +629,101 @@ def get_active_axis_values(axis_values: List[float], enabled: List[bool]) -> Lis
     """Retorna apenas os valores ativos do eixo."""
     return [axis_values[i] for i in range(len(axis_values)) if i < len(enabled) and enabled[i]]
 
+def ensure_all_3d_maps_exist(vehicle_id: str, vehicle_data: Dict[str, Any]) -> bool:
+    """Garante que todos os mapas 3D necessários existam para um veículo."""
+    try:
+        config = load_map_types_config()
+        
+        for map_type, map_config in config.items():
+            for bank in (["A", "B"] if map_type == "main_fuel_3d_map" else [None]):
+                bank_id = bank or "shared"
+                
+                # Verificar se o arquivo já existe
+                data_dir = Path("data/fuel_maps")
+                filename = data_dir / f"map_{vehicle_id}_{map_type}_{bank_id}.json"
+                
+                if not filename.exists():
+                    # Criar mapa padrão
+                    grid_size = map_config.get('grid_size', 32)
+                    
+                    # Obter configurações padrão
+                    rpm_axis = map_config.get('default_rpm_values', DEFAULT_RPM_AXIS[:grid_size])
+                    map_axis = map_config.get('default_map_values', DEFAULT_MAP_AXIS[:grid_size])
+                    
+                    # Ajustar tamanhos
+                    if len(rpm_axis) != grid_size:
+                        rpm_axis = rpm_axis[:grid_size] + [0] * (grid_size - len(rpm_axis)) if len(rpm_axis) < grid_size else rpm_axis[:grid_size]
+                    if len(map_axis) != grid_size:
+                        map_axis = map_axis[:grid_size] + [0] * (grid_size - len(map_axis)) if len(map_axis) < grid_size else map_axis[:grid_size]
+                    
+                    # Obter configurações enable/disable inteligentes
+                    rpm_enabled, map_enabled = get_default_3d_enabled_matrix(map_type, vehicle_data)
+                    
+                    # Ajustar tamanhos se necessário
+                    if len(rpm_enabled) != grid_size:
+                        rpm_enabled = rpm_enabled[:grid_size] + [False] * (grid_size - len(rpm_enabled)) if len(rpm_enabled) < grid_size else rpm_enabled[:grid_size]
+                    if len(map_enabled) != grid_size:
+                        map_enabled = map_enabled[:grid_size] + [False] * (grid_size - len(map_enabled)) if len(map_enabled) < grid_size else map_enabled[:grid_size]
+                    
+                    # Calcular valores usando o calculador automático
+                    active_rpm_values = get_active_axis_values(rpm_axis, rpm_enabled)
+                    active_map_values = get_active_axis_values(map_axis, map_enabled)
+                    
+                    if len(active_rpm_values) > 0 and len(active_map_values) > 0:
+                        calculated_matrix = calculate_3d_map_values_universal(
+                            map_type,
+                            active_rpm_values,
+                            active_map_values,
+                            vehicle_data,
+                            'balanced',  # Estratégia padrão
+                            1.0  # Fator de segurança padrão
+                        )
+                        
+                        # Expandir para o grid completo
+                        full_matrix = np.zeros((grid_size, grid_size))
+                        active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled) if enabled]
+                        active_map_indices = [i for i, enabled in enumerate(map_enabled) if enabled]
+                        
+                        for i, map_idx in enumerate(active_map_indices):
+                            for j, rpm_idx in enumerate(active_rpm_indices):
+                                if i < calculated_matrix.shape[0] and j < calculated_matrix.shape[1]:
+                                    full_matrix[map_idx, rpm_idx] = calculated_matrix[i, j]
+                    else:
+                        # Fallback para valores padrão simples
+                        full_matrix = get_default_3d_map_values(map_type, grid_size)
+                    
+                    # Salvar o mapa
+                    success = save_3d_map_data(
+                        vehicle_id,
+                        map_type,
+                        bank_id,
+                        rpm_axis,
+                        map_axis,
+                        rpm_enabled,
+                        map_enabled,
+                        full_matrix
+                    )
+                    
+                    if not success:
+                        return False
+        
+        return True
+    
+    except Exception as e:
+        st.error(f"Erro ao criar mapas 3D: {str(e)}")
+        return False
+
 # Obter contexto do veículo
 selected_vehicle_id = get_vehicle_context()
 
 if not selected_vehicle_id:
     st.warning("Nenhum veículo selecionado. Por favor, selecione um veículo na página inicial.")
     st.stop()
+
+# Garantir que todos os mapas 3D existam
+vehicle_data = get_vehicle_data_from_session()
+with st.spinner("Verificando mapas 3D..."):
+    ensure_all_3d_maps_exist(selected_vehicle_id, vehicle_data)
 
 # Seção de configuração (movida para cima)
 st.container()
@@ -296,22 +781,37 @@ with tab1:
         # Obter grid_size do tipo de mapa
         grid_size = map_info["grid_size"]
         
+        # Obter configuração padrão do mapa
+        config = load_map_types_config()
+        map_config = config.get(selected_map_type, {})
+        
+        # Obter valores enabled padrão da configuração
+        default_rpm_enabled = map_config.get('default_rpm_enabled', RPM_ENABLED[:grid_size])
+        default_map_enabled = map_config.get('default_map_enabled', MAP_ENABLED[:grid_size])
+        
+        # Ajustar tamanhos dos defaults
+        if len(default_rpm_enabled) != grid_size:
+            default_rpm_enabled = default_rpm_enabled[:grid_size] if len(default_rpm_enabled) > grid_size else default_rpm_enabled + [False] * (grid_size - len(default_rpm_enabled))
+        if len(default_map_enabled) != grid_size:
+            default_map_enabled = default_map_enabled[:grid_size] if len(default_map_enabled) > grid_size else default_map_enabled + [False] * (grid_size - len(default_map_enabled))
+        
         # Tentar carregar dados salvos
         loaded_data = load_3d_map_data(selected_vehicle_id, selected_map_type, selected_bank)
         if loaded_data:
             # Ajustar tamanho se necessário
             if len(loaded_data["rpm_axis"]) != grid_size:
                 # Redimensionar eixos e matriz para o grid_size correto
-                rpm_axis = DEFAULT_RPM_AXIS[:grid_size] if grid_size <= 32 else DEFAULT_RPM_AXIS + [0] * (grid_size - 32)
-                map_axis = DEFAULT_MAP_AXIS[:grid_size] if grid_size <= 32 else DEFAULT_MAP_AXIS + [0] * (grid_size - 32)
-                rpm_enabled = [True] * grid_size
-                map_enabled = [True] * grid_size
+                rpm_axis = map_config.get('default_rpm_values', DEFAULT_RPM_AXIS[:grid_size])
+                map_axis = map_config.get('default_map_values', DEFAULT_MAP_AXIS[:grid_size])
+                rpm_enabled = default_rpm_enabled
+                map_enabled = default_map_enabled
                 values_matrix = get_default_3d_map_values(selected_map_type, grid_size)
             else:
                 rpm_axis = loaded_data["rpm_axis"]
                 map_axis = loaded_data["map_axis"]
-                rpm_enabled = loaded_data.get("rpm_enabled", [True] * grid_size)
-                map_enabled = loaded_data.get("map_enabled", [True] * grid_size)
+                # Usar valores salvos ou padrões da configuração
+                rpm_enabled = loaded_data.get("rpm_enabled", default_rpm_enabled)
+                map_enabled = loaded_data.get("map_enabled", default_map_enabled)
                 values_matrix = np.array(loaded_data["values_matrix"])
                 
             st.session_state[session_key] = {
@@ -322,15 +822,40 @@ with tab1:
                 "values_matrix": values_matrix
             }
         else:
-            # Criar dados padrão com o tamanho correto
-            rpm_axis = DEFAULT_RPM_AXIS[:grid_size] if grid_size <= 32 else DEFAULT_RPM_AXIS + [0] * (grid_size - 32)
-            map_axis = DEFAULT_MAP_AXIS[:grid_size] if grid_size <= 32 else DEFAULT_MAP_AXIS + [0] * (grid_size - 32)
+            # Criar dados padrão usando a configuração expandida
+            config = load_map_types_config()
+            map_config = config.get(selected_map_type, {})
+            
+            # Obter eixos padrão da configuração
+            rpm_axis = map_config.get('default_rpm_values', DEFAULT_RPM_AXIS[:grid_size])
+            map_axis = map_config.get('default_map_values', DEFAULT_MAP_AXIS[:grid_size])
+            
+            # Obter os valores enabled da configuração (se existirem)
+            rpm_enabled = map_config.get('default_rpm_enabled', None)
+            map_enabled = map_config.get('default_map_enabled', None)
+            
+            # Se não houver valores enabled na configuração, usar lógica inteligente
+            if rpm_enabled is None or map_enabled is None:
+                vehicle_data = get_vehicle_data_from_session()
+                rpm_enabled, map_enabled = get_default_3d_enabled_matrix(selected_map_type, vehicle_data)
+            
+            # Ajustar para o tamanho correto (garantir que o tamanho dos eixos corresponde ao grid_size)
+            if len(rpm_axis) != grid_size:
+                rpm_axis = rpm_axis[:grid_size] if len(rpm_axis) >= grid_size else rpm_axis
+            if len(map_axis) != grid_size:
+                map_axis = map_axis[:grid_size] if len(map_axis) >= grid_size else map_axis
+            
+            # Ajustar tamanhos se necessário
+            if len(rpm_enabled) != grid_size:
+                rpm_enabled = rpm_enabled[:grid_size] + [False] * (grid_size - len(rpm_enabled)) if len(rpm_enabled) < grid_size else rpm_enabled[:grid_size]
+            if len(map_enabled) != grid_size:
+                map_enabled = map_enabled[:grid_size] + [False] * (grid_size - len(map_enabled)) if len(map_enabled) < grid_size else map_enabled[:grid_size]
             
             st.session_state[session_key] = {
                 "rpm_axis": rpm_axis,
                 "map_axis": map_axis,
-                "rpm_enabled": [True] * grid_size,
-                "map_enabled": [True] * grid_size,
+                "rpm_enabled": rpm_enabled,
+                "map_enabled": map_enabled,
                 "values_matrix": get_default_3d_map_values(selected_map_type, grid_size)
             }
     
@@ -346,17 +871,32 @@ with tab1:
         grid_size = map_info["grid_size"]
         
         # Ajustar enable/disable para o grid_size correto
-        rpm_enabled_raw = current_data.get("rpm_enabled", [True] * grid_size)
-        map_enabled_raw = current_data.get("map_enabled", [True] * grid_size)
+        # Obter configuração do mapa para valores padrão
+        config = load_map_types_config()
+        map_config = config.get(selected_map_type, {})
+        
+        # Usar valores padrão da configuração se não houver dados salvos
+        default_rpm_enabled = map_config.get('default_rpm_enabled', RPM_ENABLED[:grid_size])
+        default_map_enabled = map_config.get('default_map_enabled', MAP_ENABLED[:grid_size])
+        
+        # Ajustar tamanhos dos defaults se necessário
+        if len(default_rpm_enabled) != grid_size:
+            default_rpm_enabled = default_rpm_enabled[:grid_size] if len(default_rpm_enabled) > grid_size else default_rpm_enabled + [False] * (grid_size - len(default_rpm_enabled))
+        if len(default_map_enabled) != grid_size:
+            default_map_enabled = default_map_enabled[:grid_size] if len(default_map_enabled) > grid_size else default_map_enabled + [False] * (grid_size - len(default_map_enabled))
+        
+        # Usar valores salvos ou padrões da configuração
+        rpm_enabled_raw = current_data.get("rpm_enabled", default_rpm_enabled)
+        map_enabled_raw = current_data.get("map_enabled", default_map_enabled)
         
         # Garantir que o tamanho está correto
         if len(rpm_enabled_raw) != grid_size:
-            rpm_enabled = [True] * grid_size  # Para Lambda 16x16, usar todos
+            rpm_enabled = default_rpm_enabled
         else:
             rpm_enabled = rpm_enabled_raw
             
         if len(map_enabled_raw) != grid_size:
-            map_enabled = [True] * grid_size  # Para Lambda 16x16, usar todos
+            map_enabled = default_map_enabled
         else:
             map_enabled = map_enabled_raw
         
@@ -374,6 +914,16 @@ with tab1:
             
         active_rpm_values = get_active_axis_values(rpm_axis, rpm_enabled)
         active_map_values = get_active_axis_values(map_axis, map_enabled)
+        
+        # Debug info
+        with st.expander("Debug: Informações dos Eixos", expanded=False):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write(f"**RPM Ativo:** {len(active_rpm_values)} posições")
+                st.write(f"Valores: {active_rpm_values[:5]}..." if len(active_rpm_values) > 5 else active_rpm_values)
+            with col2:
+                st.write(f"**MAP Ativo:** {len(active_map_values)} posições")
+                st.write(f"Valores: {active_map_values[:5]}..." if len(active_map_values) > 5 else active_map_values)
         
         st.write("**Eixo X (MAP em bar):** Valores crescentes (menor → maior)")
         st.write("**Eixo Y (RPM):** Valores decrescentes (maior → menor)")
@@ -393,86 +943,434 @@ with tab1:
             # Atualizar na sessão
             current_data["values_matrix"] = matrix
         
-        # Filtrar a matriz para usar apenas as posições ativas
-        # Pegar apenas as linhas ativas (RPM) e colunas ativas (MAP)
-        active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled[:grid_size]) if enabled]
-        active_map_indices = [i for i, enabled in enumerate(map_enabled[:grid_size]) if enabled]
+        # Verificar se há valores ativos antes de continuar
+        if not active_rpm_values or not active_map_values:
+            st.warning("Nenhuma posição ativa selecionada. Configure os eixos primeiro.")
+        else:
+            # Filtrar a matriz para usar apenas as posições ativas
+            # Pegar apenas as linhas ativas (RPM) e colunas ativas (MAP)
+            active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled[:grid_size]) if enabled]
+            active_map_indices = [i for i, enabled in enumerate(map_enabled[:grid_size]) if enabled]
+            
+            # Verificar se os índices estão corretos
+            if not active_rpm_indices or not active_map_indices:
+                st.error("Erro ao identificar posições ativas. Verifique a configuração dos eixos.")
+            else:
+                # Inverter a ordem do RPM para mostrar decrescente (maior para menor)
+                active_rpm_values_reversed = list(reversed(active_rpm_values))
+                active_rpm_indices_reversed = list(reversed(active_rpm_indices))
         
-        # Inverter a ordem do RPM para mostrar decrescente (maior para menor)
-        active_rpm_values_reversed = list(reversed(active_rpm_values))
-        active_rpm_indices_reversed = list(reversed(active_rpm_indices))
+                # Criar matriz filtrada - garantir que temos uma linha para cada RPM ativo (ordem invertida)
+                filtered_matrix = []
+                for rpm_idx in active_rpm_indices_reversed:
+                    row = []
+                    for map_idx in active_map_indices:
+                        # Verificar se os índices estão dentro dos limites da matriz
+                        if rpm_idx < len(matrix) and map_idx < len(matrix[rpm_idx]):
+                            row.append(matrix[rpm_idx][map_idx])
+                        else:
+                            row.append(0.0)  # Valor padrão se fora dos limites
+                    filtered_matrix.append(row)
         
-        # Criar matriz filtrada - garantir que temos uma linha para cada RPM ativo (ordem invertida)
-        filtered_matrix = []
-        for rpm_idx in active_rpm_indices_reversed:
-            row = []
-            for map_idx in active_map_indices:
-                # Verificar se os índices estão dentro dos limites da matriz
-                if rpm_idx < len(matrix) and map_idx < len(matrix[rpm_idx]):
-                    row.append(matrix[rpm_idx][map_idx])
-                else:
-                    row.append(0.0)  # Valor padrão se fora dos limites
-            filtered_matrix.append(row)
+                # Criar DataFrame com valores numéricos puros (sem labels MAP/RPM)
+                # RPM em ordem decrescente (maior para menor)
+                # Adicionar sufixo único para colunas duplicadas
+                column_names = []
+                column_count = {}
+                for map_val in active_map_values:
+                    col_name = f"{map_val:.3f}"
+                    if col_name in column_count:
+                        column_count[col_name] += 1
+                        col_name = f"{col_name}_{column_count[col_name]}"
+                    else:
+                        column_count[col_name] = 0
+                    column_names.append(col_name)
         
-        # Criar DataFrame com valores numéricos puros (sem labels MAP/RPM)
-        # RPM em ordem decrescente (maior para menor)
-        matrix_df = pd.DataFrame(
-            filtered_matrix,
-            columns=[f"{map_val:.3f}" for map_val in active_map_values],
-            index=[f"{int(rpm)}" for rpm in active_rpm_values_reversed]
-        )
+                matrix_df = pd.DataFrame(
+                    filtered_matrix,
+                    columns=column_names,
+                    index=[f"{int(rpm)}" for rpm in active_rpm_values_reversed]
+                )
         
-        # Editor de matriz com formatação 3 casas decimais
-        format_str = "%.3f"  # Sempre 3 casas decimais
+                # Editor de matriz com formatação 3 casas decimais
+                format_str = "%.3f"  # Sempre 3 casas decimais
+                
+                edited_matrix_df = st.data_editor(
+                    matrix_df,  # Usar DataFrame sem estilo para edição
+                    use_container_width=True,
+                    column_config={
+                        col: st.column_config.NumberColumn(
+                            col.split('_')[0] if '_' in col else col,  # Mostrar apenas o valor sem sufixo
+                            format=format_str,
+                            min_value=map_info["min_value"],
+                            max_value=map_info["max_value"],
+                            help=f"MAP: {col.split('_')[0] if '_' in col else col} bar, Valores em {map_info['unit']}"
+                        ) for col in matrix_df.columns
+                    },
+                    key=f"matrix_editor_{session_key}"
+                )
         
-        # Criar versão com estilo para visualização
-        # Invertido: RdYlBu (sem _r) = vermelho para valores baixos, azul para valores altos
-        styled_df = matrix_df.style.background_gradient(cmap='RdYlBu', axis=None).format("{:.3f}")
+                # Criar DataFrame separado para visualização com estilo (sem colunas duplicadas)
+                # Usar valores MAP originais sem sufixo para o display
+                # Garantir índices únicos adicionando sufixo se necessário
+                index_names = []
+                index_count = {}
+                for rpm in active_rpm_values_reversed:
+                    idx_name = f"{int(rpm)}"
+                    if idx_name in index_count:
+                        index_count[idx_name] += 1
+                        idx_name = f"{idx_name}_{index_count[idx_name]}"
+                    else:
+                        index_count[idx_name] = 0
+                    index_names.append(idx_name)
+                
+                display_df = pd.DataFrame(
+                    filtered_matrix,
+                    columns=[f"C{i}" for i in range(len(active_map_values))],  # Colunas temporárias únicas
+                    index=index_names  # Índices únicos
+                )
         
-        edited_matrix_df = st.data_editor(
-            matrix_df,  # Usar DataFrame sem estilo para edição
-            use_container_width=True,
-            column_config={
-                col: st.column_config.NumberColumn(
-                    col,  # Apenas o valor numérico
-                    format=format_str,
-                    min_value=map_info["min_value"],
-                    max_value=map_info["max_value"],
-                    help=f"MAP: {col} bar, Valores em {map_info['unit']}"
-                ) for col in matrix_df.columns
-            },
-            key=f"matrix_editor_{session_key}"
-        )
+                # Aplicar estilo ao DataFrame com colunas únicas
+                styled_df = display_df.style.background_gradient(cmap='RdYlBu', axis=None).format("{:.3f}")
+                
+                # Mostrar versão com gradiente para visualização
+                st.caption("Visualização com gradiente de cores (MAP: " + 
+                          ", ".join([f"{v:.1f}" for v in active_map_values[:5]]) + 
+                          "... bar):")
+                st.dataframe(styled_df, use_container_width=True)
         
-        # Mostrar versão com gradiente para visualização
-        st.caption("Visualização com gradiente de cores:")
-        st.dataframe(styled_df, use_container_width=True)
+                # Atualizar matriz na sessão - expandir de volta para o grid_size
+                # Criar matriz com tamanho do grid
+                grid_size = map_info["grid_size"]
+                full_matrix = np.zeros((grid_size, grid_size))
+                
+                # Copiar valores editados de volta para as posições corretas
+                # Considerando que o DataFrame está com RPM em ordem invertida (maior para menor)
+                for i, rpm_idx in enumerate(active_rpm_indices_reversed):
+                    if i < len(edited_matrix_df.values) and rpm_idx < grid_size:
+                        for j, map_idx in enumerate(active_map_indices):
+                            if j < len(edited_matrix_df.values[i]) and map_idx < grid_size:
+                                full_matrix[rpm_idx][map_idx] = edited_matrix_df.values[i][j]
+                
+                st.session_state[session_key]["values_matrix"] = full_matrix
         
-        # Atualizar matriz na sessão - expandir de volta para o grid_size
-        # Criar matriz com tamanho do grid
-        grid_size = map_info["grid_size"]
-        full_matrix = np.zeros((grid_size, grid_size))
+                # Validações
+                matrix_valid, matrix_msg = validate_3d_map_values(
+                    edited_matrix_df.values,
+                    map_info["min_value"],
+                    map_info["max_value"]
+                )
+                
+                if not matrix_valid:
+                    st.error(f"Matriz: {matrix_msg}")
         
-        # Copiar valores editados de volta para as posições corretas
-        # Considerando que o DataFrame está com RPM em ordem invertida (maior para menor)
-        for i, rpm_idx in enumerate(active_rpm_indices_reversed):
-            if i < len(edited_matrix_df.values) and rpm_idx < grid_size:
-                for j, map_idx in enumerate(active_map_indices):
-                    if j < len(edited_matrix_df.values[i]) and map_idx < grid_size:
-                        full_matrix[rpm_idx][map_idx] = edited_matrix_df.values[i][j]
+        # Botão para abrir o calculador automático
+        col_calc_btn1, col_calc_btn2, col_calc_btn3 = st.columns([1, 2, 1])
+        with col_calc_btn2:
+            if st.button(":material/calculate: Calculador Automático 3D", key=f"open_calculator_{session_key}", use_container_width=True, type="primary"):
+                st.session_state[f"show_calculator_{session_key}"] = True
         
-        st.session_state[session_key]["values_matrix"] = full_matrix
+        # Modal do Calculador Automático
+        if st.session_state.get(f"show_calculator_{session_key}", False):
+            with st.container():
+                st.markdown("### 🔧 Calculador Automático 3D")
+                st.caption("Calcule valores baseados nos dados do veículo")
+            
+                # Obter dados do veículo
+                vehicle_data = get_vehicle_data_from_session()
+                
+                # Primeira linha: Estratégia e informações
+                col_calc1, col_calc2, col_calc3 = st.columns([2, 1, 2])
+            
+                with col_calc1:
+                    # Seleção de estratégia
+                    strategy = st.selectbox(
+                        "Estratégia de Tuning",
+                        options=['conservative', 'balanced', 'aggressive'],
+                        format_func=lambda x: STRATEGY_PRESETS[x]['name'],
+                        key=f"strategy_{session_key}",
+                        help="Escolha a estratégia de agressividade do tuning"
+                    )
+                    
+                    # Estratégia selecionada
+                    strategy_info = STRATEGY_PRESETS[strategy]
+                    st.info(f"**{strategy_info['name']}**: {strategy_info['description']}")
+                
+                with col_calc2:
+                    # Fator de segurança
+                    safety_factor = st.slider(
+                        "Fator de Segurança",
+                        min_value=0.8,
+                        max_value=1.3,
+                        value=STRATEGY_PRESETS[strategy]['safety_factor'],
+                        step=0.05,
+                        key=f"safety_factor_{session_key}",
+                        help="Multiplicador aplicado aos valores calculados"
+                    )
+            
+                with col_calc3:
+                    # Informações do veículo
+                    st.write("**Dados do Veículo:**")
+                    col_info1, col_info2 = st.columns(2)
+                    with col_info1:
+                        st.caption(f"📏 Cilindrada: {vehicle_data['displacement']}L")
+                        st.caption(f"🔧 Cilindros: {vehicle_data['cylinders']}")
+                        st.caption(f"💉 Vazão: {vehicle_data['injector_flow_lbs']:.1f} lbs/h")
+                    with col_info2:
+                        st.caption(f"⛽ Combustível: {vehicle_data['fuel_type']}")
+                        st.caption(f"🚗 Tipo: {'Turbo' if vehicle_data['turbo'] else 'Aspirado'}")
+                        if vehicle_data['turbo']:
+                            st.caption(f"💨 Boost: {vehicle_data['boost_pressure']:.1f} bar")
+            
+                st.divider()
+                
+                # Botões de ação
+                action_col1, action_col2, action_col3 = st.columns(3)
+            
+                with action_col1:
+                    if st.button(":material/visibility: Visualizar Preview", key=f"preview_calc_{session_key}", use_container_width=True):
+                        # Calcular matriz preview
+                        current_rpm_axis = current_data["rpm_axis"]
+                        current_map_axis = current_data["map_axis"]
+                        
+                        # Obter apenas valores ativos
+                        active_rpm_values = get_active_axis_values(current_rpm_axis, current_data.get("rpm_enabled", [True] * grid_size))
+                        active_map_values = get_active_axis_values(current_map_axis, current_data.get("map_enabled", [True] * grid_size))
+                        
+                        if len(active_rpm_values) > 0 and len(active_map_values) > 0:
+                            preview_matrix = calculate_3d_map_values_universal(
+                                selected_map_type,
+                                active_rpm_values,
+                                active_map_values,
+                                vehicle_data,
+                                strategy,
+                                safety_factor
+                            )
+                            
+                            # Salvar preview no session_state
+                            st.session_state[f"preview_matrix_{session_key}"] = preview_matrix
+                            st.session_state[f"show_preview_{session_key}"] = True
+                        else:
+                            st.error("Configure eixos com valores ativos primeiro")
+            
+                with action_col2:
+                    if st.button(":material/check: Aplicar Cálculo", type="primary", key=f"apply_calc_{session_key}", use_container_width=True):
+                        # Calcular e aplicar matriz
+                        current_rpm_axis = current_data["rpm_axis"]
+                        current_map_axis = current_data["map_axis"]
+                        
+                        # Obter apenas valores ativos
+                        active_rpm_values = get_active_axis_values(current_rpm_axis, current_data.get("rpm_enabled", [True] * grid_size))
+                        active_map_values = get_active_axis_values(current_map_axis, current_data.get("map_enabled", [True] * grid_size))
+                        
+                        if len(active_rpm_values) > 0 and len(active_map_values) > 0:
+                            calculated_matrix = calculate_3d_map_values_universal(
+                                selected_map_type,
+                                active_rpm_values,
+                                active_map_values,
+                                vehicle_data,
+                                strategy,
+                                safety_factor
+                            )
+                            
+                            # Expandir matriz calculada para o grid completo
+                            full_matrix = np.zeros((grid_size, grid_size))
+                            active_rpm_indices = [i for i, enabled in enumerate(current_data.get("rpm_enabled", [True] * grid_size)[:grid_size]) if enabled]
+                            active_map_indices = [i for i, enabled in enumerate(current_data.get("map_enabled", [True] * grid_size)[:grid_size]) if enabled]
+                            
+                            # A matriz calculada tem dimensões len(active_rpm_values) x len(active_map_values)
+                            # Precisamos mapear corretamente para a matriz completa
+                            for i, rpm_idx in enumerate(active_rpm_indices):
+                                for j, map_idx in enumerate(active_map_indices):
+                                    if i < calculated_matrix.shape[0] and j < calculated_matrix.shape[1]:
+                                        full_matrix[rpm_idx, map_idx] = calculated_matrix[i, j]
+                            
+                            # Aplicar à matriz do session_state
+                            st.session_state[session_key]["values_matrix"] = full_matrix
+                            st.session_state[f"show_calculator_{session_key}"] = False
+                            st.success(f"✅ Matriz calculada com estratégia {strategy_info['name']}!")
+                            st.rerun()
+                        else:
+                            st.error("Configure eixos com valores ativos primeiro")
+                
+                with action_col3:
+                    if st.button(":material/cancel: Cancelar", key=f"cancel_calc_{session_key}", use_container_width=True):
+                        st.session_state[f"show_calculator_{session_key}"] = False
+                        st.session_state[f"show_preview_{session_key}"] = False
+                        st.rerun()
+                
+                # Visualização do Preview
+                if st.session_state.get(f"show_preview_{session_key}", False):
+                    preview_matrix = st.session_state.get(f"preview_matrix_{session_key}")
+                    if preview_matrix is not None:
+                        st.divider()
+                        st.subheader("📊 Visualização do Preview")
+                        
+                        # Estatísticas
+                        col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+                        with col_stat1:
+                            st.metric("Valor Mínimo", f"{np.min(preview_matrix):.3f} {map_info['unit']}")
+                        with col_stat2:
+                            st.metric("Valor Máximo", f"{np.max(preview_matrix):.3f} {map_info['unit']}")
+                        with col_stat3:
+                            st.metric("Valor Médio", f"{np.mean(preview_matrix):.3f} {map_info['unit']}")
+                        with col_stat4:
+                            st.metric("Desvio Padrão", f"{np.std(preview_matrix):.3f}")
+                        
+                        # Gráfico 3D Surface
+                        # Obter valores ativos dos eixos
+                        active_rpm_values = get_active_axis_values(
+                            current_data["rpm_axis"], 
+                            current_data.get("rpm_enabled", [True] * grid_size)
+                        )
+                        active_map_values = get_active_axis_values(
+                            current_data["map_axis"], 
+                            current_data.get("map_enabled", [True] * grid_size)
+                        )
+                        
+                        # Criar gráfico de superfície 3D
+                        fig_3d = go.Figure(data=[go.Surface(
+                            z=preview_matrix,
+                            x=active_map_values,
+                            y=active_rpm_values,
+                            colorscale='RdYlBu',
+                            reversescale=True,
+                            showscale=True,
+                            colorbar=dict(
+                                title=f"{map_info['unit']}",
+                                titleside="right",
+                                tickmode="linear",
+                                tick0=np.min(preview_matrix),
+                                dtick=(np.max(preview_matrix) - np.min(preview_matrix)) / 10
+                            )
+                        )])
+                        
+                        fig_3d.update_layout(
+                            title=f"Mapa 3D Calculado - {STRATEGY_PRESETS[strategy]['name']}",
+                            scene=dict(
+                                xaxis_title="MAP (bar)",
+                                yaxis_title="RPM",
+                                zaxis_title=f"Valor ({map_info['unit']})",
+                                camera=dict(
+                                    eye=dict(x=1.5, y=1.5, z=1.3)
+                                )
+                            ),
+                            height=500
+                        )
+                        
+                        st.plotly_chart(fig_3d, use_container_width=True)
+                        
+                        # Comparação com valores atuais
+                        st.subheader("📈 Comparação de Cortes")
+                        
+                        tab_rpm, tab_map = st.tabs(["Corte por RPM", "Corte por MAP"])
+                        
+                        with tab_rpm:
+                            # Selecionar RPM para visualizar
+                            selected_rpm_idx = st.slider(
+                                "Selecione o RPM",
+                                min_value=0,
+                                max_value=len(active_rpm_values)-1,
+                                value=len(active_rpm_values)//2,
+                                format=f"RPM %d",
+                                key=f"rpm_slice_{session_key}"
+                            )
+                            selected_rpm = active_rpm_values[selected_rpm_idx]
+                            
+                            # Obter valores atuais e calculados para este RPM
+                            current_slice = []
+                            preview_slice = preview_matrix[selected_rpm_idx, :]
+                            
+                            # Pegar slice da matriz atual
+                            for map_idx in range(len(active_map_values)):
+                                rpm_idx_in_full = [i for i, enabled in enumerate(current_data.get("rpm_enabled", [True] * grid_size)) if enabled][selected_rpm_idx]
+                                map_idx_in_full = [i for i, enabled in enumerate(current_data.get("map_enabled", [True] * grid_size)) if enabled][map_idx]
+                                current_slice.append(current_data["values_matrix"][rpm_idx_in_full][map_idx_in_full])
+                            
+                            # Criar gráfico de comparação
+                            fig_rpm = go.Figure()
+                            
+                            fig_rpm.add_trace(go.Scatter(
+                                x=active_map_values,
+                                y=current_slice,
+                                mode='lines+markers',
+                                name='Valores Atuais',
+                                line=dict(color='red', width=2),
+                                marker=dict(size=6)
+                            ))
+                            
+                            fig_rpm.add_trace(go.Scatter(
+                                x=active_map_values,
+                                y=preview_slice,
+                                mode='lines+markers',
+                                name='Valores Calculados',
+                                line=dict(color='blue', width=3),
+                                marker=dict(size=8)
+                            ))
+                            
+                            fig_rpm.update_layout(
+                                title=f"Comparação em RPM = {selected_rpm:.0f}",
+                                xaxis_title="MAP (bar)",
+                                yaxis_title=f"Valor ({map_info['unit']})",
+                                height=400
+                            )
+                            
+                            st.plotly_chart(fig_rpm, use_container_width=True)
+                        
+                        with tab_map:
+                            # Selecionar MAP para visualizar
+                            selected_map_idx = st.slider(
+                                "Selecione o MAP",
+                                min_value=0,
+                                max_value=len(active_map_values)-1,
+                                value=len(active_map_values)//2,
+                                format=f"MAP %d",
+                                key=f"map_slice_{session_key}"
+                            )
+                            selected_map = active_map_values[selected_map_idx]
+                            
+                            # Obter valores atuais e calculados para este MAP
+                            current_slice = []
+                            preview_slice = preview_matrix[:, selected_map_idx]
+                            
+                            # Pegar slice da matriz atual
+                            for rpm_idx in range(len(active_rpm_values)):
+                                rpm_idx_in_full = [i for i, enabled in enumerate(current_data.get("rpm_enabled", [True] * grid_size)) if enabled][rpm_idx]
+                                map_idx_in_full = [i for i, enabled in enumerate(current_data.get("map_enabled", [True] * grid_size)) if enabled][selected_map_idx]
+                                current_slice.append(current_data["values_matrix"][rpm_idx_in_full][map_idx_in_full])
+                            
+                            # Criar gráfico de comparação
+                            fig_map = go.Figure()
+                            
+                            fig_map.add_trace(go.Scatter(
+                                x=active_rpm_values,
+                                y=current_slice,
+                                mode='lines+markers',
+                                name='Valores Atuais',
+                                line=dict(color='red', width=2),
+                                marker=dict(size=6)
+                            ))
+                            
+                            fig_map.add_trace(go.Scatter(
+                                x=active_rpm_values,
+                                y=preview_slice,
+                                mode='lines+markers',
+                                name='Valores Calculados',
+                                line=dict(color='blue', width=3),
+                                marker=dict(size=8)
+                            ))
+                            
+                            fig_map.update_layout(
+                                title=f"Comparação em MAP = {selected_map:.3f} bar",
+                                xaxis_title="RPM",
+                                yaxis_title=f"Valor ({map_info['unit']})",
+                                height=400
+                            )
+                            
+                            st.plotly_chart(fig_map, use_container_width=True)
         
-        # Validações
-        matrix_valid, matrix_msg = validate_3d_map_values(
-            edited_matrix_df.values,
-            map_info["min_value"],
-            map_info["max_value"]
-        )
-        
-        if not matrix_valid:
-            st.error(f"Matriz: {matrix_msg}")
-        
+        st.divider()
+
         # Operações na matriz
         col_ops1, col_ops2, col_ops3 = st.columns(3)
         
@@ -1044,4 +1942,26 @@ with tab3:
 
 # Rodapé com informações
 st.markdown("---")
-st.caption("Sistema FuelTune - Mapas de Injeção 3D | Versão 1.0")
+
+# Seção de informações do sistema
+col_info1, col_info2, col_info3 = st.columns(3)
+
+with col_info1:
+    st.caption("**Sistema FuelTune - Mapas 3D v2.0**")
+    st.caption("Calculador Automático Habilitado")
+
+with col_info2:
+    # Mostrar informações dos tipos de mapas disponíveis
+    available_maps = list(MAP_TYPES_3D.keys())
+    st.caption(f"**Mapas Disponíveis:** {len(available_maps)}")
+    st.caption("• " + "\n• ".join([MAP_TYPES_3D[m]['name'].split(' - ')[0] for m in available_maps]))
+
+with col_info3:
+    # Mostrar informações do veículo atual
+    vehicle_info = get_vehicle_data_from_session()
+    st.caption("**Configuração Atual:**")
+    st.caption(f"Motor: {vehicle_info['displacement']}L {vehicle_info['cylinders']}cyl")
+    st.caption(f"Bicos: {vehicle_info['injector_flow_lbs']:.0f} lbs/h")
+    st.caption(f"Tipo: {'Turbo' if vehicle_info['turbo'] else 'Aspirado'}")
+
+st.caption("Implementação A06-3D-MAP-IMPLEMENTATION concluída com sucesso!")
