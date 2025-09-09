@@ -483,16 +483,16 @@
       true
     ]
   },
-  "tps_correction_2d": {
-    "name": "Correção por TPS",
+  "tps_compensation_2d": {
+    "name": "Compensação por TPS",
     "dimension": "2D",
-    "display_name": "Correção por TPS (2D)",
+    "display_name": "Compensação por TPS (2D)",
     "positions": 20,
     "axis_type": "TPS",
     "unit": "%",
     "min_value": -50.0,
     "max_value": 50.0,
-    "description": "Correção de combustível baseada no TPS",
+    "description": "Compensação de combustível baseada no TPS",
     "default_enabled_count": 11,
     "default_axis_values": [
       0,
@@ -539,16 +539,16 @@
       false
     ]
   },
-  "temp_correction_2d": {
-    "name": "Correção por Temperatura",
+  "temp_compensation_2d": {
+    "name": "Compensação por Temperatura",
     "dimension": "2D",
-    "display_name": "Correção por Temperatura (2D)",
+    "display_name": "Compensação por Temperatura (2D)",
     "positions": 16,
     "axis_type": "TEMP",
     "unit": "%",
     "min_value": -50.0,
     "max_value": 50.0,
-    "description": "Correção baseada na temperatura do motor",
+    "description": "Compensação baseada na temperatura do motor",
     "default_enabled_count": 14,
     "default_axis_values": [
       -10,
@@ -587,16 +587,16 @@
       false
     ]
   },
-  "air_temp_correction_2d": {
-    "name": "Correção por Temperatura do Ar",
+  "air_temp_compensation_2d": {
+    "name": "Compensação por Temperatura do Ar",
     "dimension": "2D",
-    "display_name": "Correção por Temperatura do Ar (2D)",
+    "display_name": "Compensação por Temperatura do Ar (2D)",
     "positions": 16,
     "axis_type": "AIR_TEMP",
     "unit": "%",
     "min_value": -20.0,
     "max_value": 20.0,
-    "description": "Correção baseada na temperatura do ar de admissão",
+    "description": "Compensação baseada na temperatura do ar de admissão",
     "default_enabled_count": 12,
     "default_axis_values": [
       -10,
@@ -635,16 +635,16 @@
       false
     ]
   },
-  "voltage_correction_2d": {
-    "name": "Correção por Voltagem",
+  "voltage_compensation_2d": {
+    "name": "Compensação por Voltagem",
     "dimension": "2D",
-    "display_name": "Correção por Voltagem (2D)",
+    "display_name": "Compensação por Voltagem (2D)",
     "positions": 9,
     "axis_type": "VOLTAGE",
     "unit": "ms",
     "min_value": -5.0,
     "max_value": 5.0,
-    "description": "Correção do tempo de injeção baseada na voltagem",
+    "description": "Compensação do tempo de injeção baseada na voltagem",
     "default_enabled_count": 8,
     "default_axis_values": [
       8.0,
