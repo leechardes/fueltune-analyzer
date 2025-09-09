@@ -1251,23 +1251,24 @@ def render_tools(map_type: str, map_config: Dict[str, Any], vehicle_id: str,
                 enabled = map_data.get("enabled", [True] * len(axis_values))
                 
                 # Usar função universal de cálculo 2D
-                from src.ui.pages.fuel_maps_2d import calculate_map_values_universal
+                from src.core.fuel_maps.calculations import calculate_map_values_universal
                 preview_values = calculate_map_values_universal(
                     map_type, axis_values, vehicle_data_session,
                     selected_strategy, safety_factor,
                     apply_fuel_corr=fuel_correction_enabled
                 )
                 
-                # Criar DataFrame linha única para 2D
+                # Criar DataFrame linha única para 2D - apenas valores habilitados
                 column_headers = {}
+                filtered_preview_values = []
                 for i, (axis_val, enabled_flag) in enumerate(zip(axis_values, enabled)):
-                    if enabled_flag:
+                    if enabled_flag:  # Incluir apenas valores habilitados
                         header = f"{axis_val:.1f}"
-                    else:
-                        header = f"[{axis_val:.1f}]"
-                    column_headers[header] = preview_values[i]
+                        column_headers[header] = preview_values[i]
+                        filtered_preview_values.append(preview_values[i])
                 
                 preview_df = pd.DataFrame([column_headers])
+                preview_values = filtered_preview_values  # Usar valores filtrados para estatísticas
                 unit = map_config.get("unit", "ms")
                 
         else:  # 3D
@@ -1280,6 +1281,7 @@ def render_tools(map_type: str, map_config: Dict[str, Any], vehicle_id: str,
                 map_enabled = map_data.get("map_enabled", [True] * len(map_axis))
                 
                 # Calcular matriz 3D usando função universal
+                from src.core.fuel_maps.calculations import calculate_3d_map_values_universal
                 calculated_matrix = calculate_3d_map_values_universal(
                     map_type, rpm_axis, map_axis, vehicle_data_session,
                     strategy=selected_strategy, safety_factor=safety_factor

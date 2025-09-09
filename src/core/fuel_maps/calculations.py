@@ -363,20 +363,43 @@ class Calculator:
             air_density_correction = map_bar / 1.013
             temperature_correction = 1.0  # Assumir temperatura padrão
 
-            # Volume de ar por ciclo
-            volume_per_cycle = (engine_displacement / cylinders) * (rpm / 60 / 2)
-            air_mass_per_cycle = volume_per_cycle * air_density_correction * temperature_correction
-
-            # Massa de combustível necessária
-            fuel_mass_needed = air_mass_per_cycle / afr_target
-
-            # Converter para tempo de injeção (aproximação)
-            # Densidade da gasolina ≈ 0.75 kg/L
-            fuel_density = 0.75
-            fuel_volume_ml = fuel_mass_needed / fuel_density * 1000
-
-            # Tempo de injeção em ms
-            injection_time = fuel_volume_ml / effective_flow * 60 * 1000
+            # Cálculo simplificado e corrigido
+            # Volume de ar por admissão (L)
+            cylinder_volume_L = engine_displacement / cylinders / 1000.0  # cc para L
+            
+            # Eficiência volumétrica base (varia com RPM e MAP)
+            ve_base = 0.85  # 85% para motor naturalmente aspirado
+            
+            # Ajuste de VE por RPM
+            if rpm < 1500:
+                ve_rpm_factor = 0.7
+            elif rpm < 3000:
+                ve_rpm_factor = 0.85
+            elif rpm < 5000:
+                ve_rpm_factor = 0.95
+            else:
+                ve_rpm_factor = 0.85  # Cai em altos RPMs
+            
+            # VE final com correção de pressão
+            ve_final = ve_base * ve_rpm_factor * air_density_correction
+            
+            # Volume real de ar admitido (L)
+            air_volume = cylinder_volume_L * ve_final
+            
+            # Massa de ar (g) - densidade do ar ~1.2 g/L a 1 bar
+            air_mass_g = air_volume * 1.2 * air_density_correction
+            
+            # Massa de combustível necessária (g)
+            fuel_mass_g = air_mass_g / afr_target
+            
+            # Volume de combustível (ml) - densidade gasolina ~0.75 g/ml
+            fuel_volume_ml = fuel_mass_g / 0.75
+            
+            # Tempo de injeção (ms)
+            # Vazão do bico em cc/min = ml/min
+            # Converter para ml/ms: effective_flow / 60000
+            flow_ml_per_ms = effective_flow / 60000.0
+            injection_time = fuel_volume_ml / flow_ml_per_ms
 
             return max(0.5, min(50.0, injection_time))  # Limitar entre 0.5ms e 50ms
 
@@ -421,7 +444,7 @@ class Calculator:
                 injection_time = Calculator.calculate_base_injection_time_3d(
                     map_kpa=map_kpa,
                     rpm=rpm,
-                    engine_displacement=vehicle_data.get("displacement", 2000) / 1000,  # L
+                    engine_displacement=vehicle_data.get("displacement", 2000),  # cc
                     cylinders=vehicle_data.get("cylinders", 4),
                     injector_flow_cc_min=vehicle_data.get("injector_flow", 440),
                     afr_target=afr_target,
@@ -524,7 +547,7 @@ class Calculator:
                     kwargs.get("strategy", "balanced"),
                     kwargs.get("safety_factor", 1.0)
                 )
-            elif map_type == "ignition_3d_map":
+            elif map_type == "ignition_timing_3d_map":
                 return Calculator.calculate_ignition_3d_matrix(
                     rpm_axis, map_axis, vehicle_data,
                     kwargs.get("octane_rating", 91.0)
