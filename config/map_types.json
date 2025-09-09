@@ -7,7 +7,7 @@
     "axis_type": "MAP",
     "unit": "ms",
     "min_value": 0.0,
-    "max_value": 50.0,
+    "max_value": 100.0,
     "description": "Mapa principal de combustível baseado na pressão MAP",
     "default_enabled_count": 21,
     "default_axis_values": [
@@ -92,7 +92,7 @@
     "y_axis_type": "MAP",
     "unit": "ms",
     "min_value": 0.0,
-    "max_value": 50.0,
+    "max_value": 100.0,
     "description": "Mapa principal 3D",
     "default_rpm_values": [
       400,
@@ -324,7 +324,7 @@
     "y_axis_type": "MAP",
     "unit": "°",
     "min_value": -10.0,
-    "max_value": 50.0,
+    "max_value": 100.0,
     "description": "Mapa 3D de ponto de ignição",
     "default_rpm_values": [
       400,
@@ -491,7 +491,7 @@
     "axis_type": "TPS",
     "unit": "%",
     "min_value": -50.0,
-    "max_value": 50.0,
+    "max_value": 100.0,
     "description": "Compensação de combustível baseada no TPS",
     "default_enabled_count": 11,
     "default_axis_values": [
@@ -547,7 +547,7 @@
     "axis_type": "TEMP",
     "unit": "%",
     "min_value": -50.0,
-    "max_value": 50.0,
+    "max_value": 100.0,
     "description": "Compensação baseada na temperatura do motor",
     "default_enabled_count": 14,
     "default_axis_values": [
@@ -677,7 +677,7 @@
     "axis_type": "RPM",
     "unit": "%",
     "min_value": -50.0,
-    "max_value": 50.0,
+    "max_value": 100.0,
     "description": "Compensação percentual de combustível baseada na rotação",
     "default_enabled_count": 24,
     "default_axis_values": [

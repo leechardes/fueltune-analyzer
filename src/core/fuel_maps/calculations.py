@@ -401,7 +401,8 @@ class Calculator:
             flow_ml_per_ms = effective_flow / 60000.0
             injection_time = fuel_volume_ml / flow_ml_per_ms
 
-            return max(0.5, min(50.0, injection_time))  # Limitar entre 0.5ms e 50ms
+            # Limitar entre 0.5ms e 100ms (duty cycle máximo ~80% a 6000 RPM)
+            return max(0.5, min(100.0, injection_time))
 
         except Exception as e:
             logger.error(f"Erro no cálculo de tempo de injeção: {e}")
