@@ -1294,18 +1294,20 @@ def render_tools(map_type: str, map_config: Dict[str, Any], vehicle_id: str,
                 active_map_values = [map_axis[i] for i in active_map_indices]
                 
                 # Criar matriz filtrada para preview
+                # NOTA: calculated_matrix é indexada como [map_idx][rpm_idx]
+                # Queremos mostrar RPM nas linhas (reverso) e MAP nas colunas
                 preview_matrix = []
-                for rpm_idx in active_rpm_indices:
+                for rpm_idx in reversed(active_rpm_indices):  # RPM reverso para display
                     row = []
                     for map_idx in active_map_indices:
-                        row.append(calculated_matrix[rpm_idx][map_idx])
+                        row.append(calculated_matrix[map_idx][rpm_idx])
                     preview_matrix.append(row)
                 
                 # Criar DataFrame matriz para 3D
                 preview_df = pd.DataFrame(
                     preview_matrix,
                     columns=[f"{m:.2f}" for m in active_map_values],
-                    index=[f"{int(r)}" for r in reversed(active_rpm_values)]
+                    index=[f"{int(rpm_axis[i])}" for i in reversed(active_rpm_indices)]
                 )
                 unit = map_config.get("unit", "ms")
                 preview_values = [val for row in preview_matrix for val in row]  # Flatten para stats
