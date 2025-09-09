@@ -1037,12 +1037,14 @@ def render_editor_view(values_matrix: np.ndarray, rpm_axis: List[float],
     active_rpm_indices_reversed = list(reversed(active_rpm_indices))
     
     # Criar matriz filtrada
+    # NOTA: values_matrix é salva como [map_idx][rpm_idx]
     filtered_matrix = []
     for rpm_idx in active_rpm_indices_reversed:
         row = []
         for map_idx in active_map_indices:
-            if rpm_idx < len(values_matrix) and map_idx < len(values_matrix[0]):
-                value = values_matrix[rpm_idx][map_idx]
+            # A matriz está estruturada como [map][rpm], não [rpm][map]
+            if map_idx < len(values_matrix) and rpm_idx < len(values_matrix[0]):
+                value = values_matrix[map_idx][rpm_idx]
                 row.append(value)
             else:
                 row.append(0.0)
@@ -1111,14 +1113,17 @@ def render_editor_view(values_matrix: np.ndarray, rpm_axis: List[float],
         st.success("Matriz modificada")
         
         # Reconstruir matriz completa com valores editados
+        # NOTA: matriz é [map_idx][rpm_idx]
         grid_size = len(rpm_axis)
+        map_grid_size = len(map_axis)
         modified_matrix = values_matrix.copy()
         
         for i, rpm_idx in enumerate(active_rpm_indices_reversed):
             if i < len(edited_matrix_df.values) and rpm_idx < grid_size:
                 for j, map_idx in enumerate(active_map_indices):
-                    if j < len(edited_matrix_df.values[i]) and map_idx < grid_size:
-                        modified_matrix[rpm_idx][map_idx] = edited_matrix_df.values[i][j]
+                    if j < len(edited_matrix_df.values[i]) and map_idx < map_grid_size:
+                        # Corrigir indexação: matriz é [map][rpm]
+                        modified_matrix[map_idx][rpm_idx] = edited_matrix_df.values[i][j]
         
         # Salvar automaticamente se habilitado
         if auto_save:
