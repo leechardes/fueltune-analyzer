@@ -1282,15 +1282,46 @@ def render_tools(map_type: str, map_config: Dict[str, Any], vehicle_id: str,
             if map_data:
                 rpm_axis = map_data.get("rpm_axis", [])
                 map_axis = map_data.get("map_axis", [])
-                rpm_enabled = map_data.get("rpm_enabled", [True] * len(rpm_axis))
-                map_enabled = map_data.get("map_enabled", [True] * len(map_axis))
+                
+                # DEBUG: Verificar se enabled está sendo carregado
+                rpm_enabled_saved = map_data.get("rpm_enabled", None)
+                map_enabled_saved = map_data.get("map_enabled", None)
+                
+                st.write("🔍 **DEBUG - Dados carregados do arquivo:**")
+                st.write(f"- rpm_enabled salvo: {rpm_enabled_saved is not None} ({len(rpm_enabled_saved) if rpm_enabled_saved else 0} valores)")
+                st.write(f"- map_enabled salvo: {map_enabled_saved is not None} ({len(map_enabled_saved) if map_enabled_saved else 0} valores)")
+                
+                # Se não tiver dados salvos, usar todos habilitados
+                rpm_enabled = rpm_enabled_saved if rpm_enabled_saved is not None else [True] * len(rpm_axis)
+                map_enabled = map_enabled_saved if map_enabled_saved is not None else [True] * len(map_axis)
+                
+                st.write(f"- rpm_enabled usado: {sum(rpm_enabled)} de {len(rpm_enabled)} habilitados")
+                st.write(f"- map_enabled usado: {sum(map_enabled)} de {len(map_enabled)} habilitados")
+                st.divider()
                 
                 # Calcular matriz 3D usando função universal
                 from src.core.fuel_maps.calculations import calculate_3d_map_values_universal
+                
+                # DEBUG: Verificar parâmetros de entrada
+                st.write("🔍 **DEBUG - Parâmetros de cálculo:**")
+                st.write(f"- map_type: {map_type}")
+                st.write(f"- rpm_axis: {len(rpm_axis)} valores: {rpm_axis[:3]}...")
+                st.write(f"- map_axis: {len(map_axis)} valores: {map_axis[:3]}...")
+                st.write(f"- vehicle_data: {vehicle_data_session}")
+                st.write(f"- strategy: {selected_strategy}")
+                st.write(f"- safety_factor: {safety_factor}")
+                
                 calculated_matrix = calculate_3d_map_values_universal(
                     map_type, rpm_axis, map_axis, vehicle_data_session,
                     strategy=selected_strategy, safety_factor=safety_factor
                 )
+                
+                # DEBUG: Verificar resultado do cálculo
+                st.write(f"- calculated_matrix shape: {calculated_matrix.shape}")
+                st.write(f"- Min: {calculated_matrix.min():.3f}, Max: {calculated_matrix.max():.3f}")
+                st.write(f"- Valores únicos: {len(np.unique(calculated_matrix))}")
+                st.write(f"- Amostra [0,0]: {calculated_matrix[0,0]:.3f}, [0,1]: {calculated_matrix[0,1]:.3f}")
+                st.divider()
                 
                 # Filtrar apenas valores ativos
                 active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled) if enabled]
@@ -1301,12 +1332,25 @@ def render_tools(map_type: str, map_config: Dict[str, Any], vehicle_id: str,
                 # Criar matriz filtrada para preview
                 # NOTA: calculated_matrix é indexada como [map_idx][rpm_idx]
                 # Queremos mostrar RPM nas linhas (reverso) e MAP nas colunas
+                
+                # DEBUG: Verificar índices ativos
+                st.write("🔍 **DEBUG - Criação da preview_matrix:**")
+                st.write(f"- active_rpm_indices: {active_rpm_indices[:5]}... ({len(active_rpm_indices)} total)")
+                st.write(f"- active_map_indices: {active_map_indices[:5]}... ({len(active_map_indices)} total)")
+                
                 preview_matrix = []
-                for rpm_idx in reversed(active_rpm_indices):  # RPM reverso para display
+                for i, rpm_idx in enumerate(reversed(active_rpm_indices)):  # RPM reverso para display
                     row = []
-                    for map_idx in active_map_indices:
-                        row.append(calculated_matrix[map_idx][rpm_idx])
+                    for j, map_idx in enumerate(active_map_indices):
+                        value = calculated_matrix[map_idx][rpm_idx]
+                        row.append(value)
+                        # DEBUG: Primeiras células
+                        if i == 0 and j < 3:
+                            st.write(f"  - preview_matrix[{i}][{j}] = calculated_matrix[{map_idx}][{rpm_idx}] = {value:.3f}")
                     preview_matrix.append(row)
+                
+                st.write(f"- preview_matrix shape: {len(preview_matrix)}x{len(preview_matrix[0]) if preview_matrix else 0}")
+                st.divider()
                 
                 # Criar DataFrame matriz para 3D
                 preview_df = pd.DataFrame(
@@ -1326,6 +1370,17 @@ def render_tools(map_type: str, map_config: Dict[str, Any], vehicle_id: str,
             
             st.write(f"**Preview dos valores calculados** ({unit})")
             st.caption(f"Valores com 3 casas decimais - Total: {len(preview_values)} valores")
+            
+            # DEBUG: Verificar DataFrame final
+            st.write("🔍 **DEBUG - DataFrame final:**")
+            st.write(f"- preview_df shape: {preview_df.shape}")
+            st.write(f"- Primeira linha: {preview_df.iloc[0].values[:5].tolist()}...")
+            st.write(f"- preview_values (flatten): min={min(preview_values):.3f}, max={max(preview_values):.3f}")
+            all_same = len(set(preview_values)) == 1
+            if all_same:
+                st.error(f"⚠️ PROBLEMA: Todos os valores são iguais: {preview_values[0]:.3f}")
+            st.divider()
+            
             st.dataframe(styled_df, use_container_width=True)
             
             # Estatísticas

@@ -26,7 +26,7 @@ def test_default_values():
         assert test_config.DEBUG is False
         assert test_config.LOG_LEVEL == "INFO"
         assert test_config.FUELTECH_FIELDS_COUNT == 64
-        assert test_config.STREAMLIT_SERVER_PORT == 8501
+        assert test_config.STREAMLIT_SERVER_PORT == 8503
 
 
 def test_environment_variable_override():
