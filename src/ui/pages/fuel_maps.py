@@ -1811,6 +1811,18 @@ def render_tools(
         fuel_correction_enabled = _spec["fuel_correction_enabled"]
         regulator_11 = _spec["regulator_11"]
         cl_factor_value = _spec["cl_factor_value"]
+        ref_rpm_value = _spec.get("ref_rpm")
+        map_ref_value = None
+        if dimension == "2D" and map_type == "main_fuel_rpm_2d_map":
+            map_ref_value = st.number_input(
+                "MAP de referência (bar)",
+                min_value=-1.0,
+                max_value=5.0,
+                value=0.0,
+                step=0.1,
+                key=f"mapref_{dimension}_{map_type}_{bank_id}",
+                help="MAP usado para colapsar o cálculo 3D no 2D por RPM",
+            )
 
     # SEÇÃO 2: Dados do Veículo (coluna direita)
     with calc_col2:
@@ -1843,6 +1855,10 @@ def render_tools(
                 selected_strategy,
                 safety_factor,
                 fuel_correction_enabled,
+                consider_boost=boost_enabled,
+                regulator_11=regulator_11,
+                ref_rpm=ref_rpm_value,
+                map_ref=map_ref_value,
             )
             if prev:
                 axis_values = prev["axis_values"]
@@ -2336,7 +2352,8 @@ def render_specific_controls_for_map(
     Retorna dict com:
       - boost_enabled, fuel_correction_enabled, regulator_11, cl_factor_value
     """
-    show_injection_controls = dimension == "3D" and map_type == "main_fuel_3d_map"
+    show_injection_controls_3d = dimension == "3D" and map_type == "main_fuel_3d_map"
+    show_injection_controls_2d = dimension == "2D" and map_type == "main_fuel_2d_map"
     col_check1, col_check2 = st.columns(2)
     with col_check1:
         boost_enabled = st.checkbox(
@@ -2344,17 +2361,17 @@ def render_specific_controls_for_map(
             value=True,
             key=f"boost_enabled_{dimension}_{map_type}_{bank_id}",
             help="Considera a pressão absoluta do ar (P_abs) no cálculo. Com boost, a massa de ar por admissão aumenta e o PW tende a subir. Desative para simular PW em regime atmosférico (P_abs=1,0 bar).",
-        ) if show_injection_controls else False
+        ) if (show_injection_controls_3d or show_injection_controls_2d) else False
     with col_check2:
         fuel_correction_enabled = st.checkbox(
             "Correção de Combustível",
             value=True,
             key=f"fuel_corr_{dimension}_{map_type}_{bank_id}",
             help="ON: usa AFR estequiométrico do combustível (ex.: Etanol 9.0). OFF: usa 14.7 (gasolina) para isolar variações.",
-        ) if show_injection_controls else False
+        ) if (show_injection_controls_3d or show_injection_controls_2d) else False
 
     regulator_11 = True
-    if show_injection_controls:
+    if show_injection_controls_3d or show_injection_controls_2d:
         regulator_11 = st.checkbox(
             "Considerar pressão de turbo (1:1) no combustível",
             value=True,
@@ -2363,11 +2380,23 @@ def render_specific_controls_for_map(
         )
 
     cl_factor_value = safety_factor if (dimension == "3D" and map_type == "lambda_target_3d_map") else 1.0
+    ref_rpm = None
+    if show_injection_controls_2d:
+        ref_rpm = st.number_input(
+            "RPM de referência",
+            min_value=600,
+            max_value=12000,
+            value=3000,
+            step=100,
+            key=f"refrpm_{dimension}_{map_type}_{bank_id}",
+            help="RPM usado para colapsar o cálculo 3D no 2D",
+        )
     return {
         "boost_enabled": boost_enabled,
         "fuel_correction_enabled": fuel_correction_enabled,
         "regulator_11": regulator_11,
         "cl_factor_value": cl_factor_value,
+        "ref_rpm": ref_rpm,
     }
 
 
@@ -2380,6 +2409,11 @@ def compute_preview_2d(
     selected_strategy: str,
     safety_factor: float,
     fuel_correction_enabled: bool,
+    *,
+    consider_boost: bool = True,
+    regulator_11: bool = True,
+    ref_rpm: Optional[float] = None,
+    map_ref: Optional[float] = None,
 ):
     import pandas as pd
     from src.core.fuel_maps.calculations import calculate_map_values_universal
@@ -2388,14 +2422,60 @@ def compute_preview_2d(
         return None
     axis_values = map_data.get("axis_values", [])
     enabled = map_data.get("enabled", [True] * len(axis_values))
-    preview_values_all = calculate_map_values_universal(
-        map_type,
-        axis_values,
-        vehicle_data_session,
-        selected_strategy,
-        safety_factor,
-        apply_fuel_corr=fuel_correction_enabled,
-    )
+    # Para main_fuel_2d_map, usar cálculo realista com VE/λ/ΔP colapsando 3D por RPM de referência
+    if map_type == "main_fuel_2d_map":
+        # Determinar RPM de referência: usar ref_rpm se fornecido, senão mediana dos eixos 3D (se existirem) ou 3000
+        rrpm = ref_rpm
+        if rrpm is None:
+            m3d = persistence_manager.load_3d_map_data(vehicle_id, "main_fuel_3d_map", bank_id) or \
+                  persistence_manager.load_3d_map_data(vehicle_id, "ve_3d_map", bank_id)
+            if m3d and m3d.get("rpm_axis"):
+                arr = [v for v, e in zip(m3d.get("rpm_axis", []), [True]*len(m3d.get("rpm_axis", [])))]
+                rrpm = float(arr[len(arr)//2]) if arr else 3000.0
+            else:
+                rrpm = 3000.0
+        preview_values_all = calculate_map_values_universal(
+            map_type,
+            axis_values,
+            vehicle_data_session,
+            selected_strategy,
+            safety_factor,
+            apply_fuel_corr=fuel_correction_enabled,
+            consider_boost=consider_boost,
+            regulator_11=regulator_11,
+            ref_rpm=rrpm,
+        )
+    elif map_type == "main_fuel_rpm_2d_map":
+        mref = map_ref
+        if mref is None:
+            # inferir mediana dos MAPs do 3D
+            m3d = persistence_manager.load_3d_map_data(vehicle_id, "main_fuel_3d_map", bank_id) or \
+                  persistence_manager.load_3d_map_data(vehicle_id, "ve_3d_map", bank_id)
+            if m3d and m3d.get("map_axis"):
+                arr = m3d.get("map_axis", [])
+                mref = float(arr[len(arr)//2]) if arr else 0.0
+            else:
+                mref = 0.0
+        preview_values_all = calculate_map_values_universal(
+            map_type,
+            axis_values,
+            vehicle_data_session,
+            selected_strategy,
+            safety_factor,
+            apply_fuel_corr=fuel_correction_enabled,
+            consider_boost=consider_boost,
+            regulator_11=regulator_11,
+            map_ref=mref,
+        )
+    else:
+        preview_values_all = calculate_map_values_universal(
+            map_type,
+            axis_values,
+            vehicle_data_session,
+            selected_strategy,
+            safety_factor,
+            apply_fuel_corr=fuel_correction_enabled,
+        )
     column_headers = {}
     filtered_preview_values = []
     for i, (axis_val, enabled_flag) in enumerate(zip(axis_values, enabled)):
@@ -2463,6 +2543,7 @@ def compute_preview_3d(
         "map_enabled": map_enabled,
         "matrix": calculated_matrix,
         "unit": unit,
+        "axis_type": map_config.get("axis_type", "Eixo"),
     }
 
 

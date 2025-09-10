@@ -695,7 +695,7 @@ class Calculator:
                 # Massa de ar por admissão (mg)
                 m_air_mg = (p_abs_pa * v_cyl_m3) / (R * T) * ve * 1e6
 
-                # AFR alvo
+                # AFR alvo (aplicar fator de segurança como riqueza em ambos os casos)
                 if lambda_matrix is not None and lambda_matrix.shape == (rows, cols):
                     lam = float(lambda_matrix[i, j])
                     afr_target = afr_stoich * lam
@@ -704,7 +704,9 @@ class Calculator:
                     map_kpa = p_abs_bar * 100.0
                     afr_gas = Calculator.get_afr_target_3d(map_kpa, strategy)
                     lam_strategy = afr_gas / 14.7
-                    afr_target = afr_stoich * lam_strategy * eff_fs
+                    afr_target = afr_stoich * lam_strategy
+                # Fator de segurança: FS>1 ⇒ mistura mais rica (AFR menor)
+                afr_target *= eff_fs
 
                 # Massa de combustível (mg)
                 afr_target = max(0.1, float(afr_target))
@@ -1067,6 +1069,108 @@ def calculate_main_fuel_2d_legacy(
         values.append(round(base_time, 2))
 
     return values
+
+def calculate_main_fuel_2d_realistic(
+    axis_values: List[float],
+    vehicle_data: Dict[str, Any],
+    strategy: str = "balanced",
+    safety_factor: float = 1.0,
+    *,
+    consider_boost: bool = True,
+    apply_fuel_corr: bool = True,
+    regulator_11: bool = True,
+    ref_rpm: Optional[float] = None,
+    cl_factor: float = 1.0,
+) -> List[float]:
+    """Calcula o mapa principal 2D (MAP→PW ms) usando o mesmo modelo físico 3D.
+
+    Colapsa o cálculo 3D em uma linha de RPM de referência (ref_rpm).
+    Usa VE por célula (gerada) e opcionalmente λ alvo por célula.
+    """
+    try:
+        rrpm = float(ref_rpm) if ref_rpm and ref_rpm > 0 else 3000.0
+        rpm_axis = [rrpm]
+        map_axis = [float(m) for m in axis_values]
+
+        ve_matrix = generate_ve_3d_matrix(rpm_axis, map_axis)  # [map][rpm=1]
+        lam_matrix = calculate_lambda_target_closed_loop(
+            rpm_axis, map_axis, strategy=strategy, cl_factor=cl_factor,
+            fuel_type=str(vehicle_data.get('fuel_type', 'ethanol'))
+        )
+
+        vcalc = dict(vehicle_data)
+        vcalc["regulator_1_1"] = bool(regulator_11)
+
+        mat = Calculator.calculate_fuel_3d_matrix(
+            rpm_axis=rpm_axis,
+            map_axis=map_axis,
+            vehicle_data=vcalc,
+            strategy=strategy,
+            safety_factor=safety_factor,
+            consider_boost=consider_boost,
+            apply_fuel_corr=apply_fuel_corr,
+            ve_matrix=ve_matrix,
+            lambda_matrix=lam_matrix,
+        )
+
+        return [float(row[0]) for row in mat]
+    except Exception as e:
+        logger.error(f"Erro cálculo 2D realista: {e}")
+        return [2.0 for _ in axis_values]
+
+def calculate_main_fuel_rpm_2d_realistic(
+    axis_values: List[float],
+    vehicle_data: Dict[str, Any],
+    strategy: str = "balanced",
+    safety_factor: float = 1.0,
+    *,
+    consider_boost: bool = True,
+    apply_fuel_corr: bool = True,
+    regulator_11: bool = True,
+    map_ref: Optional[float] = None,
+    cl_factor: float = 1.0,
+) -> List[float]:
+    """Calcula PW 2D em função do RPM, usando um MAP de referência.
+
+    Colapsa o cálculo 3D em uma coluna de MAP de referência (map_ref).
+    Usa VE por célula e λ alvo por célula.
+    """
+    try:
+        mref = float(map_ref) if map_ref is not None else 0.0
+        rpm_axis = [float(r) for r in axis_values]
+        map_axis = [mref]
+
+        ve_matrix = generate_ve_3d_matrix(rpm_axis, map_axis)  # shape [map=1][rpm=N] pois nossa função gera [map][rpm]
+        # Nossa generate_ve_3d_matrix espera (rpm_axis, map_axis) mas gera shape (len(map), len(rpm))
+        # Acima passamos (rpm_axis, [map_ref]) então ve_matrix tem shape (1, N).
+
+        lam_matrix = calculate_lambda_target_closed_loop(
+            rpm_axis, map_axis, strategy=strategy, cl_factor=cl_factor,
+            fuel_type=str(vehicle_data.get('fuel_type', 'ethanol'))
+        )  # shape (1, N)
+
+        vcalc = dict(vehicle_data)
+        vcalc["regulator_1_1"] = bool(regulator_11)
+
+        # A função 3D espera axes como listas: usamos rpm_axis=N, map_axis=1
+        mat = Calculator.calculate_fuel_3d_matrix(
+            rpm_axis=rpm_axis,
+            map_axis=map_axis,
+            vehicle_data=vcalc,
+            strategy=strategy,
+            safety_factor=safety_factor,
+            consider_boost=consider_boost,
+            apply_fuel_corr=apply_fuel_corr,
+            ve_matrix=ve_matrix,
+            lambda_matrix=lam_matrix,
+        )  # shape (len(map)=1, len(rpm)=N)
+
+        # Extrair a única linha (map_ref)
+        row = mat[0]
+        return [float(v) for v in row]
+    except Exception as e:
+        logger.error(f"Erro cálculo RPM 2D realista: {e}")
+        return [2.0 for _ in axis_values]
 def calculate_2d_map_values(axis_values: List[float], map_config: Dict[str, Any], 
                            vehicle_data: Dict[str, Any], strategy: str = "balanced") -> List[float]:
     """Calcula valores do mapa 2D baseado na estratégia e dados do veículo da sessão."""
@@ -1274,8 +1378,29 @@ def calculate_map_values_universal(
         
         # Preparar argumentos baseado no tipo
         if map_type == "main_fuel_2d_map":
-            # Usar cálculo legado do maps_2d (backup)
-            return calculate_main_fuel_2d_legacy(axis_values, vehicle_data, strategy)
+            return calculate_main_fuel_2d_realistic(
+                axis_values,
+                vehicle_data,
+                strategy,
+                safety_factor,
+                consider_boost=kwargs.get("consider_boost", True),
+                apply_fuel_corr=kwargs.get("apply_fuel_corr", True),
+                regulator_11=kwargs.get("regulator_11", True),
+                ref_rpm=kwargs.get("ref_rpm"),
+                cl_factor=kwargs.get("cl_factor", 1.0),
+            )
+        if map_type == "main_fuel_rpm_2d_map":
+            return calculate_main_fuel_rpm_2d_realistic(
+                axis_values,
+                vehicle_data,
+                strategy,
+                safety_factor,
+                consider_boost=kwargs.get("consider_boost", True),
+                apply_fuel_corr=kwargs.get("apply_fuel_corr", True),
+                regulator_11=kwargs.get("regulator_11", True),
+                map_ref=kwargs.get("map_ref", 0.0),
+                cl_factor=kwargs.get("cl_factor", 1.0),
+            )
             
         elif map_type == "tps_compensation_2d":
             return calc_func(axis_values, strategy, safety_factor)

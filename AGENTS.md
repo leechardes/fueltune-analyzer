@@ -39,10 +39,13 @@
 
 ### 📚 Documentação Obrigatória para Leitura
 Antes de executar qualquer tarefa, SEMPRE leia:
-1. **`docs/README.md`** - Visão geral da estrutura de documentação, padrões e convenções
-2. **`docs/agents/README.md`** - Sistema de agentes, ciclo de vida e organização de tarefas
+1. **`docs/INTERACTION-PROTOCOL.md`** - 🔴 CRÍTICO: Protocolo de confirmação e fluxo de trabalho
+2. **`docs/README.md`** - Visão geral da estrutura de documentação, padrões e convenções
+3. **`docs/agents/README.md`** - Sistema de agentes, ciclo de vida e organização de tarefas
 
 Estes documentos contêm informações essenciais sobre:
+- **Protocolo de interação** (NUNCA executar sem confirmação)
+- **Regras de commits** (NUNCA commitar sem aprovação)
 - Estrutura de diretórios de documentação
 - Convenções de nomenclatura
 - Localização de agentes (pending/, continuous/, executed/, reports/)
