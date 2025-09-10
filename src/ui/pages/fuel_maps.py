@@ -1301,23 +1301,96 @@ def render_data_export(
     )
 
     if st.button(":material/download: Baixar Mapa", key=f"download_{map_type}"):
+        # Carregar dados conforme dimensão
         if dimension == "2D":
             map_data = load_2d_map_data_local(vehicle_id, map_type, bank_id)
         else:
-            map_data = persistence_manager.load_3d_map_data(
-                vehicle_id, map_type, bank_id
+            map_data = persistence_manager.load_3d_map_data(vehicle_id, map_type, bank_id)
+
+        if not map_data:
+            st.error("Dados do mapa não encontrados para exportação")
+            return
+
+        if export_format == "JSON":
+            import json
+            st.download_button(
+                ":material/download: Baixar JSON",
+                json.dumps(map_data, indent=2, ensure_ascii=False),
+                f"{map_type}_{vehicle_id}.json",
+                "application/json",
             )
+        elif export_format == "CSV":
+            import io, csv
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            if dimension == "2D":
+                axis_values = map_data.get("axis_values", [])
+                values = map_data.get("values", [])
+                enabled = map_data.get("enabled", [True] * len(values))
+                # Cabeçalho
+                writer.writerow(["axis", "value", "enabled"])
+                for a, v, e in zip(axis_values, values, enabled):
+                    writer.writerow([a, f"{float(v):.3f}", int(bool(e))])
+            else:
+                import numpy as _np
+                rpm_axis = map_data.get("rpm_axis", [])
+                map_axis = map_data.get("map_axis", [])
+                values_matrix = _np.array(map_data.get("values_matrix", []), dtype=float)
+                rpm_enabled = map_data.get("rpm_enabled", [True] * len(rpm_axis))
+                map_enabled = map_data.get("map_enabled", [True] * len(map_axis))
+                active_rpm_indices = [i for i, e in enumerate(rpm_enabled) if e]
+                active_map_indices = [i for i, e in enumerate(map_enabled) if e]
+                # Cabeçalho: primeira célula vazia + MAP ativos
+                header = ["RPM\\MAP"] + [f"{map_axis[i]:.2f}" for i in active_map_indices]
+                writer.writerow(header)
+                # Linhas: RPM (desc) + valores por MAP
+                for rpm_idx in reversed(active_rpm_indices):
+                    row = [int(rpm_axis[rpm_idx])]
+                    for map_idx in active_map_indices:
+                        if map_idx < values_matrix.shape[0] and rpm_idx < values_matrix.shape[1]:
+                            row.append(f"{values_matrix[map_idx, rpm_idx]:.3f}")
+                        else:
+                            row.append("")
+                    writer.writerow(row)
 
-        if map_data:
-            if export_format == "JSON":
-                import json
+            data = buf.getvalue()
+            st.download_button(
+                ":material/download: Baixar CSV",
+                data,
+                f"{map_type}_{vehicle_id}.csv",
+                "text/csv",
+            )
+        else:  # Texto
+            if dimension == "2D":
+                values = map_data.get("values", [])
+                formatted = "\t".join([f"{float(v):.3f}" for v in values])
+            else:
+                import numpy as _np
+                rpm_axis = map_data.get("rpm_axis", [])
+                map_axis = map_data.get("map_axis", [])
+                values_matrix = _np.array(map_data.get("values_matrix", []), dtype=float)
+                rpm_enabled = map_data.get("rpm_enabled", [True] * len(rpm_axis))
+                map_enabled = map_data.get("map_enabled", [True] * len(map_axis))
+                active_rpm_indices = [i for i, e in enumerate(rpm_enabled) if e]
+                active_map_indices = [i for i, e in enumerate(map_enabled) if e]
+                # Linhas RPM desc, colunas MAP ativos; valores TSV
+                lines = []
+                for rpm_idx in reversed(active_rpm_indices):
+                    row_vals = []
+                    for map_idx in active_map_indices:
+                        if map_idx < values_matrix.shape[0] and rpm_idx < values_matrix.shape[1]:
+                            row_vals.append(f"{values_matrix[map_idx, rpm_idx]:.3f}")
+                        else:
+                            row_vals.append("")
+                    lines.append("\t".join(row_vals))
+                formatted = "\n".join(lines)
 
-                st.download_button(
-                    ":material/download: Baixar JSON",
-                    json.dumps(map_data, indent=2),
-                    f"{map_type}_{vehicle_id}.json",
-                    "application/json",
-                )
+            st.download_button(
+                ":material/download: Baixar Texto",
+                formatted,
+                f"{map_type}_{vehicle_id}.txt",
+                "text/plain",
+            )
 
 
 # Funções auxiliares implementadas usando o sistema de persistência
