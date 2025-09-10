@@ -255,69 +255,26 @@ def render_visualize_tab(
     """Renderiza a aba de visualização com gráficos."""
 
     if dimension == "3D":
-        # Usar view modes existentes para 3D
-        view_mode = st.radio(
-            "Tipo de Visualização",
-            ["3D Surface", "2D Heatmap"],
-            key="viz_3d_mode",
-            horizontal=True,
-        )
-
-        # Carregar dados e renderizar
+        # Carregar dados e renderizar no layout comum (gráfico 3D)
         map_data = persistence_manager.load_3d_map_data(vehicle_id, map_type, bank_id)
         if map_data:
             rpm_axis = map_data.get("rpm_axis", [])
             map_axis = map_data.get("map_axis", [])
             values_matrix = np.array(map_data.get("values_matrix", []))
 
-            # Respeitar eixos desabilitados na visualização
             rpm_enabled = map_data.get("rpm_enabled", [True] * len(rpm_axis))
             map_enabled = map_data.get("map_enabled", [True] * len(map_axis))
-            active_rpm_indices = [i for i, e in enumerate(rpm_enabled) if e]
-            active_map_indices = [i for i, e in enumerate(map_enabled) if e]
 
-            if not active_rpm_indices or not active_map_indices:
-                st.warning("Nenhum ponto habilitado para visualização")
-                return
-
-            rpm_axis_active = [rpm_axis[i] for i in active_rpm_indices]
-            map_axis_active = [map_axis[i] for i in active_map_indices]
-            # Matriz está no formato [map_idx][rpm_idx]
-            values_active = values_matrix[
-                np.ix_(active_map_indices, active_rpm_indices)
-            ]
-
-            # Replicar configuração do original: X = MAP, Y = RPM
-            # E ainda atender ao pedido: X do maior para o menor; Y manter ordem
-            import numpy as _np
-            map_idx_sorted = list(_np.argsort(_np.array(map_axis_active))[::-1])  # X desc
-            rpm_idx_sorted = list(range(len(rpm_axis_active)))  # Y na ordem atual
-
-            x_axis_plot = [map_axis_active[i] for i in map_idx_sorted]
-            y_axis_plot = [rpm_axis_active[i] for i in rpm_idx_sorted]
-
-            # values_active está como [map][rpm]; para z(y=RPM, x=MAP), transpor após reindexar
-            values_sorted = values_active[_np.ix_(map_idx_sorted, rpm_idx_sorted)]
-            z_plot = values_sorted.T
-
-            if view_mode == "3D Surface":
-                render_3d_view(
-                    z_plot,
-                    x_axis_plot,
-                    y_axis_plot,
-                    map_type,
-                    map_config,
-                    show_statistics,
-                )
-            else:
-                render_2d_view(
-                    z_plot,
-                    x_axis_plot,
-                    y_axis_plot,
-                    map_type,
-                    map_config,
-                    show_statistics,
-                )
+            render_3d_chart_view_for_visualize(
+                rpm_axis,
+                map_axis,
+                values_matrix,
+                rpm_enabled,
+                map_enabled,
+                map_type,
+                map_config,
+                show_statistics,
+            )
     else:
         # Visualização 2D
         # Carregar dados do mapa 2D primeiro
@@ -553,6 +510,75 @@ def render_2d_chart_view(
     # Mostrar estatísticas se habilitado
     if show_statistics:
         render_2d_statistics(chart_values, unit)
+
+
+def render_3d_chart_view_for_visualize(
+    rpm_axis: List[float],
+    map_axis: List[float],
+    values_matrix: np.ndarray,
+    rpm_enabled: List[bool],
+    map_enabled: List[bool],
+    map_type: str,
+    map_config: Dict[str, Any],
+    show_statistics: bool,
+):
+    """Renderiza visualização em gráfico 3D (Surface) no layout comum da aba Visualizar.
+    Orientação: X = MAP (desc), Y = RPM (ordem original). Z no shape [len(Y)][len(X)].
+    """
+    import numpy as _np
+    import plotly.graph_objects as go
+
+    st.header(f"Visualização 3D - {map_config.get('display_name', map_type)}")
+
+    # Filtrar por enabled
+    active_rpm_indices = [i for i, e in enumerate(rpm_enabled) if e]
+    active_map_indices = [i for i, e in enumerate(map_enabled) if e]
+    if not active_rpm_indices or not active_map_indices:
+        st.warning("Nenhum ponto habilitado para visualização")
+        return
+
+    rpm_axis_active = [rpm_axis[i] for i in active_rpm_indices]
+    map_axis_active = [map_axis[i] for i in active_map_indices]
+    values_active = values_matrix[_np.ix_(active_map_indices, active_rpm_indices)]  # [map][rpm]
+
+    # Ordenar X (MAP) desc; Y (RPM) mantém ordem
+    map_idx_sorted_desc = list(_np.argsort(_np.array(map_axis_active))[::-1])
+    x_axis_plot = [map_axis_active[i] for i in map_idx_sorted_desc]
+    y_axis_plot = rpm_axis_active
+
+    # z deve ter shape [len(Y)][len(X)] => transpor e reordenar colunas conforme X
+    z_trans = values_active.T  # [rpm][map]
+    import numpy as np
+    z_plot = z_trans[:, map_idx_sorted_desc]
+
+    fig = go.Figure(
+        data=[
+            go.Surface(
+                z=z_plot,
+                x=x_axis_plot,
+                y=y_axis_plot,
+                colorscale="Viridis",
+                showscale=False,
+                hovertemplate=("<b>X:</b> %{x}<br>" "<b>Y:</b> %{y}<br>" "<extra></extra>"),
+            )
+        ]
+    )
+    fig.update_layout(
+        scene=dict(
+            xaxis_title="MAP (bar)",
+            yaxis_title="RPM",
+            zaxis_title="",
+            zaxis=dict(visible=False),
+            camera=dict(eye=dict(x=1.2, y=1.2, z=0.8)),
+        ),
+        height=600,
+        margin=dict(l=0, r=0, t=20, b=0),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Estatísticas (3D) se habilitado – usar matriz filtrada
+    if show_statistics:
+        render_3d_statistics(values_active, map_config)
 
 
 def render_2d_editor_view(
@@ -2127,7 +2153,7 @@ def render_tools(
                 st.error(f"Erro ao gerar gráfico: {e}")
 
 
-def render_statistics(values_matrix: np.ndarray, map_config: Dict[str, Any]):
+def render_3d_statistics(values_matrix: np.ndarray, map_config: Dict[str, Any]):
     """Renderiza estatísticas do mapa."""
     from src.core.fuel_maps.utils import calculate_matrix_statistics
 
@@ -2183,7 +2209,7 @@ def render_values_layout_common(
             # 3D: usar estatísticas do mapa (sem título)
             full = editor_result.get("matrix_full_current")
             if full is not None:
-                render_statistics(np.array(full), map_config)
+                render_3d_statistics(np.array(full), map_config)
 
         # Ações com Material Icons: passar o resultado ao callback quando útil
         col1, col2, col3 = st.columns(3)
