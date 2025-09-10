@@ -127,7 +127,7 @@ if selected_vehicle_id:
                 )
                 
                 estimated_power = st.number_input(
-                    "Potência Base (hp)",
+                    "Potência Base (CV)",
                     min_value=0,
                     max_value=2000,
                     value=int(vehicle.get('estimated_power', 250)),
@@ -323,7 +323,7 @@ if selected_vehicle_id:
                 power_cols = st.columns(3)
                 
                 with power_cols[0]:
-                    st.metric("Potência Aspirada", f"{base_hp:.0f} hp")
+                st.metric("Potência Aspirada", f"{(base_hp*1.01387):.0f} CV")
                 
                 if is_forced_induction and boost_pressure > 0:
                     # Calcular potências
@@ -331,13 +331,13 @@ if selected_vehicle_id:
                     turbo_hp = calculate_turbo_hp(base_hp, boost_pressure)
                     
                     with power_cols[1]:
-                        st.metric("Potência Padrão", f"{standard_hp:.0f} hp", 
-                                 delta=f"+{(standard_hp - base_hp):.0f}",
+                        st.metric("Potência Padrão", f"{(standard_hp*1.01387):.0f} CV", 
+                                 delta=f"+{((standard_hp - base_hp)*1.01387):.0f}",
                                  help=f"Com {standard_boost_pressure:.1f} bar")
                     
                     with power_cols[2]:
-                        st.metric("Potência Máxima", f"{turbo_hp:.0f} hp", 
-                                 delta=f"+{(turbo_hp - base_hp):.0f}",
+                        st.metric("Potência Máxima", f"{(turbo_hp*1.01387):.0f} CV", 
+                                 delta=f"+{((turbo_hp - base_hp)*1.01387):.0f}",
                                  help=f"Com {boost_pressure:.1f} bar")
                     
                     required_hp = turbo_hp
@@ -359,11 +359,11 @@ if selected_vehicle_id:
                     capacity_cols = st.columns(3)
                     
                     with capacity_cols[0]:
-                        st.metric("Máximo Suportado", f"{max_supported_hp:.0f} hp",
+                        st.metric("Máximo Suportado", f"{(max_supported_hp*1.01387):.0f} CV",
                                  help="Baseado na vazão total dos bicos")
                     
                     with capacity_cols[1]:
-                        st.metric("Margem", f"{margin_abs:.0f} hp",
+                        st.metric("Margem", f"{(margin_abs*1.01387):.0f} CV",
                                  help=f"Diferença para potência máxima")
                     
                     with capacity_cols[2]:

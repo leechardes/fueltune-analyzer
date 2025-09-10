@@ -72,7 +72,12 @@ def render_vehicle_selector(
             
             with col2:
                 if selected_vehicle.estimated_power:
-                    st.write(f"**Potência:** {selected_vehicle.estimated_power} HP")
+                    try:
+                        hp = float(selected_vehicle.estimated_power or 0)
+                    except Exception:
+                        hp = 0.0
+                    cv = hp * 1.01387
+                    st.write(f"**Potência:** {cv:.0f} CV")
                 if selected_vehicle.curb_weight:
                     st.write(f"**Peso:** {selected_vehicle.curb_weight} kg")
                 if selected_vehicle.fuel_type:

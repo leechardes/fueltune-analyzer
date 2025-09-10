@@ -210,10 +210,12 @@ class PerformanceAnalysisManager:
             if "power_estimate" in df.columns:
                 max_power = df["power_estimate"].max()
                 avg_power = df["power_estimate"].mean()
+                max_cv = max_power * 1.01387
+                avg_cv = avg_power * 1.01387
                 st.metric(
                     "Potência Máxima",
-                    f"{max_power:.0f} HP",
-                    delta=f"Média: {avg_power:.0f} HP",
+                    f"{max_cv:.0f} CV",
+                    delta=f"Média: {avg_cv:.0f} CV",
                 )
             else:
                 st.metric("Potência", "N/A")
@@ -360,9 +362,9 @@ class PerformanceAnalysisManager:
                 go.Scatter(
                     x=grouped["rpm_bin"],
                     y=grouped["power_estimate"],
-                    name="Potência (HP)",
+                    name="Potência (CV)",
                     line=dict(color="red", width=3),
-                    hovertemplate="RPM: %{x:.0f}<br>Potência: %{y:.1f} HP<extra></extra>",
+                    hovertemplate="RPM: %{x:.0f}<br>Potência: %{y:.1f} CV<extra></extra>",
                 ),
                 secondary_y=False,
             )
@@ -382,7 +384,7 @@ class PerformanceAnalysisManager:
 
         # Configurar layout
         fig.update_xaxes(title_text="RPM")
-        fig.update_yaxes(title_text="Potência (HP)", secondary_y=False, color="red")
+        fig.update_yaxes(title_text="Potência (CV)", secondary_y=False, color="red")
         fig.update_yaxes(title_text="Torque (Nm)", secondary_y=True, color="blue")
 
         fig.update_layout(

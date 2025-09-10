@@ -180,7 +180,7 @@ class ReportsManager:
         elif template_id == "performance":
             st.markdown("#### Configurações de Performance")
             config["include_curves"] = st.checkbox("Incluir Curvas de Potência/Torque", value=True)
-            config["target_power"] = st.number_input("Potência Alvo (HP):", min_value=0, value=300)
+            config["target_power"] = st.number_input("Potência Alvo (CV):", min_value=0, value=300)
 
         return config
 

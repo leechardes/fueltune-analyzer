@@ -318,7 +318,7 @@ def create_fuel_metrics(flow: float, pressure: float, injection_time: float) -> 
 def create_performance_metrics(power: int, torque: int, efficiency: float) -> list[MetricData]:
     """Criar métricas de performance."""
     return [
-        MetricData(value=power, label="Potência", unit="HP", format=".0f"),
+        MetricData(value=power * 1.01387, label="Potência", unit="CV", format=".0f"),
         MetricData(value=torque, label="Torque", unit="Nm", format=".0f"),
         MetricData(value=efficiency, label="Eficiência", unit="%", format=".1f"),
     ]

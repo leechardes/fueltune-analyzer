@@ -71,7 +71,9 @@ with tab_list:
                     
                     with col2:
                         st.metric("Motor", f"{vehicle.get('engine_displacement', 0)}L")
-                        st.metric("Potência", f"{vehicle.get('estimated_power', 0)} hp")
+                        hp = float(vehicle.get('estimated_power', 0) or 0)
+                        cv = hp * 1.01387
+                        st.metric("Potência", f"{cv:.0f} CV")
                         st.metric("Torque", f"{vehicle.get('estimated_torque', 0)} Nm")
                     
                     with col3:
@@ -138,7 +140,7 @@ with tab_new:
             engine_aspiration = st.selectbox("Aspiração", ["Aspirado", "Turbo", "Supercharger", "Turbo + Supercharger"])
         
         with col3:
-            estimated_power = st.number_input("Potência (hp)", min_value=0, max_value=2000, value=200)
+            estimated_power = st.number_input("Potência (CV)", min_value=0, max_value=2600, value=200)
             estimated_torque = st.number_input("Torque (Nm)", min_value=0, max_value=2000, value=300)
         
         with col4:
