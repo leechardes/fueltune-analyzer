@@ -485,6 +485,18 @@ def render_2d_chart_view(
     fig = go.Figure()
 
     # Adicionar linha principal
+    # Marcadores com gradiente RdYlBu (menor=vermelho, maior=azul), linha permanece vermelha
+    cmin = min(chart_values)
+    cmax = max(chart_values)
+    if cmin == cmax:
+        cmin -= 1e-9
+        cmax += 1e-9
+    # Cor de contorno do marcador conforme tema (preto no claro, branco no escuro)
+    try:
+        theme_base = st.get_option("theme.base")
+    except Exception:
+        theme_base = None
+    outline_color = "#FFFFFF" if str(theme_base).lower() == "dark" else "#000000"
     fig.add_trace(
         go.Scatter(
             x=chart_axis,
@@ -492,9 +504,38 @@ def render_2d_chart_view(
             mode="lines+markers",
             name=f"Valores {unit}",
             line=dict(color="red", width=2),
-            marker=dict(size=6, color="red"),
+            marker=dict(
+                size=9,
+                color=chart_values,
+                colorscale="RdYlBu",
+                showscale=False,
+                cmin=cmin,
+                cmax=cmax,
+                line=dict(width=1.5, color=outline_color),
+            ),
         )
     )
+
+    # Linha de corte em MAP=0 (faixa de turbo) quando aplicável
+    try:
+        if axis_type.upper() == "MAP" and any(x > 0 for x in chart_axis):
+            cut_color = "#FFFFFF66" if str(theme_base).lower() == "dark" else "#00000066"
+            shapes = list(fig.layout.shapes) if fig.layout.shapes else []
+            shapes.append(
+                dict(
+                    type="line",
+                    xref="x",
+                    yref="paper",
+                    x0=0,
+                    x1=0,
+                    y0=0,
+                    y1=1,
+                    line=dict(color=cut_color, width=2, dash="dash"),
+                )
+            )
+            fig.update_layout(shapes=shapes)
+    except Exception:
+        pass
 
     # Configurar layout
     fig.update_layout(
