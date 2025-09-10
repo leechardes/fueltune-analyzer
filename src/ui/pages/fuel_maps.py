@@ -1797,101 +1797,24 @@ def render_tools(
             help="Ajuste fino dos valores calculados",
         )
 
-        # Configurações específicas
+        # Controles específicos por mapa (helper comum)
         st.write("**Configurações Específicas**")
-        # Mostrar controles específicos apenas para mapas de injeção (PW 3D)
-        show_injection_controls = dimension == "3D" and map_type == "main_fuel_3d_map"
-        col_check1, col_check2 = st.columns(2)
-
-        with col_check1:
-            boost_enabled = False
-            if show_injection_controls:
-                boost_enabled = st.checkbox(
-                    "Aplicar pressão de admissão (MAP) no PW",
-                    value=True,
-                    key=f"boost_enabled_{dimension}_{map_type}_{bank_id}",
-                    help="Considera a pressão absoluta do ar (P_abs) no cálculo. Com boost, a massa de ar por admissão aumenta e o PW tende a subir. Desative para simular PW em regime atmosférico (P_abs=1,0 bar).",
-                )
-
-        with col_check2:
-            fuel_correction_enabled = False
-            if show_injection_controls:
-                fuel_correction_enabled = st.checkbox(
-                    "Correção de Combustível",
-                    value=True,
-                    key=f"fuel_corr_{dimension}_{map_type}_{bank_id}",
-                    help="ON: usa AFR estequiométrico do combustível (ex.: Etanol 9.0). OFF: usa 14.7 (gasolina) para isolar variações.",
-                )
-
-        # Regulador 1:1 (combustível referenciado ao MAP) – controla ΔP (apenas para injeção 3D)
-        regulator_11 = True
-        if show_injection_controls:
-            regulator_11 = st.checkbox(
-                "Considerar pressão de turbo (1:1) no combustível",
-                value=True,
-                key=f"reg11_{dimension}_{map_type}_{bank_id}",
-                help="ON: ΔP constante (P_base). OFF: ΔP = P_base − MAP_rel (fluxo cai em boost e o PW tende a subir).",
-            )
-
-        # Malha fechada (λ): usar Fator de Segurança como fator λ-alvo (sem controles redundantes)
-        cl_factor_value = (
-            safety_factor
-            if (dimension == "3D" and map_type == "lambda_target_3d_map")
-            else 1.0
+        _spec = render_specific_controls_for_map(
+            map_type=map_type,
+            dimension=dimension,
+            selected_strategy=selected_strategy,
+            safety_factor=safety_factor,
+            bank_id=bank_id,
         )
+        boost_enabled = _spec["boost_enabled"]
+        fuel_correction_enabled = _spec["fuel_correction_enabled"]
+        regulator_11 = _spec["regulator_11"]
+        cl_factor_value = _spec["cl_factor_value"]
 
     # SEÇÃO 2: Dados do Veículo (coluna direita)
     with calc_col2:
         st.subheader("Dados do Veículo")
-
-        # Primeira linha: Cilindrada, Cilindros, Vazão
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric(
-                "Cilindrada", f"{vehicle_data_session.get('displacement', 2.0):.1f}L"
-            )
-        with col2:
-            st.metric("Cilindros", vehicle_data_session.get("cylinders", 4))
-        with col3:
-            # Mostrar na mesma unidade das bancadas (lb/h)
-            flow_lbs = vehicle_data_session.get("injector_flow_lbs")
-            if flow_lbs is None:
-                flow_lbs = 0.0
-            st.metric("Vazão Total (lb/h)", f"{flow_lbs:.1f} lb/h")
-
-        # Segunda linha: Combustível, Boost
-        col4, col5 = st.columns(2)
-        with col4:
-            # Padronizar exibição do combustível em pt-BR
-            ft_raw = str(vehicle_data_session.get("fuel_type", "Flex"))
-            ft = ft_raw.lower()
-            if "ethanol" in ft or "etanol" in ft:
-                ft_disp = "Etanol"
-            elif "e85" in ft:
-                ft_disp = "E85"
-            elif "gas" in ft or "gasoline" in ft or "gasolina" in ft:
-                ft_disp = "Gasolina"
-            elif "diesel" in ft:
-                ft_disp = "Diesel"
-            elif "methanol" in ft or "metanol" in ft:
-                ft_disp = "Metanol"
-            elif "nitromethane" in ft or "nitro" in ft or "nitrometano" in ft:
-                ft_disp = "Nitrometano"
-            elif "gnv" in ft or "cng" in ft:
-                ft_disp = "GNV"
-            elif "flex" in ft:
-                ft_disp = "Flex"
-            else:
-                ft_disp = ft_raw
-            st.metric("Combustível", ft_disp)
-        with col5:
-            if vehicle_data_session.get("turbo", False):
-                st.metric(
-                    "Boost",
-                    f"{vehicle_data_session.get('boost_pressure', 1.0):.1f} bar",
-                )
-            else:
-                st.metric("Aspiração", "Natural")
+        render_vehicle_info_metrics(vehicle_data_session)
 
     st.markdown("---")
 
@@ -1910,178 +1833,51 @@ def render_tools(
         calc_vehicle = dict(vehicle_data_session)
         calc_vehicle["regulator_1_1"] = regulator_11
         if dimension == "2D":
-            # Carregar dados 2D atuais
-            map_data = load_2d_map_data_local(vehicle_id, map_type, bank_id)
-            if map_data:
-                axis_values = map_data.get("axis_values", [])
-                enabled = map_data.get("enabled", [True] * len(axis_values))
-
-                # Usar função universal de cálculo 2D
-                from src.core.fuel_maps.calculations import (
-                    calculate_map_values_universal,
-                )
-
-                preview_values = calculate_map_values_universal(
-                    map_type,
-                    axis_values,
-                    calc_vehicle,
-                    selected_strategy,
-                    safety_factor,
-                    apply_fuel_corr=fuel_correction_enabled,
-                )
-
-                # Criar DataFrame linha única para 2D - apenas valores habilitados
-                column_headers = {}
-                filtered_preview_values = []
-                for i, (axis_val, enabled_flag) in enumerate(zip(axis_values, enabled)):
-                    if enabled_flag:  # Incluir apenas valores habilitados
-                        header = f"{axis_val:.1f}"
-                        column_headers[header] = preview_values[i]
-                        filtered_preview_values.append(preview_values[i])
-
-                preview_df = pd.DataFrame([column_headers])
-                preview_values = (
-                    filtered_preview_values  # Usar valores filtrados para estatísticas
-                )
-                unit = map_config.get("unit", "ms")
-
-        else:  # 3D
-            # Carregar dados 3D atuais
-            map_data = persistence_manager.load_3d_map_data(
-                vehicle_id, map_type, bank_id
+            prev = compute_preview_2d(
+                map_type,
+                map_config,
+                vehicle_id,
+                bank_id,
+                calc_vehicle,
+                selected_strategy,
+                safety_factor,
+                fuel_correction_enabled,
             )
-            if map_data:
-                rpm_axis = map_data.get("rpm_axis", [])
-                map_axis = map_data.get("map_axis", [])
-
-                # DEBUG: Identificação do mapa selecionado
-                if show_debug:
-                    st.write(
-                        f"Mapa selecionado: {map_type} - {map_config.get('display_name', map_type)} "
-                        f"(unit: {map_config.get('unit', '')}, dim: {dimension})"
-                    )
-
-                # DEBUG: Verificar se enabled está sendo carregado
-                rpm_enabled_saved = map_data.get("rpm_enabled", None)
-                map_enabled_saved = map_data.get("map_enabled", None)
-
-                if show_debug:
-                    st.write("DEBUG - Dados carregados do arquivo:")
-                    st.write(
-                        f"- rpm_enabled salvo: {rpm_enabled_saved is not None} ({len(rpm_enabled_saved) if rpm_enabled_saved else 0} valores)"
-                    )
-                    st.write(
-                        f"- map_enabled salvo: {map_enabled_saved is not None} ({len(map_enabled_saved) if map_enabled_saved else 0} valores)"
-                    )
-
-                # Se não tiver dados salvos, usar todos habilitados
-                rpm_enabled = (
-                    rpm_enabled_saved
-                    if rpm_enabled_saved is not None
-                    else [True] * len(rpm_axis)
-                )
-                map_enabled = (
-                    map_enabled_saved
-                    if map_enabled_saved is not None
-                    else [True] * len(map_axis)
-                )
-
-                if show_debug:
-                    st.write(
-                        f"- rpm_enabled usado: {sum(rpm_enabled)} de {len(rpm_enabled)} habilitados"
-                    )
-                    st.write(
-                        f"- map_enabled usado: {sum(map_enabled)} de {len(map_enabled)} habilitados"
-                    )
-                    st.divider()
-
-                # Calcular matriz 3D
-                if map_type == "ve_3d_map":
-                    # VE 3D: usar gerador dedicado (como mapa.html)
-                    from src.core.fuel_maps.calculations import generate_ve_3d_matrix
-
-                    calculated_matrix = generate_ve_3d_matrix(rpm_axis, map_axis)
-                    unit = "VE"
-                else:
-                    # Demais mapas 3D: usar função universal
-                    from src.core.fuel_maps.calculations import (
-                        calculate_3d_map_values_universal,
-                    )
-
-                    kwargs = dict(
-                        strategy=selected_strategy,
-                        safety_factor=safety_factor,
-                        consider_boost=boost_enabled,
-                        apply_fuel_corr=fuel_correction_enabled,
-                        cl_factor=cl_factor_value,
-                    )
-                    # Preparar VE e λ para cálculo perfeito do mapa principal 3D
-                    if map_type == "main_fuel_3d_map":
-                        # VE 3D (fração)
-                        ve_data = persistence_manager.load_3d_map_data(
-                            vehicle_id, "ve_3d_map", bank_id
-                        )
-                        ve_matrix = None
-                        if (
-                            ve_data
-                            and ve_data.get("rpm_axis") == rpm_axis
-                            and ve_data.get("map_axis") == map_axis
-                        ):
-                            ve_matrix = np.array(
-                                ve_data.get("values_matrix", []), dtype=float
-                            )
-                        else:
-                            # Gerar VE a partir das curvas padrão como fallback
-                            from src.core.fuel_maps.calculations import (
-                                generate_ve_3d_matrix,
-                            )
-
-                            ve_matrix = generate_ve_3d_matrix(rpm_axis, map_axis)
-                        kwargs["ve_matrix"] = ve_matrix
-
-                        # Lambda alvo (malha fechada) por célula
-                        from src.core.fuel_maps.calculations import (
-                            calculate_lambda_target_closed_loop,
-                        )
-
-                        lambda_matrix = calculate_lambda_target_closed_loop(
-                            rpm_axis,
-                            map_axis,
-                            strategy=selected_strategy,
-                            cl_factor=cl_factor_value,
-                            fuel_type=str(calc_vehicle.get("fuel_type", "ethanol")),
-                        )
-                        # O usuário pode optar por não aplicar malha fechada
-                        use_lambda = st.checkbox(
-                            "Usar λ alvo (malha) no cálculo",
-                            value=True,
-                            help="Aplica a malha λ alvo por célula ao cálculo do PW",
-                            key=f"use_lambda_{map_type}_{bank_id}",
-                        )
-                        if use_lambda:
-                            kwargs["lambda_matrix"] = lambda_matrix
-                        # AFR estequiométrico explícito do combustível
-                        fuel = str(
-                            vehicle_data_session.get("fuel_type", "gasoline")
-                        ).lower()
-                        afr_stq = 14.7
-                        if "ethanol" in fuel or "etanol" in fuel:
-                            afr_stq = 9.0
-                        elif "e85" in fuel:
-                            afr_stq = 9.8
-                        elif "diesel" in fuel:
-                            afr_stq = 14.5
-                        elif "gnv" in fuel or "cng" in fuel:
-                            afr_stq = 17.2
-                        elif "methanol" in fuel or "metanol" in fuel:
-                            afr_stq = 6.4
-                        kwargs["afr_stoich"] = afr_stq
-
-                    calculated_matrix = calculate_3d_map_values_universal(
-                        map_type, rpm_axis, map_axis, calc_vehicle, **kwargs
-                    )
-
-                    # Removido: escala VE/VE@rpm_ref (já usamos VE por célula)
+            if prev:
+                axis_values = prev["axis_values"]
+                enabled = prev["enabled"]
+                preview_values = prev["preview_values"]
+                unit = prev["unit"]
+                st.write(f"**Preview dos valores calculados** ({unit})")
+                render_preview_table_common(prev, "2D")
+        else:
+            prev3 = compute_preview_3d(
+                map_type,
+                map_config,
+                vehicle_id,
+                bank_id,
+                calc_vehicle,
+                selected_strategy,
+                safety_factor,
+                boost_enabled,
+                fuel_correction_enabled,
+                regulator_11,
+                cl_factor_value,
+            )
+            if prev3:
+                rpm_axis = prev3["rpm_axis"]
+                map_axis = prev3["map_axis"]
+                rpm_enabled = prev3["rpm_enabled"]
+                map_enabled = prev3["map_enabled"]
+                calculated_matrix = prev3["matrix"]
+                unit = prev3["unit"]
+                st.write(f"**Preview dos valores calculados** ({unit})")
+                render_preview_table_common(prev3, "3D")
+                # Preparar listas ativas para uso no preview gráfico
+                active_rpm_indices = [i for i, e in enumerate(rpm_enabled) if e]
+                active_map_indices = [i for i, e in enumerate(map_enabled) if e]
+                active_rpm_values = [rpm_axis[i] for i in active_rpm_indices]
+                active_map_values = [map_axis[i] for i in active_map_indices]
 
                 if show_debug:
                     st.write(f"- calculated_matrix shape: {calculated_matrix.shape}")
@@ -2117,77 +1913,7 @@ def render_tools(
                         f"- active_map_indices: {active_map_indices[:5]}... ({len(active_map_indices)} total)"
                     )
 
-                preview_matrix = []
-                for i, rpm_idx in enumerate(
-                    reversed(active_rpm_indices)
-                ):  # RPM reverso para display
-                    row = []
-                    for j, map_idx in enumerate(active_map_indices):
-                        value = calculated_matrix[map_idx][rpm_idx]
-                        row.append(value)
-                        # DEBUG: Primeiras células
-                        if show_debug and i == 0 and j < 3:
-                            st.write(
-                                f"  - preview_matrix[{i}][{j}] = calculated_matrix[{map_idx}][{rpm_idx}] = {value:.3f}"
-                            )
-                    preview_matrix.append(row)
-
-                if show_debug:
-                    st.write(
-                        f"- preview_matrix shape: {len(preview_matrix)}x{len(preview_matrix[0]) if preview_matrix else 0}"
-                    )
-                    st.divider()
-
-                # Criar DataFrame matriz para 3D
-                preview_df = pd.DataFrame(
-                    preview_matrix,
-                    columns=[f"{m:.2f}" for m in active_map_values],
-                    index=[f"{int(rpm_axis[i])}" for i in reversed(active_rpm_indices)],
-                )
-                unit = map_config.get("unit", "ms")
-                preview_values = [
-                    val for row in preview_matrix for val in row
-                ]  # Flatten para stats
-
-                if "preview_df" in locals():
-                    # Aplicar gradiente RdYlBu
-                    styled_df = preview_df.style.background_gradient(
-                        cmap="RdYlBu", axis=1 if dimension == "2D" else None
-                    ).format("{:.3f}")
-
-                    st.write(f"**Preview dos valores calculados** ({unit})")
-                    st.caption(
-                        f"Valores com 3 casas decimais - Total: {len(preview_values)} valores"
-                    )
-
-                    if show_debug:
-                        st.write("DEBUG - DataFrame final:")
-                        st.write(f"- preview_df shape: {preview_df.shape}")
-                        st.write(
-                            f"- Primeira linha: {preview_df.iloc[0].values[:5].tolist()}..."
-                        )
-                        st.write(
-                            f"- preview_values (flatten): min={min(preview_values):.3f}, max={max(preview_values):.3f}"
-                        )
-                        all_same = len(set(preview_values)) == 1
-                        if all_same:
-                            st.error(
-                                f"AVISO: Todos os valores são iguais: {preview_values[0]:.3f}"
-                            )
-                        st.divider()
-
-                    st.dataframe(styled_df, use_container_width=True)
-
-                    # Estatísticas
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Mínimo", f"{min(preview_values):.3f} {unit}")
-                    with col2:
-                        st.metric("Médio", f"{np.mean(preview_values):.3f} {unit}")
-                    with col3:
-                        st.metric("Máximo", f"{max(preview_values):.3f} {unit}")
-                else:
-                    st.warning("Não foi possível carregar dados para preview")
+                # A visualização do preview e métricas já foram renderizadas pelo helper
 
     except Exception as e:
         st.error(f"Erro ao calcular preview: {e}")
@@ -2268,17 +1994,14 @@ def render_tools(
                     )
                     st.plotly_chart(fig, use_container_width=True)
                 else:
-                    # Gráfico 3D Surface
-                    fig = go.Figure(
-                        data=[
-                            go.Surface(
-                                z=preview_matrix,
-                                x=active_map_values,
-                                y=active_rpm_values,
-                                colorscale="RdYlBu",
-                            )
-                        ]
-                    )
+                    # Gráfico 3D Surface (calcular z a partir da matriz calculada e eixos ativos)
+                    z = []
+                    for rpm_idx in active_rpm_indices:
+                        row = []
+                        for map_idx in active_map_indices:
+                            row.append(calculated_matrix[map_idx][rpm_idx])
+                        z.append(row)
+                    fig = go.Figure(data=[go.Surface(z=z, x=active_map_values, y=active_rpm_values, colorscale="RdYlBu")])
                     fig.update_layout(
                         title=f"Preview 3D - {map_type}",
                         scene=dict(
@@ -2451,6 +2174,183 @@ def render_vehicle_info_metrics(vehicle_data_session: Dict[str, Any]):
             st.metric("Boost", f"{vehicle_data_session.get('boost_pressure', 1.0):.1f} bar")
         else:
             st.metric("Aspiração", "Natural")
+
+
+# ===== Ferramentas: helpers comuns =====
+def render_specific_controls_for_map(
+    map_type: str,
+    dimension: str,
+    selected_strategy: str,
+    safety_factor: float,
+    bank_id: str,
+):
+    """Renderiza controles específicos do mapa e retorna flags/valores.
+
+    Retorna dict com:
+      - boost_enabled, fuel_correction_enabled, regulator_11, cl_factor_value
+    """
+    show_injection_controls = dimension == "3D" and map_type == "main_fuel_3d_map"
+    col_check1, col_check2 = st.columns(2)
+    with col_check1:
+        boost_enabled = st.checkbox(
+            "Aplicar pressão de admissão (MAP) no PW",
+            value=True,
+            key=f"boost_enabled_{dimension}_{map_type}_{bank_id}",
+            help="Considera a pressão absoluta do ar (P_abs) no cálculo. Com boost, a massa de ar por admissão aumenta e o PW tende a subir. Desative para simular PW em regime atmosférico (P_abs=1,0 bar).",
+        ) if show_injection_controls else False
+    with col_check2:
+        fuel_correction_enabled = st.checkbox(
+            "Correção de Combustível",
+            value=True,
+            key=f"fuel_corr_{dimension}_{map_type}_{bank_id}",
+            help="ON: usa AFR estequiométrico do combustível (ex.: Etanol 9.0). OFF: usa 14.7 (gasolina) para isolar variações.",
+        ) if show_injection_controls else False
+
+    regulator_11 = True
+    if show_injection_controls:
+        regulator_11 = st.checkbox(
+            "Considerar pressão de turbo (1:1) no combustível",
+            value=True,
+            key=f"reg11_{dimension}_{map_type}_{bank_id}",
+            help="ON: ΔP constante (P_base). OFF: ΔP = P_base − MAP_rel (fluxo cai em boost e o PW tende a subir).",
+        )
+
+    cl_factor_value = safety_factor if (dimension == "3D" and map_type == "lambda_target_3d_map") else 1.0
+    return {
+        "boost_enabled": boost_enabled,
+        "fuel_correction_enabled": fuel_correction_enabled,
+        "regulator_11": regulator_11,
+        "cl_factor_value": cl_factor_value,
+    }
+
+
+def compute_preview_2d(
+    map_type: str,
+    map_config: Dict[str, Any],
+    vehicle_id: str,
+    bank_id: str,
+    vehicle_data_session: Dict[str, Any],
+    selected_strategy: str,
+    safety_factor: float,
+    fuel_correction_enabled: bool,
+):
+    import pandas as pd
+    from src.core.fuel_maps.calculations import calculate_map_values_universal
+    map_data = load_2d_map_data_local(vehicle_id, map_type, bank_id)
+    if not map_data:
+        return None
+    axis_values = map_data.get("axis_values", [])
+    enabled = map_data.get("enabled", [True] * len(axis_values))
+    preview_values_all = calculate_map_values_universal(
+        map_type,
+        axis_values,
+        vehicle_data_session,
+        selected_strategy,
+        safety_factor,
+        apply_fuel_corr=fuel_correction_enabled,
+    )
+    column_headers = {}
+    filtered_preview_values = []
+    for i, (axis_val, enabled_flag) in enumerate(zip(axis_values, enabled)):
+        if enabled_flag:
+            header = f"{axis_val:.1f}"
+            column_headers[header] = preview_values_all[i]
+            filtered_preview_values.append(preview_values_all[i])
+    preview_df = pd.DataFrame([column_headers])
+    unit = map_config.get("unit", "ms")
+    return {
+        "axis_values": axis_values,
+        "enabled": enabled,
+        "preview_df": preview_df,
+        "preview_values": filtered_preview_values,
+        "unit": unit,
+    }
+
+
+def compute_preview_3d(
+    map_type: str,
+    map_config: Dict[str, Any],
+    vehicle_id: str,
+    bank_id: str,
+    vehicle_data_session: Dict[str, Any],
+    selected_strategy: str,
+    safety_factor: float,
+    boost_enabled: bool,
+    fuel_correction_enabled: bool,
+    regulator_11: bool,
+    cl_factor_value: float,
+):
+    import numpy as np
+    map_data = persistence_manager.load_3d_map_data(vehicle_id, map_type, bank_id)
+    if not map_data:
+        return None
+    rpm_axis = map_data.get("rpm_axis", [])
+    map_axis = map_data.get("map_axis", [])
+    rpm_enabled = map_data.get("rpm_enabled", [True] * len(rpm_axis))
+    map_enabled = map_data.get("map_enabled", [True] * len(map_axis))
+
+    if map_type == "ve_3d_map":
+        from src.core.fuel_maps.calculations import generate_ve_3d_matrix
+        calculated_matrix = generate_ve_3d_matrix(rpm_axis, map_axis)
+        unit = "VE"
+    else:
+        from src.core.fuel_maps.calculations import calculate_3d_map_values_universal
+        kwargs = dict(
+            strategy=selected_strategy,
+            safety_factor=safety_factor,
+            consider_boost=boost_enabled,
+            apply_fuel_corr=fuel_correction_enabled,
+            cl_factor=cl_factor_value,
+        )
+        # Preparar VE e AFR se necessário é feito internamente pela função universal
+        calculated_matrix = calculate_3d_map_values_universal(
+            map_type, rpm_axis, map_axis, dict(vehicle_data_session), **kwargs
+        )
+        unit = map_config.get("unit", "ms")
+
+    return {
+        "rpm_axis": rpm_axis,
+        "map_axis": map_axis,
+        "rpm_enabled": rpm_enabled,
+        "map_enabled": map_enabled,
+        "matrix": calculated_matrix,
+        "unit": unit,
+    }
+
+
+def render_preview_table_common(preview_obj: Dict[str, Any], dimension: str):
+    import pandas as pd
+    import numpy as np
+    if dimension == "2D":
+        df = preview_obj.get("preview_df")
+        if df is not None:
+            styled = df.style.background_gradient(cmap="RdYlBu", axis=1).format("{:.3f}")
+            st.dataframe(styled, use_container_width=True, height=90)
+    else:
+        # 3D: construir DataFrame linhas=RPM desc; colunas=MAP ativos
+        rpm_axis = preview_obj.get("rpm_axis", [])
+        map_axis = preview_obj.get("map_axis", [])
+        rpm_enabled = preview_obj.get("rpm_enabled", [True] * len(rpm_axis))
+        map_enabled = preview_obj.get("map_enabled", [True] * len(map_axis))
+        matrix = np.array(preview_obj.get("matrix"))
+        active_rpm_indices = [i for i, e in enumerate(rpm_enabled) if e]
+        active_map_indices = [i for i, e in enumerate(map_enabled) if e]
+        rows = []
+        for rpm_idx in reversed(active_rpm_indices):
+            row = []
+            for map_idx in active_map_indices:
+                if map_idx < matrix.shape[0] and rpm_idx < matrix.shape[1]:
+                    row.append(matrix[map_idx, rpm_idx])
+                else:
+                    row.append(np.nan)
+            rows.append(row)
+        df = pd.DataFrame(
+            rows,
+            columns=[f"{map_axis[i]:.2f}" for i in active_map_indices],
+            index=[f"{int(rpm_axis[i])}" for i in reversed(active_rpm_indices)],
+        )
+        styled = df.style.background_gradient(cmap="RdYlBu", axis=None).format("{:+.3f}")
+        st.dataframe(styled, use_container_width=True)
 
 
 def save_map_data(
