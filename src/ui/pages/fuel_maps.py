@@ -912,7 +912,7 @@ def render_3d_values_editor(
                 auto_save,
             )
 
-        def _on_save_3d(res: Dict[str, Any] | None = None):
+        def _on_save_3d(res: Optional[Dict[str, Any]] = None):
             src = res or {}
             matrix_full = np.array(src.get("matrix_full_current", values_matrix))
             ok = save_map_data(
@@ -941,7 +941,7 @@ def render_3d_values_editor(
             else:
                 st.error("Falha ao restaurar mapa 3D")
 
-        def _on_validate_3d(res: Dict[str, Any] | None = None):
+        def _on_validate_3d(res: Optional[Dict[str, Any]] = None):
             src = res or {}
             matrix_full = np.array(src.get("matrix_full_current", values_matrix))
             valid, messages = validate_3d_map_values(matrix_full, map_type)
