@@ -2410,6 +2410,49 @@ def render_action_buttons(on_save, on_reset, on_validate, key: str = "actions"):
             on_validate()
 
 
+def render_vehicle_info_metrics(vehicle_data_session: Dict[str, Any]):
+    """Exibe métricas comuns do veículo (usado em 2D e 3D)."""
+    # Primeira linha: Cilindrada, Cilindros, Vazão (lb/h)
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Cilindrada", f"{vehicle_data_session.get('displacement', 2.0):.1f}L")
+    with col2:
+        st.metric("Cilindros", vehicle_data_session.get('cylinders', 4))
+    with col3:
+        flow_lbs = vehicle_data_session.get('injector_flow_lbs') or 0.0
+        st.metric("Vazão Total (lb/h)", f"{flow_lbs:.1f} lb/h")
+
+    # Segunda linha: Combustível, Boost/Aspiração
+    col4, col5 = st.columns(2)
+    with col4:
+        ft_raw = str(vehicle_data_session.get('fuel_type', 'Flex'))
+        ft = ft_raw.lower()
+        if 'ethanol' in ft or 'etanol' in ft:
+            ft_disp = 'Etanol'
+        elif 'e85' in ft:
+            ft_disp = 'E85'
+        elif 'gas' in ft or 'gasoline' in ft or 'gasolina' in ft:
+            ft_disp = 'Gasolina'
+        elif 'diesel' in ft:
+            ft_disp = 'Diesel'
+        elif 'methanol' in ft or 'metanol' in ft:
+            ft_disp = 'Metanol'
+        elif 'nitromethane' in ft or 'nitro' in ft or 'nitrometano' in ft:
+            ft_disp = 'Nitrometano'
+        elif 'gnv' in ft or 'cng' in ft:
+            ft_disp = 'GNV'
+        elif 'flex' in ft:
+            ft_disp = 'Flex'
+        else:
+            ft_disp = ft_raw
+        st.metric("Combustível", ft_disp)
+    with col5:
+        if vehicle_data_session.get('turbo', False):
+            st.metric("Boost", f"{vehicle_data_session.get('boost_pressure', 1.0):.1f} bar")
+        else:
+            st.metric("Aspiração", "Natural")
+
+
 def save_map_data(
     vehicle_id: str,
     map_type: str,
