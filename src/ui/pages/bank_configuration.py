@@ -149,11 +149,31 @@ if selected_vehicle_id:
                 )
             
             with col4:
-                fuel_options = ['Gasolina', 'Etanol', 'Flex', 'Metanol', 'GNV', 'E85']
-                current_fuel = vehicle.get('fuel_type', 'Gasolina')
-                if current_fuel not in fuel_options:
-                    fuel_options.append(current_fuel)
-                    
+                fuel_options = ['Gasolina', 'Etanol', 'Flex', 'Metanol', 'GNV', 'E85', 'Diesel', 'Nitrometano']
+                current_fuel_raw = str(vehicle.get('fuel_type', 'Gasolina'))
+                cf = current_fuel_raw.lower()
+                # Normalizar exibição em pt-BR (não mostrar "Ethanol")
+                if 'ethanol' in cf or 'etanol' in cf:
+                    current_fuel = 'Etanol'
+                elif 'gasoline' in cf or 'gasolina' in cf or 'gas' == cf:
+                    current_fuel = 'Gasolina'
+                elif 'e85' in cf:
+                    current_fuel = 'E85'
+                elif 'gnv' in cf or 'cng' in cf:
+                    current_fuel = 'GNV'
+                elif 'methanol' in cf or 'metanol' in cf:
+                    current_fuel = 'Metanol'
+                elif 'nitromethane' in cf or 'nitrometano' in cf or 'nitro' in cf:
+                    current_fuel = 'Nitrometano'
+                elif 'diesel' in cf:
+                    current_fuel = 'Diesel'
+                elif 'flex' in cf:
+                    current_fuel = 'Flex'
+                else:
+                    current_fuel = current_fuel_raw
+                    if current_fuel not in fuel_options:
+                        fuel_options.append(current_fuel)
+
                 fuel_type = st.selectbox(
                     "Combustível",
                     options=fuel_options,
@@ -199,21 +219,31 @@ if selected_vehicle_id:
             # Botão para salvar informações do veículo
             submitted_vehicle = st.form_submit_button("Salvar Informações do Veículo", type="primary", use_container_width=True)
             
-            if submitted_vehicle:
-                vehicle_update = {
-                    'brand': brand,
-                    'model': model,
-                    'year': year,
-                    'engine_displacement': engine_displacement,
-                    'engine_configuration': engine_configuration,
-                    'engine_cylinders': engine_cylinders,
-                    'engine_aspiration': engine_aspiration,
-                    'estimated_power': estimated_power,
-                    'fuel_type': fuel_type,
-                    'fuel_system': fuel_system,
-                    'compression_ratio': compression_ratio,
-                    'camshaft_profile': camshaft_profile
-                }
+                if submitted_vehicle:
+                    # Persistir combustível em formato canônico ('Ethanol' para 'Etanol', etc.)
+                    if fuel_type == 'Etanol':
+                        fuel_type_save = 'Ethanol'
+                    elif fuel_type == 'Gasolina':
+                        fuel_type_save = 'Gasoline'
+                    elif fuel_type == 'GNV':
+                        fuel_type_save = 'CNG'
+                    else:
+                        fuel_type_save = fuel_type
+
+                    vehicle_update = {
+                        'brand': brand,
+                        'model': model,
+                        'year': year,
+                        'engine_displacement': engine_displacement,
+                        'engine_configuration': engine_configuration,
+                        'engine_cylinders': engine_cylinders,
+                        'engine_aspiration': engine_aspiration,
+                        'estimated_power': estimated_power,
+                        'fuel_type': fuel_type_save,
+                        'fuel_system': fuel_system,
+                        'compression_ratio': compression_ratio,
+                        'camshaft_profile': camshaft_profile
+                    }
                 
                 if update_vehicle(selected_vehicle_id, vehicle_update):
                     st.success("Informações do veículo atualizadas com sucesso!")
@@ -323,7 +353,7 @@ if selected_vehicle_id:
                 power_cols = st.columns(3)
                 
                 with power_cols[0]:
-                st.metric("Potência Aspirada", f"{(base_hp*1.01387):.0f} CV")
+                    st.metric("Potência Aspirada", f"{(base_hp*1.01387):.0f} CV")
                 
                 if is_forced_induction and boost_pressure > 0:
                     # Calcular potências
@@ -462,7 +492,7 @@ if selected_vehicle_id:
                     # Garantir que o valor não exceda o máximo permitido
                     a_flow_value = min(int(a_flow), 500)  # Aumentando o máximo para 500
                     bank_a_injector_flow = st.number_input(
-                        "Vazão dos Bicos (lbs/h)",
+                        "Vazão dos Bicos (lb/h)",
                         min_value=0,
                         max_value=500,  # Aumentado de 300 para 500
                         value=a_flow_value,
@@ -484,7 +514,7 @@ if selected_vehicle_id:
                     
                     # Cálculo da vazão total
                     total_flow_a = bank_a_injector_flow * bank_a_injector_count
-                    st.metric("Vazão Total", f"{total_flow_a} lbs/h")
+                    st.metric("Vazão Total", f"{total_flow_a} lb/h")
             
             if not bank_a_enabled:
                 # Valores padrão quando desabilitado
@@ -586,7 +616,7 @@ if selected_vehicle_id:
                     # Garantir que o valor não exceda o máximo permitido
                     b_flow_value = min(int(b_flow), 500)  # Aumentando o máximo para 500
                     bank_b_injector_flow = st.number_input(
-                        "Vazão dos Bicos (lbs/h)",
+                        "Vazão dos Bicos (lb/h)",
                         min_value=0,
                         max_value=500,  # Aumentado de 300 para 500
                         value=b_flow_value,
@@ -608,7 +638,7 @@ if selected_vehicle_id:
                     
                     # Cálculo da vazão total
                     total_flow_b = bank_b_injector_flow * bank_b_injector_count
-                    st.metric("Vazão Total", f"{total_flow_b} lbs/h")
+                    st.metric("Vazão Total", f"{total_flow_b} lb/h")
             
             if not bank_b_enabled:
                 # Valores padrão quando desabilitado

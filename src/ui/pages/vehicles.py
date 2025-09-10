@@ -157,7 +157,7 @@ with tab_new:
             injector_count = st.number_input("Quantidade de Bicos", min_value=1, max_value=16, value=4)
         
         with col2:
-            injector_flow_rate = st.number_input("Vazão (lbs/h)", min_value=0, max_value=300, value=80)
+            injector_flow_rate = st.number_input("Vazão (lb/h)", min_value=0, max_value=300, value=80)
             fuel_rail_pressure = st.number_input("Pressão da Linha (bar)", min_value=0.0, max_value=10.0, value=3.5, step=0.1)
         
         with col3:
@@ -214,7 +214,7 @@ with tab_new:
             if bank_a_enabled:
                 bank_a_mode = st.selectbox("Modo Bancada A", ["sequential", "semi-sequential", "batch"], key="bank_a_mode")
                 bank_a_injector_count = st.number_input("Qtd Bicos A", min_value=1, max_value=8, value=4, key="bank_a_count")
-                bank_a_injector_flow = st.number_input("Vazão Bicos A (lbs/h)", min_value=0, max_value=300, value=80, key="bank_a_flow")
+                bank_a_injector_flow = st.number_input("Vazão Bicos A (lb/h)", min_value=0, max_value=300, value=80, key="bank_a_flow")
                 bank_a_dead_time = st.number_input("Dead Time A (ms)", min_value=0.0, max_value=10.0, value=1.0, step=0.1, key="bank_a_dt")
             else:
                 bank_a_mode = None
@@ -228,7 +228,7 @@ with tab_new:
             if bank_b_enabled:
                 bank_b_mode = st.selectbox("Modo Bancada B", ["sequential", "semi-sequential", "batch"], key="bank_b_mode")
                 bank_b_injector_count = st.number_input("Qtd Bicos B", min_value=1, max_value=8, value=4, key="bank_b_count")
-                bank_b_injector_flow = st.number_input("Vazão Bicos B (lbs/h)", min_value=0, max_value=300, value=80, key="bank_b_flow")
+                bank_b_injector_flow = st.number_input("Vazão Bicos B (lb/h)", min_value=0, max_value=300, value=80, key="bank_b_flow")
                 bank_b_dead_time = st.number_input("Dead Time B (ms)", min_value=0.0, max_value=10.0, value=1.0, step=0.1, key="bank_b_dt")
             else:
                 bank_b_mode = None
@@ -274,7 +274,15 @@ with tab_new:
                 "estimated_power": estimated_power,
                 "estimated_torque": estimated_torque,
                 "max_rpm": max_rpm,
-                "fuel_type": fuel_type,
+                # Persistir combustível em formato canônico ('Ethanol' para 'Etanol', etc.)
+                "fuel_type": (
+                    'Ethanol' if fuel_type == 'Etanol' else 
+                    'Gasoline' if fuel_type == 'Gasolina' else 
+                    'Flex' if fuel_type == 'Flex' else 
+                    'Diesel' if fuel_type == 'Diesel' else 
+                    'CNG' if fuel_type == 'GNV' else 
+                    fuel_type
+                ),
                 "transmission_type": transmission_type,
                 "gear_count": gear_count,
                 "drivetrain": drivetrain,
