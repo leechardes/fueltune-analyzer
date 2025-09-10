@@ -2,8 +2,9 @@
 
 ## Estrutura do Projeto e Módulos
 - Código-fonte: `src/` (principais pacotes: `analysis/`, `core/`, `ui/`, `utils/`, `maps/`, `performance/`, `components/`, `integration/`). A UI inicia em `main.py` (Streamlit).
-- Testes: `tests/` (pytest). Dados em `data/` (criados por setup/Make), configs em `config/`, migrações em `migrations/`, utilitários em `scripts/`, documentação em `docs/`.
-- Suporte na raiz: `Makefile`, `pyproject.toml`, `pytest.ini`, `.pre-commit-config.yaml`, `requirements-*.txt`.
+- Testes: `tests/` (pytest). Dados em `data/` (criados por setup/Make), configs em `config/`, migrações em `migrations/` (incluindo `alembic.ini`), utilitários em `scripts/`, documentação em `docs/`.
+- Scripts de database: `scripts/database/` (init_database.py, add_test_vehicles.py, check_db.py, etc.)
+- Suporte na raiz: `Makefile`, `pyproject.toml`, `pytest.ini`, `.pre-commit-config.yaml`, `requirements-*.txt`, `app.py`, `main.py`, `config.py`.
 
 ## Comandos de Build, Teste e Desenvolvimento
 - Setup: `make setup` (cria venv, instala deps de dev/test e habilita pre-commit).
@@ -35,3 +36,27 @@
 ## Instruções para Agentes
 - Agentes automatizados que interajam com este repositório devem sempre responder em português do Brasil (pt-BR).
 - Respeite estas diretrizes ao criar/alterar arquivos e mensagens.
+
+## 📁 Regras de Organização de Arquivos
+
+### NUNCA criar na raiz do projeto:
+- Scripts de utilidade ou teste Python → Coloque em `scripts/` ou subpastas apropriadas
+- Scripts de database/migração → Coloque em `scripts/database/`
+- Arquivos temporários ou de desenvolvimento → Use pastas apropriadas como `temp/` ou `.tmp/`
+- Scripts de inicialização de dados → Coloque em `scripts/database/`
+
+### Arquivos que DEVEM ficar na raiz:
+- Entry points: `app.py` (Streamlit), `main.py` (CLI orquestrador), `config.py` (configurações)
+- Documentação principal: `README.md`, `LICENSE`, `CHANGELOG.md`, `AGENTS.md`
+- Configuração Python: `requirements.txt`, `setup.py`, `pyproject.toml`, `pytest.ini`, `tox.ini`
+- Docker/Deploy: `Dockerfile`, `docker-compose.yml`, `Makefile`
+- Versionamento: `VERSION`, `MANIFEST.in`
+
+### Organização padrão:
+- `scripts/database/` - Scripts relacionados a banco de dados
+- `scripts/setup/` - Scripts de configuração inicial
+- `migrations/` - Todas as migrações e `alembic.ini`
+- `src/` - Código-fonte da aplicação
+- `tests/` - Testes automatizados
+- `docs/` - Documentação técnica
+- `data/` - Dados e arquivos SQLite

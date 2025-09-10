@@ -631,9 +631,6 @@ def render_2d_editor_view(
 
 def render_2d_statistics(values: List[float], unit: str):
     """Renderiza estatísticas para mapas 2D."""
-
-    st.subheader("Estatísticas 2D")
-
     if not values:
         st.warning("Nenhum valor para calcular estatísticas")
         return
@@ -714,119 +711,97 @@ def render_2d_values_editor(
 
     st.subheader("Editor de Valores")
 
-    # Informação do tipo de dados
-    st.info(
-        f"**Tipo de Mapa:** {map_config.get('name', map_type)} | **Unidade:** {unit}"
-    )
-
+    # Unificar layout com função comum: fornecer um render_editor_fn e callbacks
     # Filtrar apenas valores ativos
     active_indices = [i for i, e in enumerate(enabled) if e]
     active_axis = [axis_values[i] for i in active_indices]
     active_values = [values[i] for i in active_indices]
 
-    # Criar DataFrame transposto para edição horizontal
     import numpy as np
     import pandas as pd
 
-    # Criar dicionário com eixos como colunas
-    df_data = {}
-    for i, (axis_val, value) in enumerate(zip(active_axis, active_values)):
-        # Formatar o nome da coluna com o valor do eixo
-        col_name = f"{axis_val:.0f}" if axis_type == "RPM" else f"{axis_val:.2f}"
-        df_data[col_name] = [value]
+    last_result: Dict[str, Any] = {}
 
-    df = pd.DataFrame(df_data)
+    def render_editor_fn_2d():
+        # Construir grid 1×N
+        df_data: Dict[str, List[float]] = {}
+        for axis_val, value in zip(active_axis, active_values):
+            col_name = f"{axis_val:.0f}" if axis_type == "RPM" else f"{axis_val:.2f}"
+            df_data[col_name] = [value]
+        df = pd.DataFrame(df_data)
+        edited_df = st.data_editor(
+            df,
+            use_container_width=True,
+            num_rows="fixed",
+            hide_index=True,
+            column_config={
+                col: st.column_config.NumberColumn(
+                    min_value=map_config.get("min_value", 0),
+                    max_value=map_config.get("max_value", 100),
+                    step=0.01,
+                    format=f"%.2f",
+                )
+                for col in df.columns
+            },
+            key=f"2d_values_editor_{map_type}_{bank_id}",
+        )
+        edited_values = edited_df.iloc[0].tolist()
+        changed = edited_values != active_values
+        res = {
+            "matrix_display": [edited_values],
+            "matrix_full_current": [edited_values],  # 2D como linha
+            "x_labels": list(df.columns),
+            "y_labels": [""],
+            "changed": changed,
+            # Referências para callbacks
+            "_edited_values": edited_values,
+            "_active_indices": active_indices,
+            "_axis_values": axis_values,
+            "_values": values,
+            "_enabled": enabled,
+        }
+        last_result["res"] = res
+        return res
 
-    # Editor de dados horizontal
-    st.write("**Valores Editáveis:**")
-    edited_df = st.data_editor(
-        df,
-        use_container_width=True,
-        num_rows="fixed",
-        hide_index=True,
-        column_config={
-            col: st.column_config.NumberColumn(
-                min_value=map_config.get("min_value", 0),
-                max_value=map_config.get("max_value", 100),
-                step=0.01,
-                format=f"%.2f",
-            )
-            for col in df.columns
-        },
-        key=f"2d_values_editor_{map_type}_{bank_id}",
+    def _on_save_2d():
+        res = last_result.get("res", {})
+        new_values = res.get("_values", values).copy()
+        new_edited_values = res.get("_edited_values", active_values)
+        for idx, new_val in zip(res.get("_active_indices", active_indices), new_edited_values):
+            new_values[idx] = new_val
+        if save_2d_map_data(
+            vehicle_id, map_type, bank_id, res.get("_axis_values", axis_values), new_values, res.get("_enabled", enabled), map_config
+        ):
+            st.success("Mapa salvo com sucesso!")
+            st.rerun()
+        else:
+            st.error("Erro ao salvar mapa 2D")
+
+    def _on_reset_2d():
+        if create_default_2d_map(vehicle_id, map_type, bank_id, vehicle_data, map_config):
+            st.success("Restaurado para valores padrão!")
+            st.rerun()
+        else:
+            st.error("Falha ao restaurar padrão")
+
+    def _on_validate_2d():
+        res = last_result.get("res", {})
+        edited_values = res.get("_edited_values", active_values)
+        if all(map_config.get("min_value", 0) <= v <= map_config.get("max_value", 100) for v in edited_values):
+            st.success("Todos os valores estão dentro dos limites!")
+        else:
+            st.error("Alguns valores estão fora dos limites permitidos!")
+
+    render_values_layout_common(
+        map_type=map_type,
+        map_config=map_config,
+        dimension="2D",
+        render_editor_fn=render_editor_fn_2d,
+        on_save=_on_save_2d,
+        on_reset=_on_reset_2d,
+        on_validate=_on_validate_2d,
+        gradient_height=70,
     )
-
-    # Visualização com gradiente de cores
-    st.write("**Visualização com Gradiente:**")
-
-    # Obter valores editados
-    edited_values = edited_df.iloc[0].tolist()
-
-    # Criar DataFrame para visualização com gradiente usando pandas styling
-    viz_df = pd.DataFrame([edited_values], columns=df.columns)
-
-    # Aplicar estilo com gradiente de cores RdYlBu (igual ao mapa 2D original)
-    styled_df = viz_df.style.background_gradient(
-        cmap="RdYlBu",  # Red-Yellow-Blue (vermelho para baixo, azul para alto)
-        axis=1,  # Aplicar gradiente horizontal
-        vmin=min(edited_values) if edited_values else 0,
-        vmax=max(edited_values) if edited_values else 1,
-    ).format("{:.2f}")
-
-    # Exibir DataFrame estilizado
-    st.dataframe(
-        styled_df,
-        use_container_width=True,
-        hide_index=True,
-        height=70,  # Altura fixa para visualização compacta
-    )
-
-    # Botões de ação
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        if st.button("💾 Salvar", key=f"save_2d_{map_type}"):
-            # Reconstruir array completo de valores com as edições
-            new_values = values.copy()
-            new_edited_values = edited_df.iloc[0].tolist()
-
-            # Atualizar apenas os valores ativos com os valores editados
-            for idx, new_val in zip(active_indices, new_edited_values):
-                new_values[idx] = new_val
-
-            if save_2d_map_data(
-                vehicle_id,
-                map_type,
-                bank_id,
-                axis_values,
-                new_values,
-                enabled,
-                map_config,
-            ):
-                st.success("Mapa salvo com sucesso!")
-                st.rerun()
-
-    with col2:
-        if st.button("🔄 Restaurar Padrão", key=f"reset_2d_{map_type}"):
-            if create_default_2d_map(
-                vehicle_id, map_type, bank_id, vehicle_data, map_config
-            ):
-                st.success("Restaurado para valores padrão!")
-                st.rerun()
-
-    with col3:
-        if st.button("📊 Validar", key=f"validate_2d_{map_type}"):
-            # Validar valores editados
-            if all(
-                map_config.get("min_value", 0) <= v <= map_config.get("max_value", 100)
-                for v in edited_values
-            ):
-                st.success("Todos os valores estão dentro dos limites!")
-            else:
-                st.error("Alguns valores estão fora dos limites permitidos!")
-
-    # Mostrar estatísticas
-    render_2d_statistics(edited_values, unit)
 
 
 def render_2d_axes_editor(
@@ -921,18 +896,74 @@ def render_3d_values_editor(
         rpm_enabled = map_data.get("rpm_enabled", [True] * grid_size)
         map_enabled = map_data.get("map_enabled", [True] * grid_size)
 
-        render_editor_view(
-            values_matrix,
-            rpm_axis,
-            map_axis,
-            rpm_enabled,
-            map_enabled,
-            map_type,
-            map_config,
-            vehicle_id,
-            bank_id,
-            vehicle_data,
-            auto_save,
+        # Layout unificado: fornecer função que renderiza o editor e retorna EditorResult
+        def render_editor_fn_3d():
+            return render_editor_view(
+                values_matrix,
+                rpm_axis,
+                map_axis,
+                rpm_enabled,
+                map_enabled,
+                map_type,
+                map_config,
+                vehicle_id,
+                bank_id,
+                vehicle_data,
+                auto_save,
+            )
+
+        def _on_save_3d(res: Dict[str, Any] | None = None):
+            src = res or {}
+            matrix_full = np.array(src.get("matrix_full_current", values_matrix))
+            ok = save_map_data(
+                vehicle_id,
+                map_type,
+                bank_id,
+                rpm_axis,
+                map_axis,
+                rpm_enabled,
+                map_enabled,
+                matrix_full,
+            )
+            if ok:
+                st.success("Mapa 3D salvo com sucesso!")
+                st.rerun()
+            else:
+                st.error("Erro ao salvar mapa 3D")
+
+        def _on_reset_3d():
+            ok = persistence_manager.create_default_map(
+                vehicle_id, map_type, bank_id, vehicle_data, map_config.get("grid_size", 32)
+            )
+            if ok:
+                st.success("Mapa 3D restaurado para padrão!")
+                st.rerun()
+            else:
+                st.error("Falha ao restaurar mapa 3D")
+
+        def _on_validate_3d(res: Dict[str, Any] | None = None):
+            src = res or {}
+            matrix_full = np.array(src.get("matrix_full_current", values_matrix))
+            valid, messages = validate_3d_map_values(matrix_full, map_type)
+            if valid:
+                st.success("Matriz válida (sem erros)")
+                for w in messages:
+                    st.warning(w)
+            else:
+                if messages:
+                    for err in messages:
+                        st.error(err)
+                else:
+                    st.error("Matriz inválida")
+
+        render_values_layout_common(
+            map_type=map_type,
+            map_config=map_config,
+            dimension="3D",
+            render_editor_fn=render_editor_fn_3d,
+            on_save=_on_save_3d,
+            on_reset=_on_reset_3d,
+            on_validate=_on_validate_3d,
         )
 
 
@@ -1351,9 +1382,7 @@ def render_editor_view(
     vehicle_data: Dict[str, Any],
     auto_save: bool,
 ):
-    """Renderiza modo editor."""
-
-    st.header("Editor de Mapa")
+    """Renderiza o grid do editor 3D e retorna dados úteis ao chamador."""
 
     # Editor de matriz 3D com duas visualizações
     import numpy as np
@@ -1425,21 +1454,12 @@ def render_editor_view(
         key=f"matrix_editor_{map_type}_{bank_id}",
     )
 
-    # Criar DataFrame para visualização com gradiente
+    # Criar DataFrame para visualização (gradiente será renderizado pelo chamador)
     display_df = pd.DataFrame(
         filtered_matrix,
         columns=[f"{map_val:.2f}" for map_val in active_map_values],
         index=[f"{int(rpm)}" for rpm in active_rpm_values_reversed],
     )
-
-    # Aplicar estilo com gradiente
-    styled_df = display_df.style.background_gradient(cmap="RdYlBu", axis=None).format(
-        "{:.3f}"
-    )
-
-    # Mostrar visualização com gradiente
-    st.caption(f"Visualização com gradiente de cores - {unit}")
-    st.dataframe(styled_df, use_container_width=True)
 
     # Detectar mudanças e atualizar matriz completa
     matrix_changed = not matrix_df.equals(edited_matrix_df)
@@ -1476,9 +1496,23 @@ def render_editor_view(
             )
             st.success("Salvo automaticamente")
 
-    # Estatísticas embaixo
-    st.divider()
-    render_statistics(values_matrix, map_config)
+    # Estatísticas removidas aqui; layout comum exibirá métricas
+
+    # Retornar dados úteis ao chamador (para renderização unificada)
+    try:
+        return {
+            "matrix_display": display_df.values.tolist(),
+            "matrix_full_current": modified_matrix if matrix_changed else values_matrix,
+            "x_labels": [f"{mv:.2f}" for mv in active_map_values],
+            "y_labels": [f"{int(rv)}" for rv in active_rpm_values_reversed],
+            "rpm_axis": rpm_axis,
+            "map_axis": map_axis,
+            "rpm_enabled": rpm_enabled,
+            "map_enabled": map_enabled,
+            "changed": bool(matrix_changed),
+        }
+    except Exception:
+        return None
 
 
 def render_tools(
@@ -2095,9 +2129,6 @@ def render_tools(
 
 def render_statistics(values_matrix: np.ndarray, map_config: Dict[str, Any]):
     """Renderiza estatísticas do mapa."""
-
-    st.subheader("Estatísticas")
-
     from src.core.fuel_maps.utils import calculate_matrix_statistics
 
     stats = calculate_matrix_statistics(values_matrix)
@@ -2112,6 +2143,105 @@ def render_statistics(values_matrix: np.ndarray, map_config: Dict[str, Any]):
         st.metric("Média", format_value_3_decimals(stats["mean"]), delta=None)
     with col4:
         st.metric("Desvio Padrão", format_value_3_decimals(stats["std"]), delta=None)
+
+def render_values_layout_common(
+    map_type: str,
+    map_config: Dict[str, Any],
+    dimension: str,
+    render_editor_fn,
+    on_save,
+    on_reset,
+    on_validate,
+    gradient_height: Optional[int] = None,
+):
+    # Subtítulo sutil com tipo/unidade/grade (se 3D)
+    grid_shape = None
+    if dimension == "3D":
+        # grid_shape será inferida dos labels após o editor
+        pass
+    render_map_info_header(map_type, map_config, dimension, grid_shape)
+
+    # Valores Editáveis (editor renderiza o grid e retorna dados)
+    st.write("**Valores Editáveis:**")
+    editor_result = render_editor_fn()
+
+    # Visualização com Gradiente e Métricas
+    if isinstance(editor_result, dict):
+        unit = map_config.get("unit", "")
+        matrix_display = editor_result.get("matrix_display")
+        x_labels = editor_result.get("x_labels")
+        y_labels = editor_result.get("y_labels")
+        if matrix_display and x_labels is not None and y_labels is not None:
+            render_gradient_table(matrix_display, x_labels, y_labels, unit, height=gradient_height)
+
+        # Métricas (sem título)
+        if dimension == "2D":
+            # matrix_display é 1×N
+            row = matrix_display[0] if matrix_display else []
+            render_2d_statistics(row, unit)
+        else:
+            # 3D: usar estatísticas do mapa (sem título)
+            full = editor_result.get("matrix_full_current")
+            if full is not None:
+                render_statistics(np.array(full), map_config)
+
+        # Ações com Material Icons: passar o resultado ao callback quando útil
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button(":material/save: Salvar", key=f"save_common_{map_type}"):
+                on_save(editor_result)
+        with col2:
+            if st.button(":material/refresh: Restaurar Padrão", key=f"reset_common_{map_type}"):
+                on_reset()
+        with col3:
+            if st.button(":material/analytics: Validar", key=f"validate_common_{map_type}"):
+                on_validate(editor_result)
+
+
+# Helpers reutilizáveis (info, gradiente, ações)
+def render_map_info_header(
+    map_type: str, map_config: Dict[str, Any], dimension: str, grid_shape=None
+):
+    name = map_config.get("display_name") or map_config.get("name", map_type)
+    unit = map_config.get("unit", "")
+    if dimension == "3D" and grid_shape:
+        # grid_shape esperado como (map_count, rpm_count)
+        st.info(
+            f"Tipo de Mapa: {name} | Unidade: {unit} | Grade: MAP×RPM = {grid_shape[0]}×{grid_shape[1]}"
+        )
+    else:
+        # Para 2D, usar subtítulo sutil
+        st.caption(f"Tipo de Mapa: {name} | Unidade: {unit}")
+
+
+def render_gradient_table(
+    values, x_labels, y_labels, unit: str, height: Optional[int] = None
+):
+    import pandas as _pd
+    try:
+        df = _pd.DataFrame(values, columns=x_labels, index=y_labels)
+        styled = df.style.background_gradient(cmap="RdYlBu", axis=None).format("{:.3f}")
+        # Título no mesmo padrão de "Valores Editáveis:"
+        st.write("**Visualização com Gradiente:**")
+        if height is not None:
+            st.dataframe(styled, use_container_width=True, height=height)
+        else:
+            st.dataframe(styled, use_container_width=True)
+    except Exception as e:
+        st.warning(f"Falha ao renderizar gradiente: {e}")
+
+
+def render_action_buttons(on_save, on_reset, on_validate, key: str = "actions"):
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button(":material/save: Salvar", key=f"{key}_save"):
+            on_save()
+    with col2:
+        if st.button(":material/refresh: Restaurar Padrão", key=f"{key}_reset"):
+            on_reset()
+    with col3:
+        if st.button(":material/analytics: Validar", key=f"{key}_validate"):
+            on_validate()
 
 
 def save_map_data(
