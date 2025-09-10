@@ -1966,54 +1966,80 @@ def render_tools(
             except Exception as e:
                 st.error(f"Erro ao aplicar cálculo: {e}")
 
+    # Botão de preview (aciona renderização em largura total abaixo)
     with action_col2:
-        if st.button(
+        do_preview = st.button(
             ":material/analytics: Preview Gráfico",
             use_container_width=True,
             key=f"preview_{dimension}_{map_type}_{bank_id}",
-        ):
-            try:
-                if dimension == "2D":
-                    # Gráfico de linha 2D
-                    fig = go.Figure()
-                    fig.add_trace(
-                        go.Scatter(
-                            x=axis_values,
-                            y=preview_values,
-                            mode="lines+markers",
-                            name="Calculado",
-                            line=dict(color="blue", width=3),
-                            marker=dict(size=8),
+        )
+
+    if do_preview:
+        st.markdown("---")
+        st.subheader("Preview Gráfico (Antes × Depois)")
+        col_before, col_after = st.columns(2)
+        try:
+            if dimension == "2D":
+                axis_type = map_config.get("axis_type", "RPM")
+                # Antes (valores salvos)
+                map2d = load_2d_map_data_local(vehicle_id, map_type, bank_id)
+                if map2d:
+                    before_axis = map2d.get("axis_values", [])
+                    before_vals = map2d.get("values", [])
+                    before_enabled = map2d.get("enabled", [True] * len(before_vals))
+                    with col_before:
+                        st.caption("Antes (salvo)")
+                        render_2d_line_chart_inline(
+                            before_axis,
+                            before_vals,
+                            before_enabled,
+                            axis_type,
+                            unit,
+                            key=f"prev2d_before_{map_type}_{bank_id}"
                         )
+                # Depois (prévia calculada)
+                with col_after:
+                    st.caption("Depois (prévia)")
+                    render_2d_line_chart_inline(
+                        axis_values,
+                        preview_values,
+                        enabled,
+                        axis_type,
+                        unit,
+                        key=f"prev2d_after_{map_type}_{bank_id}"
                     )
-                    fig.update_layout(
-                        title=f"Preview 2D - {map_type}",
-                        xaxis_title="Eixo X",
-                        yaxis_title=f"Valor ({unit})",
-                        height=400,
+            else:
+                # 3D antes (salvo)
+                map3d = persistence_manager.load_3d_map_data(vehicle_id, map_type, bank_id)
+                if map3d:
+                    before_rpm = map3d.get("rpm_axis", [])
+                    before_map = map3d.get("map_axis", [])
+                    before_matrix = np.array(map3d.get("values_matrix", []))
+                    before_rpm_enabled = map3d.get("rpm_enabled", [True] * len(before_rpm))
+                    before_map_enabled = map3d.get("map_enabled", [True] * len(before_map))
+                    with col_before:
+                        st.caption("Antes (salvo)")
+                        render_3d_surface_inline(
+                            before_rpm,
+                            before_map,
+                            before_matrix,
+                            before_rpm_enabled,
+                            before_map_enabled,
+                            key=f"prev3d_before_{map_type}_{bank_id}"
+                        )
+                # 3D depois (prévia)
+                with col_after:
+                    st.caption("Depois (prévia)")
+                    render_3d_surface_inline(
+                        rpm_axis,
+                        map_axis,
+                        np.array(calculated_matrix),
+                        rpm_enabled,
+                        map_enabled,
+                        key=f"prev3d_after_{map_type}_{bank_id}"
                     )
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    # Gráfico 3D Surface (calcular z a partir da matriz calculada e eixos ativos)
-                    z = []
-                    for rpm_idx in active_rpm_indices:
-                        row = []
-                        for map_idx in active_map_indices:
-                            row.append(calculated_matrix[map_idx][rpm_idx])
-                        z.append(row)
-                    fig = go.Figure(data=[go.Surface(z=z, x=active_map_values, y=active_rpm_values, colorscale="RdYlBu")])
-                    fig.update_layout(
-                        title=f"Preview 3D - {map_type}",
-                        scene=dict(
-                            xaxis_title="MAP (bar)",
-                            yaxis_title="RPM",
-                            zaxis_title=f"Valor ({unit})",
-                        ),
-                        height=600,
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-            except Exception as e:
-                st.error(f"Erro ao gerar gráfico: {e}")
+        except Exception as e:
+            st.error(f"Erro ao gerar gráfico: {e}")
 
 
 def render_3d_statistics(values_matrix: np.ndarray, map_config: Dict[str, Any]):
@@ -2176,6 +2202,95 @@ def render_vehicle_info_metrics(vehicle_data_session: Dict[str, Any]):
             st.metric("Aspiração", "Natural")
 
 
+def render_2d_line_chart_inline(
+    axis_values: List[float],
+    values: List[float],
+    enabled: List[bool],
+    axis_type: str,
+    unit: str,
+    *,
+    key: Optional[str] = None,
+):
+    import plotly.graph_objects as go
+    # Filtrar habilitados
+    enabled_indices = [i for i, e in enumerate(enabled) if e and i < len(axis_values) and i < len(values)]
+    chart_axis = [axis_values[i] for i in enabled_indices]
+    chart_values = [values[i] for i in enabled_indices]
+    if not chart_axis or not chart_values:
+        st.warning("Nenhum ponto habilitado para exibir")
+        return
+    fig = go.Figure()
+    cmin = min(chart_values)
+    cmax = max(chart_values)
+    if cmin == cmax:
+        cmin -= 1e-9
+        cmax += 1e-9
+    try:
+        theme_base = st.get_option("theme.base")
+    except Exception:
+        theme_base = None
+    outline_color = "#FFFFFF" if str(theme_base).lower() == "dark" else "#000000"
+    fig.add_trace(
+        go.Scatter(
+            x=chart_axis,
+            y=chart_values,
+            mode="lines+markers",
+            name=f"Valores {unit}",
+            line=dict(color="red", width=2),
+            marker=dict(
+                size=9,
+                color=chart_values,
+                colorscale="RdYlBu",
+                showscale=False,
+                cmin=cmin,
+                cmax=cmax,
+                line=dict(width=1.5, color=outline_color),
+            ),
+        )
+    )
+    # Linha de corte MAP=0
+    try:
+        if axis_type.upper() == "MAP" and any(x > 0 for x in chart_axis):
+            cut_color = "#FFFFFF66" if str(theme_base).lower() == "dark" else "#00000066"
+            shapes = list(fig.layout.shapes) if fig.layout.shapes else []
+            shapes.append(dict(type="line", xref="x", yref="paper", x0=0, x1=0, y0=0, y1=1, line=dict(color=cut_color, width=2, dash="dash")))
+            fig.update_layout(shapes=shapes)
+    except Exception:
+        pass
+    fig.update_layout(xaxis_title=f"{axis_type}", yaxis_title=f"Valores ({unit})", height=400)
+    st.plotly_chart(fig, use_container_width=True, key=key)
+
+
+def render_3d_surface_inline(
+    rpm_axis: List[float],
+    map_axis: List[float],
+    values_matrix: np.ndarray,
+    rpm_enabled: List[bool],
+    map_enabled: List[bool],
+    *,
+    key: Optional[str] = None,
+):
+    import numpy as _np
+    import plotly.graph_objects as go
+    # Filtrar por enabled
+    active_rpm_indices = [i for i, e in enumerate(rpm_enabled) if e]
+    active_map_indices = [i for i, e in enumerate(map_enabled) if e]
+    if not active_rpm_indices or not active_map_indices:
+        st.warning("Nenhum ponto habilitado para visualização")
+        return
+    rpm_axis_active = [rpm_axis[i] for i in active_rpm_indices]
+    map_axis_active = [map_axis[i] for i in active_map_indices]
+    values_active = values_matrix[_np.ix_(active_map_indices, active_rpm_indices)]  # [map][rpm]
+    # Ordenar X (MAP) desc; Y (RPM) mantém ordem
+    map_idx_sorted_desc = list(_np.argsort(_np.array(map_axis_active))[::-1])
+    x_axis_plot = [map_axis_active[i] for i in map_idx_sorted_desc]
+    y_axis_plot = rpm_axis_active
+    z_plot = values_active.T[:, map_idx_sorted_desc]
+    fig = go.Figure(data=[go.Surface(z=z_plot, x=x_axis_plot, y=y_axis_plot, colorscale="RdYlBu")])
+    fig.update_layout(scene=dict(xaxis_title="MAP (bar)", yaxis_title="RPM", zaxis_title="", zaxis=dict(visible=False), camera=dict(eye=dict(x=1.2, y=1.2, z=0.8))), height=600, margin=dict(l=0, r=0, t=20, b=0))
+    st.plotly_chart(fig, use_container_width=True, key=key)
+
+
 # ===== Ferramentas: helpers comuns =====
 def render_specific_controls_for_map(
     map_type: str,
@@ -2324,8 +2439,16 @@ def render_preview_table_common(preview_obj: Dict[str, Any], dimension: str):
     if dimension == "2D":
         df = preview_obj.get("preview_df")
         if df is not None:
-            styled = df.style.background_gradient(cmap="RdYlBu", axis=1).format("{:.3f}")
-            st.dataframe(styled, use_container_width=True, height=90)
+            styled = (
+                df.style
+                .background_gradient(cmap="RdYlBu", axis=1)
+                .format("{:.2f}")
+                .set_table_styles([
+                    {"selector": "th", "props": [("min-width", "36px"), ("max-width", "36px"), ("padding", "0 4px"), ("font-size", "11px")]},
+                    {"selector": "td", "props": [("min-width", "36px"), ("max-width", "36px"), ("padding", "0 4px"), ("font-size", "11px")]},
+                ])
+            )
+            st.dataframe(styled, use_container_width=True, height=70)
     else:
         # 3D: construir DataFrame linhas=RPM desc; colunas=MAP ativos
         rpm_axis = preview_obj.get("rpm_axis", [])
@@ -2349,7 +2472,7 @@ def render_preview_table_common(preview_obj: Dict[str, Any], dimension: str):
             columns=[f"{map_axis[i]:.2f}" for i in active_map_indices],
             index=[f"{int(rpm_axis[i])}" for i in reversed(active_rpm_indices)],
         )
-        styled = df.style.background_gradient(cmap="RdYlBu", axis=None).format("{:+.3f}")
+        styled = df.style.background_gradient(cmap="RdYlBu", axis=None).format("{:.3f}")
         st.dataframe(styled, use_container_width=True)
 
 
