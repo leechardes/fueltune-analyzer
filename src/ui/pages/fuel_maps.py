@@ -921,7 +921,7 @@ def render_2d_axes_editor(
         )
 
         # Botão de salvar
-        if st.button("💾 Salvar Eixo", key=f"save_axis_2d_{map_type}"):
+        if st.button(":material/save: Salvar Eixo", key=f"save_axis_2d_{map_type}"):
             new_axis_values = edited_axis_df[f"{axis_type}"].tolist()
             new_enabled = edited_axis_df["Ativo"].tolist()
 
@@ -1166,16 +1166,42 @@ def render_ftmanager_copy(
     """Renderiza funcionalidade de copiar para FTManager."""
 
     st.subheader("Copiar para FTManager")
-    st.info("Selecione os valores do mapa e use Ctrl+C para copiar para o FTManager")
+    st.caption("Use o botão de copiar no bloco abaixo.")
 
-    # Mostrar valores em formato copiável
+    # Mostrar valores em formato copiável, padronizando layout para 2D e 3D
     if dimension == "2D":
         map_data = load_2d_map_data_local(vehicle_id, map_type, bank_id)
         if map_data:
             values = map_data.get("values", [])
-            # Formatar valores para cópia
-            formatted = "\t".join([f"{v:.2f}" for v in values])
-            st.text_area("Valores para copiar:", formatted, height=100)
+            formatted = "\t".join([f"{v:.3f}" for v in values])
+            st.code(formatted, language="text")
+    else:
+        # 3D: carregar matriz e exibir como grade TSV (linhas=RPM desc; colunas=MAP)
+        map_data = persistence_manager.load_3d_map_data(vehicle_id, map_type, bank_id)
+        if map_data:
+            import numpy as _np
+            rpm_axis = map_data.get("rpm_axis", [])
+            map_axis = map_data.get("map_axis", [])
+            values_matrix = _np.array(map_data.get("values_matrix", []), dtype=float)
+            rpm_enabled = map_data.get("rpm_enabled", [True] * len(rpm_axis))
+            map_enabled = map_data.get("map_enabled", [True] * len(map_axis))
+
+            active_rpm_indices = [i for i, e in enumerate(rpm_enabled) if e]
+            active_map_indices = [i for i, e in enumerate(map_enabled) if e]
+
+            # Matriz de exibição como no editor: linhas = RPM (reverso), colunas = MAP
+            active_rpm_indices_reversed = list(reversed(active_rpm_indices))
+            values_lines = []
+            for rpm_idx in active_rpm_indices_reversed:
+                row_vals = []
+                for map_idx in active_map_indices:
+                    if map_idx < values_matrix.shape[0] and rpm_idx < values_matrix.shape[1]:
+                        row_vals.append(f"{values_matrix[map_idx, rpm_idx]:.3f}")
+                    else:
+                        row_vals.append("")
+                values_lines.append("\t".join(row_vals))
+            formatted = "\n".join(values_lines)
+            st.code(formatted, language="text")
 
 
 def render_ftmanager_paste(
@@ -1195,7 +1221,7 @@ def render_ftmanager_paste(
         key=f"paste_{map_type}_{bank_id}",
     )
 
-    if st.button("Aplicar Valores", key=f"apply_paste_{map_type}"):
+    if st.button(":material/content_paste: Aplicar Valores", key=f"apply_paste_{map_type}"):
         if paste_data:
             try:
                 # Parse dos valores colados
@@ -1236,7 +1262,7 @@ def render_data_import(
         vehicles = load_vehicles()
         if vehicles:
             source_vehicle = st.selectbox("Selecione o veículo:", vehicles)
-            if st.button("Copiar Mapa"):
+            if st.button(":material/content_copy: Copiar Mapa"):
                 st.success(f"Mapa copiado de {source_vehicle}!")
 
 
@@ -1274,7 +1300,7 @@ def render_data_export(
         horizontal=True,
     )
 
-    if st.button("📥 Baixar Mapa", key=f"download_{map_type}"):
+    if st.button(":material/download: Baixar Mapa", key=f"download_{map_type}"):
         if dimension == "2D":
             map_data = load_2d_map_data_local(vehicle_id, map_type, bank_id)
         else:
@@ -1287,7 +1313,7 @@ def render_data_export(
                 import json
 
                 st.download_button(
-                    "Baixar JSON",
+                    ":material/download: Baixar JSON",
                     json.dumps(map_data, indent=2),
                     f"{map_type}_{vehicle_id}.json",
                     "application/json",
@@ -1601,7 +1627,7 @@ def render_tools(
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
             if st.button(
-                "Recalcular VE 3D pelos eixos", key=f"regen_ve3d_{vehicle_id}_{bank_id}"
+                ":material/refresh: Recalcular VE 3D pelos eixos", key=f"regen_ve3d_{vehicle_id}_{bank_id}"
             ):
                 if map_type == "ve_table_3d_map":
                     ok = persistence_manager.regenerate_ve_table_3d_map(
