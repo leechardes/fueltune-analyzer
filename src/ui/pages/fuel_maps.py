@@ -491,8 +491,8 @@ def render_2d_chart_view(
             y=chart_values,
             mode="lines+markers",
             name=f"Valores {unit}",
-            line=dict(color="blue", width=2),
-            marker=dict(size=6, color="blue"),
+            line=dict(color="red", width=2),
+            marker=dict(size=6, color="red"),
         )
     )
 
@@ -557,7 +557,7 @@ def render_3d_chart_view_for_visualize(
                 z=z_plot,
                 x=x_axis_plot,
                 y=y_axis_plot,
-                colorscale="Viridis",
+                colorscale="RdYlBu",
                 showscale=False,
                 hovertemplate=("<b>X:</b> %{x}<br>" "<b>Y:</b> %{y}<br>" "<extra></extra>"),
             )
@@ -1343,7 +1343,7 @@ def render_3d_view(
                 z=z,
                 x=x_axis,
                 y=y_axis,
-                colorscale="Viridis",
+                colorscale="RdYlBu",
                 showscale=False,
                 hovertemplate=(
                     "<b>X:</b> %{x}<br>" "<b>Y:</b> %{y}<br>" "<extra></extra>"
@@ -1381,7 +1381,7 @@ def render_2d_view(
             z=z,
             x=[f"{x:.3f}" if isinstance(x, float) else str(x) for x in x_axis],
             y=[f"{y:.0f}" if isinstance(y, (int, float)) else str(y) for y in y_axis],
-            colorscale="Viridis",
+            colorscale="RdYlBu",
             showscale=False,
             hovertemplate=("<b>X:</b> %{x}<br>" "<b>Y:</b> %{y}<br>" "<extra></extra>"),
         )
