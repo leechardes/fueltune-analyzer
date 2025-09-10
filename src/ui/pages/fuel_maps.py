@@ -1607,7 +1607,7 @@ def render_editor_view(
     edited_matrix_df = st.data_editor(
         matrix_df,
         use_container_width=True,
-        hide_index=True,
+        hide_index=False,
         column_config={
             col: st.column_config.NumberColumn(
                 col.split("_")[0] if "_" in col else col,
@@ -1880,6 +1880,7 @@ def render_tools(
                 fuel_correction_enabled,
                 regulator_11,
                 cl_factor_value,
+                use_lambda=_spec.get("use_lambda", False),
             )
             if prev3:
                 rpm_axis = prev3["rpm_axis"]
@@ -2113,6 +2114,7 @@ def render_values_layout_common(
                     height=gradient_height,
                     columns_name=map_config.get("axis_type", "Eixo"),
                     index_name=unit,
+                    hide_index=True,
                 )
             else:
                 render_gradient_table(
@@ -2123,6 +2125,7 @@ def render_values_layout_common(
                     height=gradient_height,
                     columns_name="MAP (bar)",
                     index_name="RPM",
+                    hide_index=False,
                 )
 
         # Métricas (sem título)
@@ -2174,6 +2177,7 @@ def render_gradient_table(
     *,
     columns_name: Optional[str] = None,
     index_name: Optional[str] = None,
+    hide_index: bool = True,
 ):
     import pandas as _pd
     import numpy as _np
@@ -2187,9 +2191,9 @@ def render_gradient_table(
         # Título no mesmo padrão de "Valores Editáveis:"
         st.write("**Visualização com Gradiente:**")
         if height is not None:
-            st.dataframe(styled, use_container_width=True, height=height, hide_index=True)
+            st.dataframe(styled, use_container_width=True, height=height, hide_index=hide_index)
         else:
-            st.dataframe(styled, use_container_width=True, hide_index=True)
+            st.dataframe(styled, use_container_width=True, hide_index=hide_index)
     except Exception as e:
         st.warning(f"Falha ao renderizar gradiente: {e}")
 
@@ -2380,6 +2384,14 @@ def render_specific_controls_for_map(
         )
 
     cl_factor_value = safety_factor if (dimension == "3D" and map_type == "lambda_target_3d_map") else 1.0
+    use_lambda = False
+    if show_injection_controls_3d:
+        use_lambda = st.checkbox(
+            "Usar λ alvo (malha) no cálculo",
+            value=True,
+            key=f"uselambda_{dimension}_{map_type}_{bank_id}",
+            help="Aplica a malha λ alvo por célula no cálculo do PW 3D",
+        )
     ref_rpm = None
     if show_injection_controls_2d:
         ref_rpm = st.number_input(
@@ -2396,6 +2408,7 @@ def render_specific_controls_for_map(
         "fuel_correction_enabled": fuel_correction_enabled,
         "regulator_11": regulator_11,
         "cl_factor_value": cl_factor_value,
+        "use_lambda": use_lambda,
         "ref_rpm": ref_rpm,
     }
 
@@ -2507,6 +2520,7 @@ def compute_preview_3d(
     fuel_correction_enabled: bool,
     regulator_11: bool,
     cl_factor_value: float,
+    use_lambda: bool = False,
 ):
     import numpy as np
     map_data = persistence_manager.load_3d_map_data(vehicle_id, map_type, bank_id)
@@ -2522,7 +2536,7 @@ def compute_preview_3d(
         calculated_matrix = generate_ve_3d_matrix(rpm_axis, map_axis)
         unit = "VE"
     else:
-        from src.core.fuel_maps.calculations import calculate_3d_map_values_universal
+        from src.core.fuel_maps.calculations import calculate_3d_map_values_universal, calculate_lambda_target_closed_loop
         kwargs = dict(
             strategy=selected_strategy,
             safety_factor=safety_factor,
@@ -2530,7 +2544,15 @@ def compute_preview_3d(
             apply_fuel_corr=fuel_correction_enabled,
             cl_factor=cl_factor_value,
         )
-        # Preparar VE e AFR se necessário é feito internamente pela função universal
+        # Aplicar λ alvo por célula quando solicitado
+        if map_type == "main_fuel_3d_map" and use_lambda:
+            lam = calculate_lambda_target_closed_loop(
+                rpm_axis, map_axis,
+                strategy=selected_strategy,
+                cl_factor=cl_factor_value,
+                fuel_type=str(vehicle_data_session.get('fuel_type', 'ethanol'))
+            )
+            kwargs["lambda_matrix"] = lam
         calculated_matrix = calculate_3d_map_values_universal(
             map_type, rpm_axis, map_axis, dict(vehicle_data_session), **kwargs
         )
@@ -2592,7 +2614,7 @@ def render_preview_table_common(preview_obj: Dict[str, Any], dimension: str):
         numeric_cols = [c for c in df.columns if np.issubdtype(df[c].dtype, np.number)]
         if numeric_cols:
             styled = styled.format({c: "{:.3f}" for c in numeric_cols})
-        st.dataframe(styled, use_container_width=True, hide_index=True)
+        st.dataframe(styled, use_container_width=True, hide_index=False)
 
 
 def save_map_data(
