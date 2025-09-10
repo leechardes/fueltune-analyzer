@@ -1607,6 +1607,7 @@ def render_editor_view(
     edited_matrix_df = st.data_editor(
         matrix_df,
         use_container_width=True,
+        hide_index=True,
         column_config={
             col: st.column_config.NumberColumn(
                 col.split("_")[0] if "_" in col else col,
@@ -2087,7 +2088,26 @@ def render_values_layout_common(
         x_labels = editor_result.get("x_labels")
         y_labels = editor_result.get("y_labels")
         if matrix_display and x_labels is not None and y_labels is not None:
-            render_gradient_table(matrix_display, x_labels, y_labels, unit, height=gradient_height)
+            if dimension == "2D":
+                render_gradient_table(
+                    matrix_display,
+                    x_labels,
+                    y_labels,
+                    unit,
+                    height=gradient_height,
+                    columns_name=map_config.get("axis_type", "Eixo"),
+                    index_name=unit,
+                )
+            else:
+                render_gradient_table(
+                    matrix_display,
+                    x_labels,
+                    y_labels,
+                    unit,
+                    height=gradient_height,
+                    columns_name="MAP (bar)",
+                    index_name="RPM",
+                )
 
         # Métricas (sem título)
         if dimension == "2D":
@@ -2130,18 +2150,30 @@ def render_map_info_header(
 
 
 def render_gradient_table(
-    values, x_labels, y_labels, unit: str, height: Optional[int] = None
+    values,
+    x_labels,
+    y_labels,
+    unit: str,
+    height: Optional[int] = None,
+    *,
+    columns_name: Optional[str] = None,
+    index_name: Optional[str] = None,
 ):
     import pandas as _pd
+    import numpy as _np
     try:
         df = _pd.DataFrame(values, columns=x_labels, index=y_labels)
-        styled = df.style.background_gradient(cmap="RdYlBu", axis=None).format("{:.3f}")
+        # Formatar apenas colunas numéricas para evitar erro de formatação com strings
+        numeric_cols = [c for c in df.columns if _np.issubdtype(df[c].dtype, _np.number)]
+        styled = df.style.background_gradient(cmap="RdYlBu", axis=None)
+        if numeric_cols:
+            styled = styled.format({c: "{:.3f}" for c in numeric_cols})
         # Título no mesmo padrão de "Valores Editáveis:"
         st.write("**Visualização com Gradiente:**")
         if height is not None:
-            st.dataframe(styled, use_container_width=True, height=height)
+            st.dataframe(styled, use_container_width=True, height=height, hide_index=True)
         else:
-            st.dataframe(styled, use_container_width=True)
+            st.dataframe(styled, use_container_width=True, hide_index=True)
     except Exception as e:
         st.warning(f"Falha ao renderizar gradiente: {e}")
 
@@ -2379,6 +2411,7 @@ def compute_preview_2d(
         "preview_df": preview_df,
         "preview_values": filtered_preview_values,
         "unit": unit,
+        "axis_type": map_config.get("axis_type", "Eixo"),
     }
 
 
@@ -2439,15 +2472,21 @@ def render_preview_table_common(preview_obj: Dict[str, Any], dimension: str):
     if dimension == "2D":
         df = preview_obj.get("preview_df")
         if df is not None:
-            styled = (
-                df.style
-                .background_gradient(cmap="RdYlBu", axis=1)
-                .format("{:.2f}")
-                .set_table_styles([
-                    {"selector": "th", "props": [("min-width", "36px"), ("max-width", "36px"), ("padding", "0 4px"), ("font-size", "11px")]},
-                    {"selector": "td", "props": [("min-width", "36px"), ("max-width", "36px"), ("padding", "0 4px"), ("font-size", "11px")]},
-                ])
-            )
+            axis_type = preview_obj.get("axis_type", "Eixo")
+            unit = preview_obj.get("unit", "")
+            df2 = df.copy()
+            df2.insert(0, axis_type, [unit])
+            styled = df2.style.background_gradient(cmap="RdYlBu", axis=1)
+            # Formatar apenas colunas numéricas
+            numeric_cols = [
+                c for c in df2.columns if np.issubdtype(df2[c].dtype, np.number)
+            ]
+            if numeric_cols:
+                styled = styled.format({c: "{:.2f}" for c in numeric_cols})
+            styled = styled.set_table_styles([
+                {"selector": "th", "props": [("min-width", "36px"), ("max-width", "36px"), ("padding", "0 4px"), ("font-size", "11px")]},
+                {"selector": "td", "props": [("min-width", "36px"), ("max-width", "36px"), ("padding", "0 4px"), ("font-size", "11px")]},
+            ])
             st.dataframe(styled, use_container_width=True, height=70)
     else:
         # 3D: construir DataFrame linhas=RPM desc; colunas=MAP ativos
@@ -2467,13 +2506,12 @@ def render_preview_table_common(preview_obj: Dict[str, Any], dimension: str):
                 else:
                     row.append(np.nan)
             rows.append(row)
-        df = pd.DataFrame(
-            rows,
-            columns=[f"{map_axis[i]:.2f}" for i in active_map_indices],
-            index=[f"{int(rpm_axis[i])}" for i in reversed(active_rpm_indices)],
-        )
-        styled = df.style.background_gradient(cmap="RdYlBu", axis=None).format("{:.3f}")
-        st.dataframe(styled, use_container_width=True)
+        df = pd.DataFrame(rows, columns=[f"{map_axis[i]:.2f}" for i in active_map_indices], index=[f"{int(rpm_axis[i])}" for i in reversed(active_rpm_indices)])
+        styled = df.style.background_gradient(cmap="RdYlBu", axis=None)
+        numeric_cols = [c for c in df.columns if np.issubdtype(df[c].dtype, np.number)]
+        if numeric_cols:
+            styled = styled.format({c: "{:.3f}" for c in numeric_cols})
+        st.dataframe(styled, use_container_width=True, hide_index=True)
 
 
 def save_map_data(
