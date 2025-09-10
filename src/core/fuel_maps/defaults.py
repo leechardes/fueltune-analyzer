@@ -71,6 +71,21 @@ class ConfigManager:
                 "default_rpm_enabled": [True] * 32,
                 "default_map_enabled": [True] * 32,
             },
+            "ve_3d_map": {
+                "name": "Mapa VE 3D - 32x32",
+                "display_name": "VE 3D (32×32)",
+                "grid_size": 32,
+                "x_axis_type": "RPM",
+                "y_axis_type": "MAP",
+                "unit": "VE",
+                "min_value": 0.0,
+                "max_value": 1.2,
+                "description": "Mapa de Eficiência Volumétrica (VE) 3D",
+                "default_rpm_values": [1000.0 + i * ((8000.0 - 1000.0) / 31.0) for i in range(32)],
+                "default_map_values": [-1.0 + i * ((2.0 - (-1.0)) / 31.0) for i in range(32)],
+                "default_rpm_enabled": [True] * 32,
+                "default_map_enabled": [True] * 32,
+            },
             "lambda_target_3d_map": {
                 "name": "Mapa de Lambda Alvo 3D - 32x32",
                 "grid_size": 32,
@@ -209,6 +224,8 @@ class ConfigManager:
         # Valores base padrão por tipo
         if map_type == "main_fuel_3d_map":
             base_value = 2.0  # ms
+        elif map_type == "ve_3d_map":
+            base_value = 0.90  # VE padrão
         elif map_type == "lambda_target_3d_map":
             base_value = 0.85  # lambda
         elif map_type == "ignition_3d_map":

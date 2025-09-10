@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calculadora de Mapa de Injeção (Etanol / Turbo) – Lee</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Apple Color Emoji, Segoe UI Emoji;
+         background: #0b0f14; color: #e6edf3; margin: 16px; }
+  h1 { font-size: 1.4rem; margin: 0 0 8px; }
+  h2 { font-size: 1.1rem; margin: 12px 0 8px; }
+  .grid { display: grid; grid-template-columns: repeat(6, minmax(180px, 1fr)); gap: 12px; }
+  .card { background: #0f1720; border: 1px solid #1e293b; border-radius: 12px; padding: 12px; }
+  label { display: block; font-size: 0.85rem; opacity: 0.95; margin-bottom: 6px; }
+  input, select, textarea { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #334155; background: #0b1220; color: #e6edf3; }
+  input[type="checkbox"] { width: auto; }
+  small { opacity: 0.75; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  th, td { border: 1px solid #1e293b; padding: 6px 8px; text-align: right; }
+  th { background: #111827; position: sticky; top: 0; }
+  .row-head { text-align: left; }
+  .note { font-size: .9rem; opacity: .9; }
+  .btn { background:#1f6feb; border: none; color: white; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+  .btn:disabled { opacity: .6; cursor: not-allowed; }
+  .footer { margin-top: 12px; font-size: .85rem; opacity: .85;}
+  .pill { display:inline-block; padding:2px 8px; border:1px solid #1e293b; border-radius:999px; background:#0b1220; font-size: .8rem; }
+  .muted { opacity: .9; }
+</style>
+</head>
+<body>
+  <h1>Calculadora de Mapa de Injeção (Etanol / Turbo) <span class="pill">v1</span></h1>
+  <p class="note">Modelo físico simplificado (Speed-Density) com curvas de λ e VE ajustáveis. Edite os parâmetros para recalcular a linha do mapa.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Motor</h2>
+      <label>Cilindrada (L) <input id="dispL" type="number" step="0.1" value="1.9"></label>
+      <label>Nº de cilindros <input id="nCyl" type="number" step="1" value="4"></label>
+      <label>IAT (°C) <input id="iatC" type="number" step="1" value="47"></label>
+      <label>Regulador 1:1?
+        <select id="reg11">
+          <option value="1" selected>Sim</option>
+          <option value="0">Não</option>
+        </select>
+      </label>
+      <label>Turbo?
+        <select id="isTurbo">
+          <option value="1" selected>Sim</option>
+          <option value="0">Não</option>
+        </select>
+      </label>
+      <label>Boost máx (bar) <input id="maxBoost" type="number" step="0.1" value="2.0"></label>
+      <small>Com 1:1 a vazão do bico por ms permanece constante com o boost.</small>
+    </div>
+
+    <div class="card">
+      <h2>Injetor</h2>
+      <label>Vazão por bico (lb/h @ 3 bar) <input id="injLbph" type="number" step="1" value="112"></label>
+      <label>Quantidade de bicos (total) <input id="nInj" type="number" step="1" value="4"></label>
+      <label>Dead Time (ms) <input id="dt" type="number" step="0.05" value="1.0"></label>
+      <label>PW mínimo (ms) <input id="pwmin" type="number" step="0.1" value="1.6"></label>
+      <label>Pressão base (bar) <input id="pbase" type="number" step="0.1" value="3.0"></label>
+      <small>Com regulador 1:1, P_rail = P_base + MAP_rel (ΔP = P_base constante). Sem 1:1, P_rail = P_base e ΔP = P_base − MAP_rel.</small>
+      <small>PW mínimo evita a região não linear em vácuo profundo.</small>
+    </div>
+
+    <div class="card">
+      <h2>Combustível</h2>
+      <label>Tipo de combustível
+        <select id="fuelType">
+          <option value="ethanol" selected>Etanol (AFR 9.0)</option>
+          <option value="e85">E85 (AFR 9.8)</option>
+          <option value="gasoline">Gasolina (AFR 14.7)</option>
+          <option value="methanol">Metanol (AFR 6.4)</option>
+          <option value="nitromethane">Nitrometano (AFR 1.7)</option>
+          <option value="diesel">Diesel (AFR 14.5)</option>
+          <option value="gnv">GNV (AFR 17.2)</option>
+        </select>
+      </label>
+      <label>AFR estequiométrico
+        <select id="afrStq">
+          <option value="6.4">Metanol (6.4)</option>
+          <option value="9.0" selected>Etanol (9.0)</option>
+          <option value="9.8">E85 (9.8)</option>
+          <option value="14.5">Diesel (14.5)</option>
+          <option value="14.7">Gasolina (14.7)</option>
+          <option value="17.2">GNV (17.2)</option>
+          <option value="1.7">Nitrometano (1.7)</option>
+        </select>
+      </label>
+      <label>Estratégia de λ alvo
+        <select id="strategy">
+          <option value="conservadora">Conservadora</option>
+          <option value="balanceada" selected>Balanceada (fábrica)</option>
+          <option value="agressiva">Agressiva</option>
+          <option value="manual">Manual (tabela abaixo)</option>
+        </select>
+      </label>
+      <label>Modo do mapa
+        <select id="mapMode">
+          <option value="absolute" selected>PW absoluto</option>
+          <option value="delta">ΔPW relativo a 0,0 bar (FT Simplificado)</option>
+        </select>
+      </label>
+      <label>Faixa MAP (bar) <input id="mapRange" type="text" value="-1.0,2.0,0.1"></label>
+      <small>Formato: início,fim,passo (ex.: -1.0,2.0,0.1)</small>
+    </div>
+
+    <div class="card">
+      <h2>Curva de VE (opcional)</h2>
+      <small>Agora editável ao lado do switch de λ‑alvo no topo do painel de resultados.</small>
+    </div>
+
+    <div class="card">
+      <h2>Curva λ Manual (se "Manual")</h2>
+      <label class="muted">Pontos "MAP:lambda" separados por vírgula
+        <textarea id="lambdaCurve" rows="6">-1.0:1.02,-0.7:1.01,-0.5:1.00,-0.3:0.98,-0.1:0.95,0.0:0.87,0.3:0.84,0.5:0.83,0.7:0.82,1.0:0.81,1.5:0.80,2.0:0.79</textarea>
+      </label>
+      <small>Se a estratégia não for "Manual", esta curva é ignorada.</small>
+    </div>
+
+    <div class="card">
+      <h2>Mapas 2D – Eixos/Curvas</h2>
+      <label>TPS (%) – lista <input id="tpsList" type="text" value="0,10,20,30,40,50,60,70,80,90,100"></label>
+      <label class="muted">Curva TPS (pontos "tps:fator")
+        <textarea id="tpsCurve" rows="3">0:0,10:2,20:4,30:6,40:8,50:10,60:12,70:13,80:14,90:15,100:15</textarea>
+      </label>
+      <label>Temperatura (°C) – lista <input id="tempList" type="text" value="-10,0,10,20,30,40,50,60,70,80,90,100"></label>
+      <label class="muted">Curva Temp (pontos "temp:fator%")
+        <textarea id="tempCurve" rows="3">-10:20,0:10,20:0,40:-5,80:-10</textarea>
+      </label>
+      <label>Temp Ar (°C) – lista <input id="airList" type="text" value="-10,0,10,20,25,30,40,50,60"></label>
+      <label class="muted">Curva Ar (pontos "air:fator%")
+        <textarea id="airCurve" rows="3">-10:15,0:8,20:0,25:0,30:2,40:5,50:8,60:12</textarea>
+      </label>
+      <label>Voltagem (V) – lista <input id="voltList" type="text" value="10,11,12,13,14"></label>
+      <label class="muted">Curva Voltagem (pontos "V:deadtime_ms")
+        <textarea id="voltCurve" rows="3">10:1.20,11:0.90,12:0.70,13:0.60,14:0.50</textarea>
+      </label>
+    </div>
+
+    <div class="card">
+      <h2>RPM / 3D</h2>
+      <label>Faixa de RPM (lista) <input id="rpmList" type="text" value="1000,1500,2000,2500,3000,3500,4000,4500,5000,5500,6000,6500,7000,7500,8000"></label>
+      <label class="muted">Curva de compensação RPM (pontos "rpm:fator")
+        <textarea id="rpmCurve" rows="4">1000:0.92,3000:1.00,5000:1.06,6500:1.04,8000:1.02</textarea>
+      </label>
+    </div>
+
+    <div class="card">
+      <h2>Exportar</h2>
+      <button class="btn" id="btnCsv">Baixar CSV</button>
+      <p class="footer">O CSV contém MAP, λ alvo, VE, PW_teo e PW_final. Você pode colar na FT ou em planilha.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h2>Resultado</h2>
+    <div style="margin-bottom:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <div>
+        <label style="margin-bottom:2px;">Aplicar compensações</label>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <label><input id="applyEng" type="checkbox"> Motor</label>
+          <input id="engTemp" type="range" min="-10" max="120" step="1" value="20" style="width:160px;">
+          <span id="engTempVal" class="pill">20°C</span>
+          <label><input id="applyAir" type="checkbox"> Ar</label>
+          <input id="airTemp" type="range" min="-10" max="60" step="1" value="25" style="width:160px;">
+          <span id="airTempVal" class="pill">25°C</span>
+          <label><input id="applyVolt" type="checkbox"> Bateria</label>
+          <input id="battVolt" type="range" min="10" max="15" step="0.1" value="13.0" style="width:160px;">
+          <span id="battVoltVal" class="pill">13.0V</span>
+        </div>
+      </div>
+      <div>
+        <label style="margin-bottom:2px;">Aplicar λ-alvo no 3D</label>
+        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+          <label style="margin:0;"><input id="applyLambda3D" type="checkbox"> Usar Malha Fechada no 3D de Injeção</label>
+          <span class="pill">Tipo de mapa</span>
+          <label class="muted" style="margin:0;">Selecionar</label>
+          <select id="mapTypeBottom" style="min-width:220px;">
+            <option value="main_fuel_2d" selected>Injeção 2D (MAP)</option>
+            <option value="tps_comp_2d">Compensação TPS (2D)</option>
+            <option value="rpm_comp_2d">Compensação RPM (2D)</option>
+            <option value="temp_comp_2d">Compensação Temperatura Motor (2D)</option>
+            <option value="air_comp_2d">Compensação Temperatura do Ar (2D)</option>
+            <option value="volt_comp_2d">Compensação Voltagem (2D)</option>
+            <option value="main_fuel_3d">Injeção 3D</option>
+            <option value="lambda_3d">Lambda 3D</option>
+            <option value="afr_3d">AFR 3D</option>
+            <option value="ignition_3d">Ignição 3D</option>
+          </select>
+          
+          <span class="pill">Fator 3D</span>
+          <label class="muted" style="margin:0;">x</label>
+          <input id="global3DFactor" type="number" step="0.01" value="1.00" style="width:100px;">
+        </div>
+      </div>
+    </div>
+    <div style="margin-bottom:8px;">
+      <button class="btn" id="tabLine">Linha MAP</button>
+      <button class="btn" id="tabRPM">RPM (2D)</button>
+      <button class="btn" id="tabMatrix">Matriz MAP×RPM</button>
+      <button class="btn" id="tab3D">Mapa 3D</button>
+      <button class="btn" id="tabCL">Malha Fechada</button>
+      <button class="btn" id="tab2DMaps">Mapas 2D</button>
+      <button class="btn" id="tabVE3D">VE 3D</button>
+    </div>
+    <div id="meta" class="note"></div>
+    <div id="viewLine" style="overflow:auto; max-height: 60vh; display:block;">
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th class="row-head">MAP (bar)</th>
+            <th>Pabs (bar)</th>
+            <th>P_rail (bar)</th>
+            <th>ΔP (bar)</th>
+            <th>λ alvo</th>
+            <th>VE</th>
+            <th>Fluxo (mg/ms)</th>
+            <th>PW teórico (ms)</th>
+            <th>PW final (ms)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div id="viewMatrix" style="overflow:auto; max-height: 60vh; display:none;">
+      <table id="tbl2">
+        <thead id="tbl2head"></thead>
+        <tbody id="tbl2body"></tbody>
+      </table>
+    </div>
+    <div id="viewRPM" style="overflow:auto; max-height:60vh; display:none;">
+      <div style="margin:6px 0; display:flex; gap:8px; align-items:center;">
+        <label>MAP ref (bar)
+          <select id="mapRef"></select>
+        </label>
+      </div>
+      <table id="tblRPM">
+        <thead><tr><th class="row-head">RPM</th><th>Valor</th></tr></thead>
+        <tbody id="tblRPMBody"></tbody>
+      </table>
+    </div>
+    <div id="view3D" style="overflow:auto; max-height: 60vh; display:none;">
+      <small class="note">Visualização 3D simplificada como matriz colorida (placeholder).</small>
+      <table id="tbl3d">
+        <thead id="tbl3dhead"></thead>
+        <tbody id="tbl3dbody"></tbody>
+      </table>
+    </div>
+    <div id="viewCL" style="overflow:auto; max-height: 60vh; display:none;">
+      <div style="margin:6px 0; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <label>Modo λ-alvo
+          <select id="clMode">
+            <option value="strategy" selected>Estratégia</option>
+            <option value="manual">Manual</option>
+          </select>
+        </label>
+        <label>Fator λ-alvo <input id="clFactor" type="number" step="0.01" value="1.00"></label>
+        <label class="muted">Curva RPM λ (pontos "rpm:fator")
+          <textarea id="clRpmCurve" rows="2">1000:1.00,3000:1.00,5000:1.00,6500:1.00,8000:1.00</textarea>
+        </label>
+      </div>
+      <table id="tblCL">
+        <thead id="tblCLHead"></thead>
+        <tbody id="tblCLBody"></tbody>
+      </table>
+      <div style="margin-top:8px;"><button class="btn" id="btnCsvCL">Baixar CSV λ</button></div>
+    </div>
+    <div id="viewVE3D" style="overflow:auto; max-height: 60vh; display:none;">
+      <div style="margin:6px 0; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <small class="note">Mapa VE 3D (MAP × RPM). VE(MAP) ajustado por fator VE×RPM ou grid editado.</small>
+        <label><input id="editVE3D" type="checkbox"> Modo edição</label>
+        <label><input id="useVE3DGrid" type="checkbox"> Usar VE 3D editado no cálculo</label>
+        <button class="btn" id="btnSaveVE3D">Salvar VE 3D</button>
+        <button class="btn" id="btnClearVE3D">Limpar VE 3D salvo</button>
+        <button class="btn" id="btnJsonVE3D">Baixar JSON</button>
+        <button class="btn" id="btnCsvVE3D">Baixar CSV VE 3D</button>
+        <button class="btn" id="btnUpdateVE" title="Gerar VE 3D pelos parâmetros">Atualizar VE</button>
+        <label class="muted">Importar JSON <input id="fileVE3D" type="file" accept="application/json"></label>
+      </div>
+      <table id="tblVE3D">
+        <thead id="tblVE3DHead"></thead>
+        <tbody id="tblVE3DBody"></tbody>
+      </table>
+      
+      </div>
+    <div id="view2DMaps" style="overflow:auto; max-height:60vh; display:none;">
+      <small class="note">Visualização horizontal dos mapas 2D: colunas são os pontos do eixo, e a linha contém os valores.</small>
+      <table id="tbl2DMaps">
+        <thead id="tbl2DMapsHead"></thead>
+        <tbody id="tbl2DMapsBody"></tbody>
+      </table>
+    </div>
+    <div class="footer">
+      Fórmulas: Speed-Density com IAT constante. PW = m_combustível / fluxo_bico + DeadTime.
+      ΔPW usa 0,0 bar como referência (para FT Simplificado).
+    </div>
+  </div>
+
+<script>
+function parsePairs(text) {
+  const pairs = [];
+  text.split(",").forEach(tok => {
+    if(!tok.trim()) return;
+    const [x,y] = tok.split(":").map(s=>s.trim());
+    const a = parseFloat(x), b = parseFloat(y);
+    if(isFinite(a) && isFinite(b)) pairs.push([a,b]);
+  });
+  pairs.sort((a,b)=>a[0]-b[0]);
+  return pairs;
+}
+function interp(pairs, x) {
+  if (pairs.length===0) return NaN;
+  if (x<=pairs[0][0]) return pairs[0][1];
+  if (x>=pairs[pairs.length-1][0]) return pairs[pairs.length-1][1];
+  for (let i=0;i<pairs.length-1;i++) {
+    const [x0,y0]=pairs[i], [x1,y1]=pairs[i+1];
+    if (x>=x0 && x<=x1) {
+      const t=(x-x0)/(x1-x0);
+      return y0 + t*(y1-y0);
+    }
+  }
+  return pairs[pairs.length-1][1];
+}
+function lambdaFromStrategy(strategy, map) {
+  const CONS = parsePairs("-1.0:1.02,-0.3:1.00,0.0:0.88,0.5:0.84,1.0:0.82,2.0:0.80");
+  const BAL  = parsePairs("-1.0:1.02,-0.3:1.01,0.0:0.87,0.5:0.83,1.0:0.81,2.0:0.79");
+  const AGR  = parsePairs("-1.0:1.04,-0.3:1.02,0.0:0.89,0.5:0.85,1.0:0.83,2.0:0.81");
+  if (strategy==="conservadora") return interp(CONS, map);
+  if (strategy==="agressiva")    return interp(AGR, map);
+  return interp(BAL, map); // balanceada default
+}
+function getMapType(){
+  const el = document.getElementById('mapTypeBottom');
+  return (el && el.value) ? el.value : 'main_fuel_2d';
+}
+function compute() {
+  const dispL = parseFloat(document.getElementById('dispL').value);
+  const nCyl = parseInt(document.getElementById('nCyl').value,10);
+  const iatC = parseFloat(document.getElementById('iatC').value);
+  const reg11 = document.getElementById('reg11').value === "1";
+  const isTurbo = document.getElementById('isTurbo').value === "1";
+  const maxBoost = parseFloat(document.getElementById('maxBoost').value);
+  const injLbph = parseFloat(document.getElementById('injLbph').value);
+  const nInj = parseInt(document.getElementById('nInj').value,10);
+  const dt = parseFloat(document.getElementById('dt').value);
+  const pwmin = parseFloat(document.getElementById('pwmin').value);
+  const pbase = parseFloat(document.getElementById('pbase').value);
+  const fuelType = document.getElementById('fuelType').value;
+  const afrStqSel = parseFloat(document.getElementById('afrStq').value);
+  const FUEL_PRESETS = { ethanol:9.0, e85:9.8, gasoline:14.7, methanol:6.4, nitromethane:1.7, diesel:14.5, gnv:17.2 };
+  const afrBase = FUEL_PRESETS[fuelType] || afrStqSel;
+  const strategy = document.getElementById('strategy').value;
+  const mapMode = document.getElementById('mapMode').value;
+  const mapType = getMapType();
+  // Eixo MAP: permite 'start,end,step' (3 itens) ou lista explícita de pontos
+  const mapRangeText = document.getElementById('mapRange').value;
+  const mr = mapRangeText.split(',').map(s=>parseFloat(s.trim())).filter(isFinite);
+  let maps = [];
+  if (mr.length === 3) {
+    let [mStart, mEnd, mStep] = mr;
+    if (isTurbo && isFinite(maxBoost)) { mStart = -1.0; mEnd = maxBoost; mStep = 0.1; }
+    for (let x=mStart; x<=mEnd+1e-9; x+=mStep) maps.push(Math.round(x*100)/100);
+  } else if (mr.length > 0) {
+    maps = mr.map(v=>Math.round(v*100)/100);
+  } else {
+    maps = [-1.0,-0.5,0.0,0.5,1.0,1.5,2.0];
+  }
+  // Eixo RPM e VE 3D (carregamento precoce para uso na linha MAP)
+  const rpmList = document.getElementById('rpmList').value.split(',').map(s=>parseInt(s.trim(),10)).filter(n=>isFinite(n)&&n>0);
+  function loadSavedVE3D(){
+    try {
+      const raw = localStorage.getItem('ve3d_matrix');
+      const axes = localStorage.getItem('ve3d_axes');
+      if (!raw || !axes) return null;
+      const mat = JSON.parse(raw);
+      const ax = JSON.parse(axes);
+      if (!Array.isArray(ax.maps) || !Array.isArray(ax.rpms)) return null;
+      const sameMaps = ax.maps.length===maps.length && ax.maps.every((v,i)=>Math.abs(v-maps[i])<1e-9);
+      const sameRpms = ax.rpms.length===rpmList.length && ax.rpms.every((v,i)=>v===rpmList[i]);
+      if (!sameMaps || !sameRpms) return null;
+      if (!Array.isArray(mat) || mat.length!==rpmList.length) return null;
+      for (const row of mat){ if (!Array.isArray(row) || row.length!==maps.length) return null; }
+      return mat;
+    } catch(e){ return null; }
+  }
+  const savedVEGrid = loadSavedVE3D();
+  const useVEGrid = !!(document.getElementById('useVE3DGrid') && document.getElementById('useVE3DGrid').checked);
+  const defaultVE = 0.90;
+  function nearestIndex(arr, val){ let best=0,bd=Infinity; for(let i=0;i<arr.length;i++){ const d=Math.abs(arr[i]-val); if(d<bd){bd=d;best=i;} } return best; }
+  const rpmRef = rpmList.length? rpmList[Math.floor(rpmList.length/2)] : 3000;
+  function getVECell(mapVal, rpmVal){
+    if (!savedVEGrid || !savedVEGrid.length) return null;
+    const mi = nearestIndex(maps, mapVal);
+    const ri = nearestIndex(rpmList, rpmVal);
+    const ve = savedVEGrid?.[ri]?.[mi];
+    return (isFinite(ve) ? parseFloat(ve) : null);
+  }
+  // VE 3D passa a ser a única fonte de VE. Curvas removidas.
+  const lamPairs = parsePairs(document.getElementById('lambdaCurve').value);
+  const airList = document.getElementById('airList').value.split(',').map(s=>parseFloat(s.trim())).filter(isFinite);
+  const airPairs = parsePairs(document.getElementById('airCurve').value);
+  // Compensações dinamicamente aplicadas (sliders)
+  const applyEng = document.getElementById('applyEng').checked;
+  const applyAir = document.getElementById('applyAir').checked;
+  const applyVolt = document.getElementById('applyVolt').checked;
+  const engT = parseFloat(document.getElementById('engTemp').value);
+  const airT = parseFloat(document.getElementById('airTemp').value);
+  const battV = parseFloat(document.getElementById('battVolt').value);
+  document.getElementById('engTempVal').textContent = `${engT.toFixed(0)}°C`;
+  document.getElementById('airTempVal').textContent = `${airT.toFixed(0)}°C`;
+  document.getElementById('battVoltVal').textContent = `${battV.toFixed(1)}V`;
+  const T = (iatC + 273.15); // Kelvin
+
+  // Vazão por bico em mg/ms: 1 lb/h = 0,126 mg/ms
+  const flow_nom_mg_ms = injLbph * 0.126; // nominal @ 3 bar
+  // A vazão real por ponto será calculada via sqrt(ΔP/3) mais abaixo
+
+  // Volume por cilindro (m^3) – ciclo de admissão por cilindro
+  const V_cyl = (dispL / nCyl) * 1e-3;
+
+  // Lista de MAPs já construída acima (maps)
+
+  const rows = [];
+  let pw0 = null;
+  if (mapType === 'main_fuel_2d' || mapType === 'main_fuel_3d' || mapType === 'lambda_3d' || mapType === 'afr_3d' || mapType === 'ignition_3d') {
+  for (const m of maps) {
+    const Pabs_bar = 1 + m;
+    const Pabs_Pa = Pabs_bar * 1e5;
+    // Pressão no trilho (manômetro) e ΔP efetivo
+    let Prail_bar, deltaP_bar;
+    if (reg11) {
+      // Regulador 1:1 referenciado ao coletor
+      Prail_bar = pbase + m;         // P_rail sobe com MAP
+      deltaP_bar = pbase;            // ΔP constante
+    } else {
+      // Regulador fixo (sem 1:1)
+      Prail_bar = pbase;             // P_rail fixo
+      deltaP_bar = pbase - m;        // ΔP cai no boost
+    }
+
+    // Vazão real do bico (mg/ms) ajustada por ΔP usando lei da raiz
+    let flow_mg_ms = flow_nom_mg_ms * Math.sqrt(Math.max(deltaP_bar, 0) / 3.0);
+    // Proteção: se ΔP <= 0, fluxo = 0 (bico não injeta)
+    if (deltaP_bar <= 0) flow_mg_ms = 0;
+    // VE por MAP usando a malha VE 3D no RPM de referência
+    let VE = defaultVE;
+    if (useVEGrid) {
+      const veCell = getVECell(m, rpmRef);
+      if (veCell!=null) VE = veCell;
+    }
+    const lam = (strategy==="manual" ? interp(lamPairs, m) : lambdaFromStrategy(strategy, m));
+    const afr_target = afrBase * lam;
+
+    // Massa de ar por ciclo e por cilindro
+    const m_air_kg = (Pabs_Pa * V_cyl) / (287.0 * T) * VE;
+    const m_air_mg = m_air_kg * 1e6;
+
+    // Massa de combustível alvo
+    const m_fuel_mg = m_air_mg / afr_target;
+
+    // PW/Valor por tipo de mapa
+    let value_teo = NaN;
+    let value_final = NaN;
+    if (mapType === 'main_fuel_2d' || mapType === 'main_fuel_3d') {
+      // Injeção: PW teórico/final
+      value_teo = (flow_mg_ms > 0) ? (m_fuel_mg / flow_mg_ms) : Infinity; // ms
+      // Aplicar correções dos sliders
+      let corr = 1.0;
+      // Motor (usa tempCurve como fator %)
+      const engPairs = parsePairs(document.getElementById('tempCurve').value);
+      if (applyEng) corr *= (1 + (interp(engPairs, engT) / 100.0));
+      // Ar (usa mesma curva como proxy, pode ser separado futuramente)
+      if (applyAir) corr *= (1 + (interp(airPairs, airT) / 100.0));
+      // Voltagem (dead time adicional relativo a 13.0V)
+      const voltPairs = parsePairs(document.getElementById('voltCurve').value);
+      const dt_ref = interp(voltPairs, 13.0);
+      const dt_extra = applyVolt ? (interp(voltPairs, battV) - dt_ref) : 0.0;
+      value_final = Math.max((value_teo * corr) + dt + dt_extra, pwmin);
+    } else if (mapType === 'lambda_3d') {
+      value_teo = lam; value_final = lam;
+    } else if (mapType === 'afr_3d') {
+      const afr = afr_target; value_teo = afr; value_final = afr;
+    } else if (mapType === 'ignition_3d') {
+      // Avanço simples: base por rpm (estimado a partir de Pabs como proxy de carga)
+      // Aqui usamos um placeholder, pois não temos rpm na linha. Será aplicado na matriz.
+      value_teo = 0.0; value_final = 0.0;
+    }
+
+    rows.push({
+      map: m,
+      pabs: Pabs_bar,
+      prail: Prail_bar,
+      dP: deltaP_bar,
+      lam: lam,
+      ve: VE,
+      flow: flow_mg_ms,
+      pw_teo: value_teo,
+      pw_final: value_final
+    });
+    if (mapType==='main_fuel_2d' && Math.abs(m) < 1e-9) pw0 = value_final; // referência 0,0 bar
+  }
+  } else if (mapType === 'tps_comp_2d' || mapType === 'rpm_comp_2d' || mapType === 'temp_comp_2d' || mapType === 'volt_comp_2d' || mapType === 'air_comp_2d') {
+    // Mapas de compensação 2D
+    if (mapType === 'tps_comp_2d'){
+      const list = document.getElementById('tpsList').value.split(',').map(s=>parseFloat(s.trim())).filter(isFinite);
+      const pairs = parsePairs(document.getElementById('tpsCurve').value);
+      for (const x of list){ rows.push({map:x, pabs:NaN, prail:NaN, dP:NaN, lam:NaN, ve:NaN, flow:NaN, pw_teo:interp(pairs,x), pw_final:interp(pairs,x)}); }
+    } else if (mapType === 'rpm_comp_2d'){
+      const list = document.getElementById('rpmList').value.split(',').map(s=>parseInt(s.trim(),10)).filter(n=>isFinite(n)&&n>0);
+      const pairs = parsePairs(document.getElementById('rpmCurve').value);
+      for (const x of list){ rows.push({map:x, pabs:NaN, prail:NaN, dP:NaN, lam:NaN, ve:NaN, flow:NaN, pw_teo:interp(pairs,x), pw_final:interp(pairs,x)}); }
+    } else if (mapType === 'temp_comp_2d'){
+      const list = document.getElementById('tempList').value.split(',').map(s=>parseFloat(s.trim())).filter(isFinite);
+      const pairs = parsePairs(document.getElementById('tempCurve').value);
+      for (const x of list){ rows.push({map:x, pabs:NaN, prail:NaN, dP:NaN, lam:NaN, ve:NaN, flow:NaN, pw_teo:interp(pairs,x), pw_final:interp(pairs,x)}); }
+    } else if (mapType === 'air_comp_2d'){
+      const list = airList;
+      const pairs = airPairs;
+      for (const x of list){ rows.push({map:x, pabs:NaN, prail:NaN, dP:NaN, lam:NaN, ve:NaN, flow:NaN, pw_teo:interp(pairs,x), pw_final:interp(pairs,x)}); }
+    } else if (mapType === 'volt_comp_2d'){
+      const list = document.getElementById('voltList').value.split(',').map(s=>parseFloat(s.trim())).filter(isFinite);
+      const pairs = parsePairs(document.getElementById('voltCurve').value);
+      for (const x of list){ rows.push({map:x, pabs:NaN, prail:NaN, dP:NaN, lam:NaN, ve:NaN, flow:NaN, pw_teo:interp(pairs,x), pw_final:interp(pairs,x)}); }
+    }
+  }
+
+  // Renderização
+  const tbody = document.querySelector("#tbl tbody");
+  const thead = document.querySelector("#tbl thead");
+  const is2DComp = (mapType==='tps_comp_2d' || mapType==='rpm_comp_2d' || mapType==='temp_comp_2d' || mapType==='air_comp_2d' || mapType==='volt_comp_2d');
+  if (thead) {
+    if (is2DComp) {
+      thead.innerHTML = '<tr><th class="row-head">Eixo</th><th>Valor</th></tr>';
+    } else {
+      thead.innerHTML = '<tr>'+
+        '<th class="row-head">MAP (bar)</th>'+
+        '<th>Pabs (bar)</th>'+
+        '<th>P_rail (bar)</th>'+
+        '<th>ΔP (bar)</th>'+
+        '<th>λ alvo</th>'+
+        '<th>VE</th>'+
+        '<th>Fluxo (mg/ms)</th>'+
+        '<th>PW teórico (ms)</th>'+
+        '<th>PW final (ms)</th>'+
+      '</tr>';
+    }
+  }
+  tbody.innerHTML = "";
+  for (const r of rows) {
+    const tr = document.createElement("tr");
+    function td(txt, cls) { const d=document.createElement("td"); d.textContent = txt; if (cls) d.className=cls; return d; }
+    if (is2DComp) {
+      tr.appendChild(td((isFinite(r.map)? r.map: 0).toFixed(2), "row-head"));
+      tr.appendChild(td((isFinite(r.pw_final)? r.pw_final: 0).toFixed(3)));
+    } else {
+      const showPW = (getMapType()==='main_fuel_2d' && mapMode==="delta" && pw0!=null) ? (r.pw_final - pw0) : r.pw_final;
+      tr.appendChild(td(r.map.toFixed(2), "row-head"));
+      tr.appendChild(td(r.pabs.toFixed(2)));
+      tr.appendChild(td(r.prail.toFixed(2)));
+      tr.appendChild(td(r.dP.toFixed(2)));
+      tr.appendChild(td(r.lam.toFixed(3)));
+      tr.appendChild(td(r.ve.toFixed(3)));
+      tr.appendChild(td((isFinite(r.flow)? r.flow: 0).toFixed(3)));
+      tr.appendChild(td((isFinite(r.pw_teo)? r.pw_teo: 0).toFixed(3)));
+      tr.appendChild(td((isFinite(showPW)? showPW: 0).toFixed(3)));
+    }
+    tbody.appendChild(tr);
+  }
+
+  // Info complementares (λ alvo 3D e Fator 3D)
+  const metaLam3D = document.getElementById('applyLambda3D').checked;
+  const metaG3D = parseFloat(document.getElementById('global3DFactor').value || '1.0');
+
+  document.getElementById("meta").innerHTML =
+    `Fluxo nominal @3bar: <b>${(injLbph*0.126).toFixed(3)}</b> mg/ms por bico &nbsp;|&nbsp; `+
+    `P_base combustível: <b>${pbase.toFixed(1)} bar</b> &nbsp;|&nbsp; `+
+    `V_cil: <b>${(dispL/nCyl).toFixed(3)} L</b> &nbsp;|&nbsp; AFR esteq: <b>${afrBase}</b> &nbsp;|&nbsp; `+
+    `Regulador: <b>${reg11? '1:1 (ΔP constante)': 'fixo (ΔP varia)'}</b> &nbsp;|&nbsp; `+
+    `Turbo: <b>${isTurbo? ('Sim ('+maxBoost.toFixed(1)+' bar)') : 'Não'}</b> &nbsp;|&nbsp; `+
+    `Estratégia λ: <b>${strategy}</b> &nbsp;|&nbsp; `+
+    `Alvo λ 3D: <b>${metaLam3D? 'ON':'OFF'}</b> &nbsp;|&nbsp; `+
+    `Fator 3D: <b>${metaG3D.toFixed(2)}</b> &nbsp;|&nbsp; `+
+    `Modo mapa: <b>${mapMode}</b>`;
+
+  // Matriz MAP×RPM com compensação por RPM
+  const rpmPairs = parsePairs(document.getElementById('rpmCurve').value);
+  const rpmMin = rpmList.length? Math.min(...rpmList) : 1000;
+  const rpmMax = rpmList.length? Math.max(...rpmList) : 8000;
+  const fKind = fuelType; // usar tipo explícito
+  function rpmShape(rpm){
+    const t = Math.min(1, Math.max(0, (rpm - rpmMin)/(rpmMax - rpmMin || 1)));
+    const k = (fKind==='methanol')? 0.07 : (fKind==='ethanol'? 0.06 : (fKind==='e85'? 0.05 : (fKind==='diesel'? 0.03 : (fKind==='nitromethane'? 0.08 : 0.04))));
+    return 1 - k*t; // ligeiramente mais rico (λ menor) em alta
+  }
+  const tbl2head = document.getElementById('tbl2head');
+  const tbl2body = document.getElementById('tbl2body');
+  tbl2head.innerHTML = ""; tbl2body.innerHTML = "";
+  // Cabeçalho da matriz
+  const trh = document.createElement('tr');
+  trh.innerHTML = ['RPM'].concat(maps.map(m=>m.toFixed(2))).map((h,i)=>`<th ${i===0?'class="row-head"':''}>${h}</th>`).join('');
+  tbl2head.appendChild(trh);
+  // Corpo: para cada RPM, aplicar fator e preencher
+  for (const rpm of rpmList) {
+    const tr = document.createElement('tr');
+    tr.appendChild((()=>{const d=document.createElement('td'); d.textContent=rpm; d.className='row-head'; return d;})());
+    let f = interp(rpmPairs, rpm);
+    const mt = getMapType();
+    for (const r of rows) {
+      let base = (isFinite(r.pw_final)? r.pw_final: 0);
+      // λ/AFR não variam com RPM
+      if (mt === 'lambda_3d' || mt === 'afr_3d') f = 1.0;
+      // Ignição: avanço base por RPM + correção por carga
+      if (mt === 'ignition_3d') {
+        const base_adv = 15 + Math.max(0, (rpm - 1000)) / 1000 * 5;
+        const load_corr = (isFinite(r.dP) && r.dP>0 ? (r.dP>=3? -3 : (r.dP>=2? -1.5 : 0)) : 2);
+        base = base_adv + load_corr;
+        f = 1.0;
+      }
+      // Aplicar VE 3D: usar razão VE(map,rpm)/VE(map,rpmRef)
+      let val = base * f;
+      if (mt === 'main_fuel_3d') {
+        const veNow = useVEGrid ? getVECell(r.map, rpm) : null;
+        const veBase = useVEGrid ? getVECell(r.map, rpmRef) : null;
+        const ratio = (veNow!=null && veBase!=null && veBase>0) ? (veNow/veBase) : 1.0;
+        val = val * ratio;
+      }
+      const td = document.createElement('td');
+      td.textContent = val.toFixed(3);
+      tr.appendChild(td);
+    }
+    tbl2body.appendChild(tr);
+  }
+
+  // 3D (placeholder): reutilizar a matriz e colorir suavemente
+  const tbl3dhead = document.getElementById('tbl3dhead');
+  const tbl3dbody = document.getElementById('tbl3dbody');
+  tbl3dhead.innerHTML = ""; tbl3dbody.innerHTML = "";
+  const trh3 = document.createElement('tr');
+  trh3.innerHTML = ['RPM'].concat(maps.map(m=>m.toFixed(2))).map((h,i)=>`<th ${i===0?'class="row-head"':''}>${h}</th>`).join('');
+  tbl3dhead.appendChild(trh3);
+  // calcular min/max
+  let vmin=Infinity, vmax=-Infinity; const grid=[];
+  for (const rpm of rpmList) {
+    let fline = interp(rpmPairs, rpm);
+    let mt = getMapType();
+    const applyLam3D = document.getElementById('applyLambda3D').checked;
+    if (applyLam3D) mt = 'main_fuel_3d';
+    const clModeEl = document.getElementById('clMode');
+    const clFactorEl = document.getElementById('clFactor');
+    const clMode = clModeEl ? clModeEl.value : 'strategy';
+    const clFactor = clFactorEl ? parseFloat(clFactorEl.value || '1.0') : 1.0;
+    const clRpmCurveEl = document.getElementById('clRpmCurve');
+    const clRpmPairs = clRpmCurveEl ? parsePairs(clRpmCurveEl.value) : [];
+    const g3d = parseFloat(document.getElementById('global3DFactor').value || '1.0');
+    const useVE = !!(document.getElementById('useVE3DGrid') && document.getElementById('useVE3DGrid').checked);
+    const row = maps.map(m => {
+      // Encontrar linha/base do MAP m
+      const rline = rows.find(x => Math.abs(x.map - m) < 1e-9) || rows[0];
+      let base = (rline && isFinite(rline.pw_final)) ? rline.pw_final : 0;
+      if (mt==='lambda_3d' || mt==='afr_3d') fline = 1.0;
+      if (mt==='ignition_3d') {
+        const base_adv = 15 + Math.max(0, (rpm - 1000)) / 1000 * 5;
+        const load_corr = (rline && isFinite(rline.dP) && rline.dP>0 ? (rline.dP>=3? -3 : (rline.dP>=2? -1.5 : 0)) : 2);
+        base = base_adv + load_corr;
+        fline = 1.0;
+      }
+      // Aplicar alvo de sonda no 3D (recalcular PW com λ da malha)
+      if (mt==='main_fuel_3d' && applyLam3D) {
+        const lam_base = (clMode==='manual')? interp(lamPairs, m) : lambdaFromStrategy(strategy, m);
+        const f_rpm_user = clRpmPairs.length? interp(clRpmPairs, rpm) : 1.0;
+        const lam_tgt = lam_base * clFactor * f_rpm_user * rpmShape(rpm);
+        const afr_tgt = afrBase * lam_tgt;
+        // Recalcular PW teórico por célula (usa mesma física da linha) com correções dos sliders
+        const Pabs_bar = 1 + m;
+        const Pabs_Pa = Pabs_bar * 1e5;
+        let Prail_bar, deltaP_bar;
+        if (reg11) { Prail_bar = pbase + m; deltaP_bar = pbase; } else { Prail_bar = pbase; deltaP_bar = pbase - m; }
+        let flow_mg_ms = flow_nom_mg_ms * Math.sqrt(Math.max(deltaP_bar, 0) / 3.0);
+        if (deltaP_bar <= 0) flow_mg_ms = 0;
+      let VE = defaultVE;
+      if (useVE) {
+        const v = getVECell(m, rpm);
+        if (v!=null) VE = v;
+      }
+        const m_air_kg = (Pabs_Pa * V_cyl) / (287.0 * T) * VE;
+        const m_air_mg = m_air_kg * 1e6;
+        const m_fuel_mg = m_air_mg / afr_tgt;
+        let val_teo = (flow_mg_ms > 0) ? (m_fuel_mg / flow_mg_ms) : Infinity;
+        // Correções sliders
+        let corr = 1.0;
+        const engPairs = parsePairs(document.getElementById('tempCurve').value);
+        if (applyEng) corr *= (1 + (interp(engPairs, engT) / 100.0));
+        if (applyAir) corr *= (1 + (interp(airPairs, airT) / 100.0));
+        const voltPairs = parsePairs(document.getElementById('voltCurve').value);
+        const dt_ref = interp(voltPairs, 13.0);
+        const dt_extra = applyVolt ? (interp(voltPairs, battV) - dt_ref) : 0.0;
+        const pw_cell = Math.max((val_teo * corr) + dt + dt_extra, pwmin);
+        return pw_cell * g3d; // aplica fator global 3D e não usa fline aqui
+      }
+      // Saídas por tipo
+      if (mt==='main_fuel_3d') {
+        // Sem alvo λ: linha×f_rpm e ajustar por razão VE(map,rpm)/VE(map,rpmRef)
+        let scaled = base * fline;
+        const veNow = useVE ? getVECell(m, rpm) : null;
+        const veBase = useVE ? getVECell(m, rpmRef) : null;
+        const ratio = (veNow!=null && veBase!=null && veBase>0) ? (veNow/veBase) : 1.0;
+        scaled = scaled * ratio;
+        return scaled * g3d;
+      }
+      return base * fline;
+    });
+    grid.push(row);
+    for (const v of row) { if (isFinite(v)) { if (v<vmin) vmin=v; if (v>vmax) vmax=v; } }
+  }
+  function color(v){ if(!isFinite(v)||vmax===vmin) return '#111827'; const t=(v-vmin)/(vmax-vmin); const r=Math.round(255*(t)); const b=Math.round(255*(1-t)); return `rgb(${r},40,${b})`; }
+  for (let i=0;i<rpmList.length;i++){
+    const tr=document.createElement('tr');
+    const td0=document.createElement('td'); td0.textContent=rpmList[i]; td0.className='row-head'; tr.appendChild(td0);
+    for (const v of grid[i]){ const td=document.createElement('td'); td.textContent=(isFinite(v)?v:0).toFixed(3); td.style.background=color(v); tr.appendChild(td);} 
+    tbl3dbody.appendChild(tr);
+  }
+
+  // Aba Mapas 2D: visualização horizontal eixo→colunas
+  const tbl2DMapsHead = document.getElementById('tbl2DMapsHead');
+  const tbl2DMapsBody = document.getElementById('tbl2DMapsBody');
+  if (tbl2DMapsHead && tbl2DMapsBody) {
+    tbl2DMapsHead.innerHTML = '';
+    tbl2DMapsBody.innerHTML = '';
+    if (is2DComp) {
+      const head = document.createElement('tr');
+      const cols = rows.map(r => (isFinite(r.map)? r.map: 0).toFixed(2));
+      head.innerHTML = ['Ref'].concat(cols).map((h,i)=>`<th ${i===0?'class=\"row-head\"':''}>${h}</th>`).join('');
+      tbl2DMapsHead.appendChild(head);
+      const tr = document.createElement('tr');
+      tr.appendChild((()=>{const d=document.createElement('td'); d.textContent = 'Valor'; d.className='row-head'; return d;})());
+      for (const r of rows) {
+        const td = document.createElement('td'); td.textContent = (isFinite(r.pw_final)? r.pw_final: 0).toFixed(3); tr.appendChild(td);
+      }
+      tbl2DMapsBody.appendChild(tr);
+    } else {
+      const head = document.createElement('tr');
+      head.innerHTML = ['MAP'].concat(maps.map(m=>m.toFixed(2))).map((h,i)=>`<th ${i===0?'class=\"row-head\"':''}>${h}</th>`).join('');
+      tbl2DMapsHead.appendChild(head);
+      const tr = document.createElement('tr');
+      tr.appendChild((()=>{const d=document.createElement('td'); d.textContent = 'PW'; d.className='row-head'; return d;})());
+      for (const m of maps) {
+        const rline = rows.find(x=> Math.abs(x.map-m)<1e-9) || rows[0];
+        const td = document.createElement('td'); td.textContent = (rline && isFinite(rline.pw_final)? rline.pw_final: 0).toFixed(3); tr.appendChild(td);
+      }
+      tbl2DMapsBody.appendChild(tr);
+    }
+  }
+
+  // VE 3D (MAP × RPM) - construção + coloração + edição
+  const tblVE3DHead = document.getElementById('tblVE3DHead');
+  const tblVE3DBody = document.getElementById('tblVE3DBody');
+  if (tblVE3DHead && tblVE3DBody) {
+    tblVE3DHead.innerHTML = '';
+    tblVE3DBody.innerHTML = '';
+    const trhve = document.createElement('tr');
+    trhve.innerHTML = ['RPM'].concat(maps.map(m=>m.toFixed(2))).map((h,i)=>`<th ${i===0?'class=\"row-head\"':''}>${h}</th>`).join('');
+    tblVE3DHead.appendChild(trhve);
+    let veMin=Infinity, veMax=-Infinity;
+    const veGrid = [];
+    const editMode = !!(document.getElementById('editVE3D') && document.getElementById('editVE3D').checked);
+    for (const rpm of rpmList) {
+      const i = rpmList.indexOf(rpm);
+      const row = maps.map((m, j) => {
+        const ve_auto = defaultVE;
+        const ve_cell = (savedVEGrid && savedVEGrid[i] && isFinite(savedVEGrid[i][j])) ? parseFloat(savedVEGrid[i][j]) : ve_auto;
+        if (isFinite(ve_cell)) { if (ve_cell<veMin) veMin=ve_cell; if (ve_cell>veMax) veMax=ve_cell; }
+        return ve_cell;
+      });
+      veGrid.push({rpm, row});
+    }
+    function colorVE(v){ if(!isFinite(v)||veMax===veMin) return '#111827'; const t=(v-veMin)/(veMax-veMin); const r=Math.round(255*(1-t)); const g=40; const b=Math.round(255*(t)); return `rgb(${r},${g},${b})`; }
+    for (let i=0;i<veGrid.length;i++) {
+      const {rpm,row} = veGrid[i];
+      const tr = document.createElement('tr');
+      const tdR = document.createElement('td'); tdR.textContent=rpm; tdR.className='row-head'; tr.appendChild(tdR);
+      for (let j=0;j<row.length;j++) {
+        const ve = row[j];
+        const td = document.createElement('td');
+        td.textContent = (isFinite(ve)? ve: 0).toFixed(3);
+        td.style.background = colorVE(ve);
+        if (editMode) {
+          td.contentEditable = 'true';
+          td.style.cursor = 'text';
+          td.addEventListener('input', (e)=>{
+            const val = parseFloat((e.target.textContent||'').replace(',', '.'));
+            if (!isFinite(val)) return;
+            let mat;
+            try { mat = JSON.parse(localStorage.getItem('ve3d_matrix')||'null'); } catch { mat = null; }
+            if (!mat || !Array.isArray(mat) || mat.length!==rpmList.length) mat = Array.from({length:rpmList.length}, ()=>Array(maps.length).fill(null));
+            mat[i][j] = val;
+            localStorage.setItem('ve3d_matrix', JSON.stringify(mat));
+            localStorage.setItem('ve3d_axes', JSON.stringify({maps, rpms: rpmList}));
+          });
+        }
+        tr.appendChild(td);
+      }
+      tblVE3DBody.appendChild(tr);
+    }
+  }
+
+  // Malha Fechada (λ-alvo) MAP×RPM (construção + coloração)
+  const tblCLHead = document.getElementById('tblCLHead');
+  const tblCLBody = document.getElementById('tblCLBody');
+  if (tblCLHead && tblCLBody) {
+    tblCLHead.innerHTML = '';
+    tblCLBody.innerHTML = '';
+    const clModeEl = document.getElementById('clMode');
+    const clFactorEl = document.getElementById('clFactor');
+    const clRpmCurveEl = document.getElementById('clRpmCurve');
+    const clMode = clModeEl ? clModeEl.value : 'strategy';
+    const clFactor = clFactorEl ? parseFloat(clFactorEl.value || '1.0') : 1.0;
+    const clRpmPairs = clRpmCurveEl ? parsePairs(clRpmCurveEl.value) : [];
+    const trhcl = document.createElement('tr');
+    trhcl.innerHTML = ['RPM'].concat(maps.map(m=>m.toFixed(2))).map((h,i)=>`<th ${i===0?'class=\"row-head\"':''}>${h}</th>`).join('');
+    tblCLHead.appendChild(trhcl);
+    // montar grid e achar min/max
+    let lamMin=Infinity, lamMax=-Infinity;
+    const clGrid = [];
+    for (const rpm of rpmList) {
+      const f_rpm_user = clRpmPairs.length? interp(clRpmPairs, rpm) : 1.0;
+      const row = maps.map(m => {
+        const lam_base = (clMode==='manual')? interp(lamPairs, m) : lambdaFromStrategy(strategy, m);
+        const lam = lam_base * clFactor * f_rpm_user * rpmShape(rpm);
+        if (isFinite(lam)) { if (lam<lamMin) lamMin=lam; if (lam>lamMax) lamMax=lam; }
+        return lam;
+      });
+      clGrid.push({rpm, row});
+    }
+    function colorLam(v){ if(!isFinite(v)||lamMax===lamMin) return '#111827'; const t=(v-lamMin)/(lamMax-lamMin); const r=Math.round(255*(1-t)); const g=50; const b=Math.round(255*(t)); return `rgb(${r},${g},${b})`; }
+    // preencher tabela
+    for (const {rpm,row} of clGrid) {
+      const tr = document.createElement('tr');
+      const tdR = document.createElement('td'); tdR.textContent=rpm; tdR.className='row-head'; tr.appendChild(tdR);
+      for (const lam of row) {
+        const td = document.createElement('td'); td.textContent = (isFinite(lam)? lam: 0).toFixed(3); td.style.background = colorLam(lam); tr.appendChild(td);
+      }
+      tblCLBody.appendChild(tr);
+    }
+  }
+}
+
+const BIND_IDS = ['mapTypeBottom','dispL','nCyl','iatC','reg11','isTurbo','maxBoost','injLbph','nInj','dt','pwmin','pbase','fuelType','afrStq','strategy','mapMode','mapRange','lambdaCurve','tpsList','tpsCurve','tempList','tempCurve','airList','airCurve','voltList','voltCurve','rpmList','rpmCurve','applyEng','applyAir','applyVolt','engTemp','airTemp','battVolt','applyLambda3D','editVE3D','useVE3DGrid','clMode','clFactor','mapRef','clRpmCurve','global3DFactor'];
+BIND_IDS.forEach(id=>{ const el=document.getElementById(id); if(el){ el.addEventListener('input', compute); el.addEventListener('change', compute); } });
+
+const btnCsv = document.getElementById('btnCsv');
+if (btnCsv) btnCsv.addEventListener('click', ()=>{
+  const rows = [...document.querySelectorAll("#tbl tbody tr")].map(tr=>[...tr.children].map(td=>td.textContent));
+  let csv = "MAP,Pabs,Prail,DeltaP,lambda,VE,Fluxo_mg_ms,PW_teo_ms,PW_final_ms\n";
+  rows.forEach(r=>{ csv += r.join(",") + "\n"; });
+  const blob = new Blob([csv], {type: "text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = "mapa_injecao_calculado.csv";
+  document.body.appendChild(a);
+  a.click();
+  URL.revokeObjectURL(url);
+  a.remove();
+});
+
+// Exportar VE 3D como CSV
+const btnCsvVE3D = document.getElementById('btnCsvVE3D');
+if (btnCsvVE3D) btnCsvVE3D.addEventListener('click', ()=>{
+  const headRow = document.querySelector('#tblVE3D thead tr');
+  const bodyRows = document.querySelectorAll('#tblVE3D tbody tr');
+  if (!headRow || bodyRows.length===0) return;
+  const headers = [...headRow.children].map(th => th.textContent);
+  let csv = headers.join(',') + '\n';
+  bodyRows.forEach(tr => {
+    const cols = [...tr.children].map(td => td.textContent);
+    csv += cols.join(',') + '\n';
+  });
+  const blob = new Blob([csv], {type: 'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 've_3d.csv';
+  document.body.appendChild(a);
+  a.click();
+  URL.revokeObjectURL(url);
+  a.remove();
+});
+
+// Persistência e import/export JSON do VE 3D
+function getCurrentAxes(){
+  // Reconstroi maps e rpms a partir dos inputs da UI, sem depender de variáveis locais do compute()
+  const isTurbo = (document.getElementById('isTurbo') && document.getElementById('isTurbo').value === '1');
+  const maxBoost = parseFloat(document.getElementById('maxBoost') ? document.getElementById('maxBoost').value : 'NaN');
+  const mapRangeText = document.getElementById('mapRange') ? document.getElementById('mapRange').value : '';
+  const nums = mapRangeText.split(',').map(s=>parseFloat(s.trim())).filter(isFinite);
+  let maps = [];
+  if (nums.length === 3) {
+    let [mStart, mEnd, mStep] = nums;
+    if (isTurbo && isFinite(maxBoost)) { mStart = -1.0; mEnd = maxBoost; mStep = 0.1; }
+    for (let x=mStart; x<=mEnd+1e-9; x+=mStep) maps.push(Math.round(x*100)/100);
+  } else if (nums.length > 0) {
+    maps = nums.map(v=>Math.round(v*100)/100);
+  }
+  const rpmListEl = document.getElementById('rpmList');
+  const rpms = rpmListEl ? rpmListEl.value.split(',').map(s=>parseInt(s.trim(),10)).filter(n=>isFinite(n)&&n>0) : [];
+  return {maps, rpms};
+}
+const btnSaveVE3D = document.getElementById('btnSaveVE3D');
+if (btnSaveVE3D) btnSaveVE3D.addEventListener('click', ()=>{
+  const bodyRows = document.querySelectorAll('#tblVE3D tbody tr');
+  if (!bodyRows.length) return;
+  const mat = [];
+  bodyRows.forEach((tr)=>{
+    const tds = [...tr.children];
+    // primeiro é RPM
+    const row = tds.slice(1).map(td=>parseFloat((td.textContent||'').replace(',','.')));
+    mat.push(row);
+  });
+  const axes = getCurrentAxes();
+  localStorage.setItem('ve3d_matrix', JSON.stringify(mat));
+  localStorage.setItem('ve3d_axes', JSON.stringify({maps: axes.maps, rpms: axes.rpms}));
+  const useGridEl = document.getElementById('useVE3DGrid');
+  if (useGridEl) useGridEl.checked = true;
+  compute();
+});
+const btnClearVE3D = document.getElementById('btnClearVE3D');
+if (btnClearVE3D) btnClearVE3D.addEventListener('click', ()=>{
+  localStorage.removeItem('ve3d_matrix');
+  localStorage.removeItem('ve3d_axes');
+  compute();
+});
+const btnJsonVE3D = document.getElementById('btnJsonVE3D');
+if (btnJsonVE3D) btnJsonVE3D.addEventListener('click', ()=>{
+  const bodyRows = document.querySelectorAll('#tblVE3D tbody tr');
+  if (!bodyRows.length) return;
+  const mat = [];
+  bodyRows.forEach((tr)=>{
+    const row = [...tr.children].slice(1).map(td=>parseFloat((td.textContent||'').replace(',','.')));
+    mat.push(row);
+  });
+  const axes = getCurrentAxes();
+  const payload = { maps: axes.maps, rpms: axes.rpms, matrix: mat };
+  const blob = new Blob([JSON.stringify(payload)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 've_3d.json'; document.body.appendChild(a); a.click(); URL.revokeObjectURL(url); a.remove();
+});
+const fileVE3D = document.getElementById('fileVE3D');
+if (fileVE3D) fileVE3D.addEventListener('change', (e)=>{
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try {
+      const obj = JSON.parse(reader.result);
+      const mat = obj.matrix || obj;
+      const ax = obj.maps && obj.rpms ? {maps: obj.maps, rpms: obj.rpms} : {maps, rpms: rpmList};
+      if (!Array.isArray(mat) || mat.length===0) return;
+      localStorage.setItem('ve3d_matrix', JSON.stringify(mat));
+      localStorage.setItem('ve3d_axes', JSON.stringify(ax));
+      compute();
+    } catch(err) { console.error('Import VE3D JSON inválido', err); }
+  };
+  reader.readAsText(f);
+});
+
+// Tabs simples
+function showTab(id){
+  document.getElementById('viewLine').style.display = (id==='line')?'block':'none';
+  document.getElementById('viewRPM').style.display = (id==='rpm')?'block':'none';
+  document.getElementById('viewMatrix').style.display = (id==='matrix')?'block':'none';
+  document.getElementById('view3D').style.display = (id==='3d')?'block':'none';
+  document.getElementById('viewCL').style.display = (id==='cl')?'block':'none';
+  document.getElementById('view2DMaps').style.display = (id==='maps2d')?'block':'none';
+  document.getElementById('viewVE3D').style.display = (id==='ve3d')?'block':'none';
+}
+const tabLine = document.getElementById('tabLine'); if (tabLine) tabLine.addEventListener('click', ()=>{showTab('line');});
+const tabRPM = document.getElementById('tabRPM'); if (tabRPM) tabRPM.addEventListener('click', ()=>{showTab('rpm');});
+const tabMatrix = document.getElementById('tabMatrix'); if (tabMatrix) tabMatrix.addEventListener('click', ()=>{showTab('matrix');});
+const tab3D = document.getElementById('tab3D'); if (tab3D) tab3D.addEventListener('click', ()=>{showTab('3d');});
+const tabCL = document.getElementById('tabCL'); if (tabCL) tabCL.addEventListener('click', ()=>{showTab('cl');});
+const tab2DMaps = document.getElementById('tab2DMaps'); if (tab2DMaps) tab2DMaps.addEventListener('click', ()=>{showTab('maps2d');});
+const tabVE3D = document.getElementById('tabVE3D'); if (tabVE3D) tabVE3D.addEventListener('click', ()=>{showTab('ve3d');});
+// Restaura eixos salvos do VE 3D (se existirem) antes do primeiro compute
+(function restoreVE3DAxes(){
+  try {
+    const axesRaw = localStorage.getItem('ve3d_axes');
+    if (!axesRaw) return;
+    const ax = JSON.parse(axesRaw);
+    if (Array.isArray(ax.maps) && Array.isArray(ax.rpms)) {
+      const rpmListEl = document.getElementById('rpmList');
+      const mapRangeEl = document.getElementById('mapRange');
+      if (rpmListEl) rpmListEl.value = ax.rpms.join(',');
+      if (mapRangeEl) mapRangeEl.value = ax.maps.join(',');
+      const useGridEl = document.getElementById('useVE3DGrid');
+      if (useGridEl) useGridEl.checked = true;
+    }
+  } catch(e) { /* noop */ }
+})();
+
+compute();
+
+// Sincronizar seletor inferior de tipo de mapa com o superior
+document.getElementById('mapTypeBottom').addEventListener('change', compute);
+
+// Gerar VE 3D com base em presets de pontos e aplicar no grid/axes atuais
+function updateVE() {
+  // Pontos base (podem ser expostos depois como inputs)
+  const rpmPoints = [1000,2000,3000,4000,5000,6000,7000,8000];
+  const vePoints  = [0.70,0.78,0.86,0.90,0.88,0.86,0.84,0.82];
+  const mapPoints = [-1.0,-0.5,0.0,0.5,1.0,1.5,2.0];
+  const gainPoints= [0.80,0.90,1.00,1.05,1.08,1.10,1.12];
+
+  // Grids alvo (iremos também atualizar os eixos da UI para coincidirem)
+  const rpmGrid = [1000,1500,2000,2500,3000,3500,4000,4500,5000,5500,6000,6500,7000,7500,8000];
+  const mapGrid = [-1.0,-0.7,-0.5,-0.3,-0.1,0.0,0.3,0.5,0.7,1.0,1.3,1.5,1.8,2.0];
+
+  function interp1d(x, xs, ys) {
+    if (x <= xs[0]) return ys[0];
+    if (x >= xs[xs.length-1]) return ys[ys.length-1];
+    for (let i=0;i<xs.length-1;i++) {
+      if (x>=xs[i] && x<=xs[i+1]) {
+        const t=(x-xs[i])/(xs[i+1]-xs[i]);
+        return ys[i] + t*(ys[i+1]-ys[i]);
+      }
+    }
+    return ys[ys.length-1];
+  }
+
+  const matrix = [];
+  const veTextRows = [];
+  for (const rpm of rpmGrid) {
+    const veBase = interp1d(rpm, rpmPoints, vePoints);
+    const row = [];
+    const textCells = [];
+    for (const map of mapGrid) {
+      const gain = interp1d(map, mapPoints, gainPoints);
+      const ve = Math.min(Math.max(veBase * gain, 0.65), 1.10);
+      row.push(parseFloat(ve.toFixed(3)));
+      textCells.push(`${map.toFixed(1)}:${ve.toFixed(2)}`);
+    }
+    matrix.push(row);
+    veTextRows.push(textCells.join(","));
+  }
+
+  // Atualiza eixos da UI para coincidirem com o grid gerado
+  const rpmListEl = document.getElementById('rpmList');
+  if (rpmListEl) rpmListEl.value = rpmGrid.join(',');
+  const mapRangeEl = document.getElementById('mapRange');
+  if (mapRangeEl) mapRangeEl.value = mapGrid.join(','); // lista explícita
+
+  // Persistir a matriz no localStorage e marcar uso do grid editado
+  localStorage.setItem('ve3d_matrix', JSON.stringify(matrix));
+  localStorage.setItem('ve3d_axes', JSON.stringify({maps: mapGrid, rpms: rpmGrid}));
+  const useGridEl = document.getElementById('useVE3DGrid');
+  if (useGridEl) useGridEl.checked = true;
+
+  // Textarea removido; VE 3D agora é só via malha persistida
+
+  compute();
+}
+
+const btnUpdateVE = document.getElementById('btnUpdateVE');
+if (btnUpdateVE) btnUpdateVE.addEventListener('click', updateVE);
+</script>
+</body>
+</html>

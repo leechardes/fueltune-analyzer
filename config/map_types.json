@@ -231,6 +231,42 @@
       false
     ]
   },
+  "ve_3d_map": {
+    "name": "Mapa VE 3D",
+    "dimension": "3D",
+    "display_name": "Mapa VE 3D (32x32)",
+    "grid_size": 32,
+    "x_axis_type": "RPM",
+    "y_axis_type": "MAP",
+    "unit": "VE",
+    "min_value": 0.0,
+    "max_value": 1.2,
+    "description": "Mapa de Eficiência Volumétrica (VE) 3D - calculado como no painel de referência",
+    "default_rpm_values": [
+      1000, 1200, 1400, 1600, 1800, 2000, 2200, 2400,
+      2600, 2800, 3000, 3200, 3400, 3600, 3800, 4000,
+      4200, 4400, 4600, 4800, 5000, 5200, 5400, 5600,
+      5800, 6000, 6200, 6400, 6600, 6800, 7000, 7200
+    ],
+    "default_rpm_enabled": [
+      true, true, true, true, true, true, true, true,
+      true, true, true, true, true, true, true, true,
+      true, true, true, true, true, true, true, true,
+      true, true, true, true, true, true, true, true
+    ],
+    "default_map_values": [
+      -1.00, -0.90, -0.80, -0.70, -0.60, -0.50, -0.40, -0.30,
+      -0.20, -0.10, 0.00, 0.10, 0.20, 0.30, 0.40, 0.50,
+      0.60, 0.70, 0.80, 0.90, 1.00, 1.10, 1.20, 1.30,
+      1.40, 1.50, 1.60, 1.70, 1.80, 1.90, 2.00, 2.10
+    ],
+    "default_map_enabled": [
+      true, true, true, true, true, true, true, true,
+      true, true, true, true, true, true, true, true,
+      true, true, true, true, true, true, true, true,
+      true, true, true, true, true, true, true, true
+    ]
+  },
   "lambda_target_3d_map": {
     "name": "Mapa de Lambda Alvo",
     "dimension": "3D",

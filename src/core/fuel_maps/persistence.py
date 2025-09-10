@@ -47,6 +47,9 @@ class PersistenceManager:
         """Salva dados do mapa 3D em arquivo JSON persistente."""
         try:
             filename = self._get_filename(vehicle_id, map_type, bank_id)
+            # Garantir tipo numpy para serialização consistente
+            if not isinstance(values_matrix, np.ndarray):
+                values_matrix = np.array(values_matrix)
             
             # Dados a salvar
             data = {
@@ -88,10 +91,67 @@ class PersistenceManager:
             
             logger.debug(f"Arquivo não encontrado: {filename}")
             return None
-            
         except Exception as e:
             logger.error(f"Erro ao carregar mapa 3D: {e}")
             return None
+
+    def regenerate_ve_3d_map(self, vehicle_id: str, bank_id: str = "shared") -> bool:
+        """Recria os valores do mapa VE 3D com base nos eixos salvos (como no mapa.html).
+
+        Carrega o arquivo existente de `ve_3d_map`, lê `rpm_axis` e `map_axis`,
+        calcula a matriz usando generate_ve_3d_matrix e salva de volta.
+        """
+        try:
+            map_type = "ve_3d_map"
+            current = self.load_3d_map_data(vehicle_id, map_type, bank_id)
+            if not current:
+                logger.error("VE 3D não encontrado para regenerar")
+                return False
+            rpm_axis = current.get("rpm_axis") or []
+            map_axis = current.get("map_axis") or []
+            from .calculations import generate_ve_3d_matrix
+            values_matrix = generate_ve_3d_matrix(rpm_axis, map_axis)
+            return self.save_3d_map_data(
+                vehicle_id=vehicle_id,
+                map_type=map_type,
+                bank_id=bank_id,
+                rpm_axis=rpm_axis,
+                map_axis=map_axis,
+                rpm_enabled=current.get("rpm_enabled") or [True] * len(rpm_axis),
+                map_enabled=current.get("map_enabled") or [True] * len(map_axis),
+                values_matrix=values_matrix,
+                metadata={"created_from": "generated_function"}
+            )
+        except Exception as e:
+            logger.error(f"Erro ao regenerar VE 3D: {e}")
+            return False
+
+    def regenerate_ve_table_3d_map(self, vehicle_id: str, bank_id: str = "shared") -> bool:
+        """Recria os valores da Tabela de VE 3D (em %) com base nos eixos salvos."""
+        try:
+            map_type = "ve_table_3d_map"
+            current = self.load_3d_map_data(vehicle_id, map_type, bank_id)
+            if not current:
+                logger.error("VE Table 3D não encontrado para regenerar")
+                return False
+            rpm_axis = current.get("rpm_axis") or []
+            map_axis = current.get("map_axis") or []
+            from .calculations import generate_ve_3d_matrix
+            values_matrix = generate_ve_3d_matrix(rpm_axis, map_axis) * 100.0
+            return self.save_3d_map_data(
+                vehicle_id=vehicle_id,
+                map_type=map_type,
+                bank_id=bank_id,
+                rpm_axis=rpm_axis,
+                map_axis=map_axis,
+                rpm_enabled=current.get("rpm_enabled") or [True] * len(rpm_axis),
+                map_enabled=current.get("map_enabled") or [True] * len(map_axis),
+                values_matrix=values_matrix,
+                metadata={"created_from": "generated_function"}
+            )
+        except Exception as e:
+            logger.error(f"Erro ao regenerar VE Table 3D: {e}")
+            return False
 
     def create_default_map(
         self,
@@ -131,9 +191,19 @@ class PersistenceManager:
             map_enabled = self._adjust_enabled_size(map_enabled, grid_size)
 
             # Gerar valores padrão da matriz
-            values_matrix = self.config_manager.get_default_3d_map_values(
-                map_type, grid_size, rpm_enabled, map_enabled
-            )
+            if map_type == "ve_3d_map":
+                # Popular VE 3D como no mapa.html (curvas base e ganho), respeitando eixos escolhidos
+                from .calculations import generate_ve_3d_matrix  # import local para evitar ciclos
+                values_matrix = generate_ve_3d_matrix(
+                    rpm_axis, [float(x) for x in map_axis]
+                )
+            elif map_type == "ve_table_3d_map":
+                from .calculations import generate_ve_3d_matrix
+                values_matrix = generate_ve_3d_matrix(rpm_axis, [float(x) for x in map_axis]) * 100.0
+            else:
+                values_matrix = self.config_manager.get_default_3d_map_values(
+                    map_type, grid_size, rpm_enabled, map_enabled
+                )
 
             # Salvar o mapa padrão
             return self.save_3d_map_data(
@@ -146,8 +216,7 @@ class PersistenceManager:
                 map_enabled=map_enabled,
                 values_matrix=values_matrix,
                 metadata={
-                    "created_from": "default",
-                    "vehicle_data": vehicle_data
+                    "created_from": "default"
                 }
             )
 
@@ -392,10 +461,7 @@ class PersistenceManager:
                 values=values,
                 enabled=enabled,
                 metadata={
-                    "created_from": "default_2d",
-                    "vehicle_data": vehicle_data,
-                    "axis_type": map_config.get("axis_type", "RPM"),
-                    "unit": map_config.get("unit", "ms")
+                    "created_from": "default_2d"
                 }
             )
 
