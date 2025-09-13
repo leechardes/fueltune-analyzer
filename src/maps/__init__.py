@@ -22,20 +22,20 @@ Author: FuelTune Development Team
 Version: 1.0.0
 """
 
-from .editor import MapEditor
-from .operations import MapOperations  
 from .algorithms import MapAlgorithms
-from .visualization import MapVisualization
-from .snapshots import MapSnapshots
+from .editor import MapEditor
 from .ftmanager import FTManagerBridge
+from .operations import MapOperations
+from .snapshots import MapSnapshots
+from .visualization import MapVisualization
 
 __all__ = [
-    'MapEditor',
-    'MapOperations', 
-    'MapAlgorithms',
-    'MapVisualization',
-    'MapSnapshots',
-    'FTManagerBridge'
+    "MapEditor",
+    "MapOperations",
+    "MapAlgorithms",
+    "MapVisualization",
+    "MapSnapshots",
+    "FTManagerBridge",
 ]
 
-__version__ = '1.0.0'
+__version__ = "1.0.0"

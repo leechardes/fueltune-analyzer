@@ -26,7 +26,6 @@ from src.data.models import (
     DataQualityCheck,
     DataSession,
     FuelTechCoreData,
-    FuelTechExtendedData,
     get_database,
 )
 
@@ -305,8 +304,8 @@ class TestFuelTechCoreDataModel:
         assert core_data.engine_sync == "ON"
 
 
-class TestFuelTechExtendedDataModel:
-    """Test suite for FuelTechExtendedData model."""
+class TestUnifiedExtendedFieldsInCore:
+    """Tests for extended-like fields now unified into FuelTechCoreData."""
 
     @pytest.fixture
     def db_session(self):
@@ -332,11 +331,11 @@ class TestFuelTechExtendedDataModel:
         db_session.commit()
         return session_data
 
-    def test_create_extended_data(self, db_session, test_session):
-        """Test creating FuelTechExtendedData instance."""
-        extended_data = FuelTechExtendedData(
+    def test_store_extended_fields_in_core(self, db_session, test_session):
+        core = FuelTechCoreData(
             session_id=test_session.id,
             time=2.5,
+            rpm=1200,
             total_consumption=15.5,
             average_consumption=8.2,
             estimated_power=300,
@@ -347,53 +346,47 @@ class TestFuelTechExtendedDataModel:
             roll_angle=-1.2,
         )
 
-        db_session.add(extended_data)
+        db_session.add(core)
         db_session.commit()
 
-        assert extended_data.id is not None
-        assert extended_data.session_id == test_session.id
-        assert extended_data.estimated_power == 300
-        assert extended_data.g_force_accel == 0.8
+        assert core.id is not None
+        assert core.session_id == test_session.id
+        assert core.estimated_power == 300
+        assert core.g_force_accel == 0.8
 
-    def test_extended_data_relationships(self, db_session, test_session):
-        """Test relationships between ExtendedData and DataSession."""
-        extended_data = FuelTechExtendedData(
-            session_id=test_session.id, time=3.0, estimated_power=250
-        )
-
-        db_session.add(extended_data)
+    def test_core_relationships_still_work(self, db_session, test_session):
+        core = FuelTechCoreData(session_id=test_session.id, time=3.0, rpm=1500, estimated_power=250)
+        db_session.add(core)
         db_session.commit()
 
-        # Test relationship from extended_data to session
-        assert extended_data.session.session_name == "Extended Test Session"
+        assert core.session.session_name == "Extended Test Session"
+        assert len(test_session.core_data) == 1
+        assert test_session.core_data[0].estimated_power == 250
 
-        # Test relationship from session to extended_data
-        assert len(test_session.extended_data) == 1
-        assert test_session.extended_data[0].estimated_power == 250
-
-    def test_extended_data_constraints(self, db_session, test_session):
-        """Test FuelTechExtendedData constraints."""
-        # Test estimated_power range constraint
-        invalid_power_data = FuelTechExtendedData(
+    def test_unified_field_constraints_enforced(self, db_session, test_session):
+        # estimated_power negative
+        invalid_power = FuelTechCoreData(
             session_id=test_session.id,
             time=1.0,
-            estimated_power=-50,  # Invalid: should be >= 0
+            rpm=1000,
+            estimated_power=-50,
         )
 
-        db_session.add(invalid_power_data)
+        db_session.add(invalid_power)
         with pytest.raises(IntegrityError):
             db_session.commit()
 
         db_session.rollback()
 
-        # Test g_force_accel range constraint
-        invalid_g_data = FuelTechExtendedData(
+        # g_force_accel out of range
+        invalid_g = FuelTechCoreData(
             session_id=test_session.id,
             time=1.0,
-            g_force_accel=10.0,  # Invalid: should be <= 5
+            rpm=1000,
+            g_force_accel=10.0,
         )
 
-        db_session.add(invalid_g_data)
+        db_session.add(invalid_g)
         with pytest.raises(IntegrityError):
             db_session.commit()
 
@@ -699,55 +692,7 @@ class TestDatabaseManager:
         finally:
             session.close()
 
-    def test_bulk_insert_extended_data(self, db_manager):
-        """Test bulk inserting extended data."""
-        # Create session
-        session_record = db_manager.create_session_record(
-            session_name="Bulk Extended Test",
-            filename="bulk_extended.csv",
-            file_hash="bulk_extended_hash",
-            format_version="v2.0",
-            field_count=64,
-        )
-
-        # Prepare bulk extended data
-        bulk_data = []
-        for i in range(3):
-            bulk_data.append(
-                {
-                    "time": i * 0.2,
-                    "estimated_power": 250 + i * 10,
-                    "estimated_torque": 400 + i * 20,
-                    "g_force_accel": 0.5 + i * 0.1,
-                    "total_consumption": 10.0 + i * 1.0,
-                }
-            )
-
-        # Insert data
-        db_manager.bulk_insert_extended_data(session_record.id, bulk_data)
-
-        # Verify data was inserted
-        session = db_manager.get_session()
-        try:
-            count = (
-                session.query(FuelTechExtendedData)
-                .filter(FuelTechExtendedData.session_id == session_record.id)
-                .count()
-            )
-            assert count == 3
-
-            # Verify data content
-            first_record = (
-                session.query(FuelTechExtendedData)
-                .filter(
-                    FuelTechExtendedData.session_id == session_record.id,
-                    FuelTechExtendedData.time == 0.0,
-                )
-                .first()
-            )
-            assert first_record.estimated_power == 250
-        finally:
-            session.close()
+    # Removed: bulk_insert_extended_data deprecated after unification
 
 
 class TestModelIndexes:

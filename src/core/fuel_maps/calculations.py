@@ -4,7 +4,7 @@ Contém toda a lógica de cálculo de injeção, ignição, lambda e AFR.
 """
 
 import logging
-from typing import Any, Dict, List, Sequence, Tuple, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -50,31 +50,30 @@ COMPENSATION_STRATEGIES = {
         "conservative": {"max_compensation": 12.0, "start_rpm": 2600},
         "balanced": {"max_compensation": 15.0, "start_rpm": 2400},
         "aggressive": {"max_compensation": 18.0, "start_rpm": 2200},
-    }
+    },
 }
+
 
 # Funções de compensação 2D
 def calculate_tps_compensation(
-    tps_values: List[float], 
-    strategy: str = "balanced",
-    safety_factor: float = 1.0
+    tps_values: List[float], strategy: str = "balanced", safety_factor: float = 1.0
 ) -> List[float]:
     """
     Calcula compensação baseada na posição do acelerador (TPS).
-    
+
     Args:
         tps_values: Lista de valores TPS (0-100%)
         strategy: Estratégia de compensação
         safety_factor: Fator de segurança adicional
-        
+
     Returns:
         Lista de valores de compensação em %
     """
     compensations = []
-    
+
     strategy_factors = COMPENSATION_STRATEGIES["tps"]
     factors = strategy_factors.get(strategy, strategy_factors["balanced"])
-    
+
     for tps in tps_values:
         if tps <= 20:  # Zona de economia
             # Interpolação linear entre 0% e -X% baseado na estratégia
@@ -89,15 +88,15 @@ def calculate_tps_compensation(
             compensation = factors["power"] * transition
         else:  # WOT (Wide Open Throttle)
             compensation = factors["wot"]
-        
+
         # Aplicar fator de segurança
         compensation *= safety_factor
-        
+
         # Limitar valores para segurança
         compensation = max(-50.0, min(50.0, compensation))
-        
+
         compensations.append(compensation)
-    
+
     return compensations
 
 
@@ -115,7 +114,7 @@ def _interp1d(x: float, xs: Sequence[float], ys: Sequence[float]) -> float:
         valor interpolado (float)
     """
     if not xs or not ys or len(xs) != len(ys):
-        return float('nan')
+        return float("nan")
     if x <= xs[0]:
         return float(ys[0])
     if x >= xs[-1]:
@@ -256,7 +255,12 @@ def calculate_lambda_target_closed_loop(
         lam_base = _lambda_base_from_strategy(float(m), strategy)
         row: List[float] = []
         for r in rpm_axis:
-            lam = lam_base * eff_factor * f_user(float(r)) * _rpm_shape_for_fuel(fuel_type, float(r), rpm_min, rpm_max)
+            lam = (
+                lam_base
+                * eff_factor
+                * f_user(float(r))
+                * _rpm_shape_for_fuel(fuel_type, float(r), rpm_min, rpm_max)
+            )
             lam = max(lam_min, min(lam_max, lam))
             row.append(lam)
         matrix.append(row)
@@ -264,32 +268,32 @@ def calculate_lambda_target_closed_loop(
 
 
 def calculate_temp_compensation(
-    temp_values: List[float], 
-    cooling_type: str = "water", 
+    temp_values: List[float],
+    cooling_type: str = "water",
     climate: str = "temperate",
-    strategy: str = "balanced"
+    strategy: str = "balanced",
 ) -> List[float]:
     """
     Calcula compensação baseada na temperatura do motor.
-    
+
     Args:
         temp_values: Lista de temperaturas (-10 a 140°C)
         cooling_type: Tipo de refrigeração ("water"/"air")
         climate: Tipo de clima ("cold"/"temperate"/"hot")
         strategy: Estratégia de compensação
-        
+
     Returns:
         Lista de valores de compensação em %
     """
     compensations = []
-    
+
     # Fatores baseados no tipo de refrigeração e clima
     cooling_factors = COMPENSATION_STRATEGIES["temp"]
     climate_factors = {"cold": 0.8, "temperate": 1.0, "hot": 1.3}
-    
+
     cool_factor = cooling_factors.get(cooling_type, cooling_factors["water"])
     climate_mult = climate_factors.get(climate, 1.0)
-    
+
     for temp in temp_values:
         if temp < 40:  # Motor frio
             # Enriquecimento máximo no frio, reduzindo conforme esquenta
@@ -308,101 +312,95 @@ def calculate_temp_compensation(
         else:  # Motor muito quente
             # Enriquecimento para proteção térmica
             overheat_factor = min((temp - 105) / 20.0, 1.0)  # Max em 125°C
-            compensation = (
-                cool_factor["hot_max"] * (0.3 + 0.7 * overheat_factor) * climate_mult
-            )
-        
+            compensation = cool_factor["hot_max"] * (0.3 + 0.7 * overheat_factor) * climate_mult
+
         # Limitar valores para segurança
         compensation = max(-10.0, min(50.0, compensation))
-        
+
         compensations.append(compensation)
-    
+
     return compensations
 
 
 def calculate_air_temp_compensation(
-    air_temp_values: List[float], 
-    altitude: float = 0.0,
-    humidity: float = 50.0
+    air_temp_values: List[float], altitude: float = 0.0, humidity: float = 50.0
 ) -> List[float]:
     """
     Calcula compensação baseada na temperatura do ar de admissão.
     Usa lei dos gases ideais para correção de densidade.
-    
+
     Args:
         air_temp_values: Lista de temperaturas do ar (-20 a 60°C)
         altitude: Altitude em metros (opcional)
         humidity: Umidade relativa % (opcional)
-        
+
     Returns:
         Lista de valores de compensação em %
     """
     compensations = []
-    
+
     # Temperatura de referência: 25°C (padrão para calibração)
     ref_temp = 25.0
-    
+
     # Correção de altitude (pressão atmosférica diminui com altitude)
     altitude_factor = 1.0 - (altitude / 10000.0)  # Aproximação simples
-    
+
     # Correção de umidade (ar úmido é menos denso)
     humidity_factor = 1.0 - (humidity - 50.0) / 500.0
-    
+
     for air_temp in air_temp_values:
         # Calcular densidade relativa do ar
         # Densidade = P / (R * T) onde T é temperatura absoluta
         temp_absolute = air_temp + 273.15
         ref_temp_absolute = ref_temp + 273.15
-        
+
         # Fator de densidade (relativo à temperatura de referência)
         density_ratio = ref_temp_absolute / temp_absolute
-        
+
         # Aplicar correções ambientais
         density_ratio *= altitude_factor * humidity_factor
-        
+
         # Conversão para percentual de compensação
         # Se densidade é maior (ar frio), precisamos reduzir combustível
         # Se densidade é menor (ar quente), precisamos aumentar combustível
         compensation = (density_ratio - 1.0) * 100.0
-        
+
         # Limitar correção para valores práticos
         compensation = max(-20.0, min(20.0, compensation))
-        
+
         compensations.append(compensation)
-    
+
     return compensations
 
 
 def calculate_voltage_compensation(
-    voltage_values: List[float], 
-    injector_impedance: str = "high",
-    injector_flow: float = 440.0
+    voltage_values: List[float], injector_impedance: str = "high", injector_flow: float = 440.0
 ) -> List[float]:
     """
     Calcula compensação de dead time dos injetores por voltagem.
-    
+
     Args:
         voltage_values: Lista de voltagens (8.0 a 16.0V)
         injector_impedance: Impedância dos bicos ("high"/"low")
         injector_flow: Vazão dos bicos em cc/min
-        
+
     Returns:
         Lista de valores de compensação em ms
     """
     compensations = []
-    
+
     # Dead time característico por tipo de bico (em ms)
     dead_time_base = {
         "high": 1.0,  # Bicos de alta impedância (12-16Ω)
         "low": 0.6,  # Bicos de baixa impedância (2-3Ω)
     }
-    
+
     # Correção por vazão do bico (bicos maiores têm mais dead time)
     flow_factor = injector_flow / 440.0  # Normalizado para 440cc/min
-    
+
     base_voltage = 13.5  # Voltagem de referência
     base_dead_time = dead_time_base.get(injector_impedance, dead_time_base["high"]) * flow_factor
-    
+
     for voltage in voltage_values:
         if voltage <= 8.0:  # Voltagem muito baixa
             # Dead time muito alto, precisa muita compensação
@@ -422,50 +420,48 @@ def calculate_voltage_compensation(
         else:  # Voltagem alta
             # Dead time reduzido, mas limitado
             dead_time = base_dead_time * 0.7
-        
+
         # Diferença em relação ao dead time base
         compensation = dead_time - base_dead_time
-        
+
         # Limitar para valores práticos
         compensation = max(-2.0, min(3.0, compensation))
-        
+
         compensations.append(compensation)
-    
+
     return compensations
 
 
 def calculate_rpm_compensation(
-    rpm_values: List[float],
-    vehicle_data: Dict[str, Any],
-    strategy: str = "balanced"
+    rpm_values: List[float], vehicle_data: Dict[str, Any], strategy: str = "balanced"
 ) -> List[float]:
     """
     Calcula compensação baseada no RPM do motor.
-    
+
     Args:
         rpm_values: Lista de valores de RPM (400-12000)
         vehicle_data: Dados do veículo (idle_rpm, redline, has_turbo)
         strategy: Estratégia de compensação
-        
+
     Returns:
         Lista de valores de compensação em %
     """
     compensations = []
-    
+
     # Obter dados do veículo
     has_turbo = vehicle_data.get("turbo", False)
     redline = vehicle_data.get("redline", 7000)
-    idle_rpm = vehicle_data.get("idle_rpm", 800)
-    
+    vehicle_data.get("idle_rpm", 800)
+
     # Estratégias de compensação
     rpm_strategies = COMPENSATION_STRATEGIES["rpm"]
     strategy_config = rpm_strategies.get(strategy, rpm_strategies["balanced"])
-    
+
     # Pontos de referência do comportamento FTManager
     start_correction_rpm = strategy_config["start_rpm"]
     peak_rpm = 4200 if not has_turbo else 4500  # Pico de compensação
     max_compensation = strategy_config["max_compensation"] * (1.2 if has_turbo else 1.0)
-    
+
     for rpm in rpm_values:
         if rpm <= start_correction_rpm:
             # Sem compensação em baixas rotações (idle até start_rpm)
@@ -477,21 +473,19 @@ def calculate_rpm_compensation(
         elif rpm <= redline * 0.9:
             # Compensação decrescente após o pico
             progress = (rpm - peak_rpm) / (redline * 0.9 - peak_rpm)
-            compensation = max_compensation * (
-                1.0 - progress * 0.7
-            )  # Cai para ~30% do máximo
+            compensation = max_compensation * (1.0 - progress * 0.7)  # Cai para ~30% do máximo
         elif rpm <= redline:
             # Próximo ao limitador, compensação mínima mas ainda presente
             compensation = max_compensation * 0.3  # ~30% da compensação máxima
         else:  # Acima do limitador (não deveria acontecer normalmente)
             # Compensação mínima de segurança
             compensation = 2.0
-        
+
         # Limitar valores para segurança
         compensation = max(-10.0, min(50.0, compensation))
-        
+
         compensations.append(compensation)
-    
+
     return compensations
 
 
@@ -528,10 +522,10 @@ class Calculator:
             # Cálculo simplificado e corrigido
             # Volume de ar por admissão (L)
             cylinder_volume_L = engine_displacement / cylinders / 1000.0  # cc para L
-            
+
             # Eficiência volumétrica base (varia com RPM e MAP)
             ve_base = 0.85  # 85% para motor naturalmente aspirado
-            
+
             # Ajuste de VE por RPM
             if rpm < 1500:
                 ve_rpm_factor = 0.7
@@ -541,22 +535,22 @@ class Calculator:
                 ve_rpm_factor = 0.95
             else:
                 ve_rpm_factor = 0.85  # Cai em altos RPMs
-            
+
             # VE final com correção de pressão
             ve_final = ve_base * ve_rpm_factor * air_density_correction
-            
+
             # Volume real de ar admitido (L)
             air_volume = cylinder_volume_L * ve_final
-            
+
             # Massa de ar (g) - densidade do ar ~1.2 g/L a 1 bar
             air_mass_g = air_volume * 1.2 * air_density_correction
-            
+
             # Massa de combustível necessária (g)
             fuel_mass_g = air_mass_g / afr_target
-            
+
             # Volume de combustível (ml) - densidade gasolina ~0.75 g/ml
             fuel_volume_ml = fuel_mass_g / 0.75
-            
+
             # Tempo de injeção (ms)
             # Vazão do bico em cc/min = ml/min
             # Converter para ml/ms: effective_flow / 60000
@@ -627,6 +621,7 @@ class Calculator:
         # VE matrix (fração). Se não fornecida, usar gerador padrão
         if ve_matrix is None or ve_matrix.shape != (rows, cols):
             from .calculations import generate_ve_3d_matrix
+
             ve_matrix = generate_ve_3d_matrix(rpm_axis, map_axis)
 
         # AFR estequiométrico por combustível, se não fornecido
@@ -804,13 +799,14 @@ class Calculator:
         rpm_axis: List[float],
         map_axis: List[float],
         vehicle_data: Dict[str, Any],
-        **kwargs
+        **kwargs,
     ) -> np.ndarray:
         """Função universal para calcular valores de qualquer tipo de mapa 3D."""
         try:
             # VE 3D (fração) e Tabela de VE 3D (percentual)
             if map_type in ("ve_3d_map", "ve_table_3d_map"):
                 from .calculations import generate_ve_3d_matrix
+
                 ve = generate_ve_3d_matrix(rpm_axis, map_axis)
                 if map_type == "ve_table_3d_map":
                     return ve * 100.0  # tabela em %
@@ -830,8 +826,7 @@ class Calculator:
                 )
             elif map_type in ("ignition_timing_3d_map", "ignition_3d_map"):
                 return Calculator.calculate_ignition_3d_matrix(
-                    rpm_axis, map_axis, vehicle_data,
-                    kwargs.get("octane_rating", 91.0)
+                    rpm_axis, map_axis, vehicle_data, kwargs.get("octane_rating", 91.0)
                 )
             elif map_type == "lambda_target_3d_map":
                 # Nova malha fechada dedicada
@@ -839,8 +834,10 @@ class Calculator:
                 rpm_user_pairs = kwargs.get("rpm_user_pairs")  # Optional[List[Tuple[rpm, fator]]]
                 fuel_type = str(vehicle_data.get("fuel_type", "ethanol"))
                 from .calculations import calculate_lambda_target_closed_loop
+
                 return calculate_lambda_target_closed_loop(
-                    rpm_axis, map_axis,
+                    rpm_axis,
+                    map_axis,
                     strategy=kwargs.get("strategy", "balanceada"),
                     cl_factor=cl_factor,
                     rpm_user_pairs=rpm_user_pairs,
@@ -848,8 +845,7 @@ class Calculator:
                 )
             elif map_type == "afr_target_3d_map":
                 return Calculator.calculate_afr_3d_matrix(
-                    rpm_axis, map_axis, vehicle_data,
-                    kwargs.get("strategy", "balanced")
+                    rpm_axis, map_axis, vehicle_data, kwargs.get("strategy", "balanced")
                 )
             else:
                 logger.warning(f"Tipo de mapa desconhecido: {map_type}")
@@ -887,55 +883,64 @@ class Calculator:
         map_type: str,
         safety_factor: float = 1.0,
         temp_correction: float = 1.0,
-        altitude_correction: float = 1.0
+        altitude_correction: float = 1.0,
     ) -> np.ndarray:
         """Aplica correções de segurança na matriz."""
         corrected = matrix.copy()
-        
+
         # Aplicar fator de segurança
         if map_type == "main_fuel_3d_map":
             corrected *= safety_factor
         elif map_type == "ignition_3d_map":
             # Para ignição, fator de segurança reduz avanço
             corrected *= (2.0 - safety_factor) if safety_factor > 1.0 else 1.0
-        
+
         # Correções ambientais
         corrected *= temp_correction * altitude_correction
-        
+
         return corrected
+
 
 # Funções de conveniência para manter compatibilidade
 def calculate_base_injection_time_3d(*args, **kwargs) -> float:
     """Compatibilidade: calcula tempo base de injeção."""
     return Calculator.calculate_base_injection_time_3d(*args, **kwargs)
 
+
 def get_afr_target_3d(*args, **kwargs) -> float:
     """Compatibilidade: retorna AFR alvo."""
     return Calculator.get_afr_target_3d(*args, **kwargs)
+
 
 def calculate_fuel_3d_matrix(*args, **kwargs) -> np.ndarray:
     """Compatibilidade: calcula matriz de combustível."""
     return Calculator.calculate_fuel_3d_matrix(*args, **kwargs)
 
+
 def calculate_ignition_3d_matrix(*args, **kwargs) -> np.ndarray:
     """Compatibilidade: calcula matriz de ignição."""
     return Calculator.calculate_ignition_3d_matrix(*args, **kwargs)
+
 
 def calculate_lambda_3d_matrix(*args, **kwargs) -> np.ndarray:
     """Compatibilidade: calcula matriz de lambda."""
     return Calculator.calculate_lambda_3d_matrix(*args, **kwargs)
 
+
 def calculate_afr_3d_matrix(*args, **kwargs) -> np.ndarray:
     """Compatibilidade: calcula matriz de AFR."""
     return Calculator.calculate_afr_3d_matrix(*args, **kwargs)
+
 
 def calculate_3d_map_values_universal(*args, **kwargs) -> np.ndarray:
     """Compatibilidade: função universal de cálculo."""
     return Calculator.calculate_3d_map_values_universal(*args, **kwargs)
 
+
 def interpolate_3d_matrix(*args, **kwargs) -> np.ndarray:
     """Compatibilidade: interpola matriz."""
     return Calculator.interpolate_3d_matrix(*args, **kwargs)
+
 
 # Funções para mapas 2D
 def _legacy_base_injection_time_2d(
@@ -986,7 +991,11 @@ def _legacy_base_injection_time_2d(
         fuel_density_g_per_cc = 0.75
         injector_flow_g_min_per_cyl = (injector_flow_corrected / cylinders) * fuel_density_g_per_cc
 
-        duty_cycle = (fuel_mass_g_min / injector_flow_g_min_per_cyl) if injector_flow_g_min_per_cyl > 0 else 0.0
+        duty_cycle = (
+            (fuel_mass_g_min / injector_flow_g_min_per_cyl)
+            if injector_flow_g_min_per_cyl > 0
+            else 0.0
+        )
         time_per_cycle_ms = (60000.0 / rpm) * 2.0  # injeta a cada 2 rotações
         injection_time_ms = time_per_cycle_ms * duty_cycle
 
@@ -996,13 +1005,14 @@ def _legacy_base_injection_time_2d(
         # Ajuste suave por pressão absoluta (backup)
         pressure_factor = map_bar_abs / 1.013
         if pressure_factor < 1.0:
-            injection_time_ms *= (0.3 + 0.7 * pressure_factor)
+            injection_time_ms *= 0.3 + 0.7 * pressure_factor
         else:
-            injection_time_ms *= (1.0 + (pressure_factor - 1.0) * 0.5)
+            injection_time_ms *= 1.0 + (pressure_factor - 1.0) * 0.5
 
         return injection_time_ms
     except Exception:
         return 2.0
+
 
 def calculate_main_fuel_2d_legacy(
     axis_values: List[float],
@@ -1070,6 +1080,7 @@ def calculate_main_fuel_2d_legacy(
 
     return values
 
+
 def calculate_main_fuel_2d_realistic(
     axis_values: List[float],
     vehicle_data: Dict[str, Any],
@@ -1094,8 +1105,11 @@ def calculate_main_fuel_2d_realistic(
 
         ve_matrix = generate_ve_3d_matrix(rpm_axis, map_axis)  # [map][rpm=1]
         lam_matrix = calculate_lambda_target_closed_loop(
-            rpm_axis, map_axis, strategy=strategy, cl_factor=cl_factor,
-            fuel_type=str(vehicle_data.get('fuel_type', 'ethanol'))
+            rpm_axis,
+            map_axis,
+            strategy=strategy,
+            cl_factor=cl_factor,
+            fuel_type=str(vehicle_data.get("fuel_type", "ethanol")),
         )
 
         vcalc = dict(vehicle_data)
@@ -1117,6 +1131,7 @@ def calculate_main_fuel_2d_realistic(
     except Exception as e:
         logger.error(f"Erro cálculo 2D realista: {e}")
         return [2.0 for _ in axis_values]
+
 
 def calculate_main_fuel_rpm_2d_realistic(
     axis_values: List[float],
@@ -1140,13 +1155,18 @@ def calculate_main_fuel_rpm_2d_realistic(
         rpm_axis = [float(r) for r in axis_values]
         map_axis = [mref]
 
-        ve_matrix = generate_ve_3d_matrix(rpm_axis, map_axis)  # shape [map=1][rpm=N] pois nossa função gera [map][rpm]
+        ve_matrix = generate_ve_3d_matrix(
+            rpm_axis, map_axis
+        )  # shape [map=1][rpm=N] pois nossa função gera [map][rpm]
         # Nossa generate_ve_3d_matrix espera (rpm_axis, map_axis) mas gera shape (len(map), len(rpm))
         # Acima passamos (rpm_axis, [map_ref]) então ve_matrix tem shape (1, N).
 
         lam_matrix = calculate_lambda_target_closed_loop(
-            rpm_axis, map_axis, strategy=strategy, cl_factor=cl_factor,
-            fuel_type=str(vehicle_data.get('fuel_type', 'ethanol'))
+            rpm_axis,
+            map_axis,
+            strategy=strategy,
+            cl_factor=cl_factor,
+            fuel_type=str(vehicle_data.get("fuel_type", "ethanol")),
         )  # shape (1, N)
 
         vcalc = dict(vehicle_data)
@@ -1171,16 +1191,22 @@ def calculate_main_fuel_rpm_2d_realistic(
     except Exception as e:
         logger.error(f"Erro cálculo RPM 2D realista: {e}")
         return [2.0 for _ in axis_values]
-def calculate_2d_map_values(axis_values: List[float], map_config: Dict[str, Any], 
-                           vehicle_data: Dict[str, Any], strategy: str = "balanced") -> List[float]:
+
+
+def calculate_2d_map_values(
+    axis_values: List[float],
+    map_config: Dict[str, Any],
+    vehicle_data: Dict[str, Any],
+    strategy: str = "balanced",
+) -> List[float]:
     """Calcula valores do mapa 2D baseado na estratégia e dados do veículo da sessão."""
-    
+
     # Obter configuração do mapa
-    unit = map_config.get("unit", "")
+    map_config.get("unit", "")
     min_val = map_config.get("min_value", 0)
     max_val = map_config.get("max_value", 100)
     map_type = map_config.get("name", "")
-    
+
     # Obter dados do veículo da sessão
     # Displacement pode vir em litros (ex.: 1.9) ou cc (ex.: 1900)
     raw_displacement = vehicle_data.get("displacement", 2000)
@@ -1194,10 +1220,10 @@ def calculate_2d_map_values(axis_values: List[float], map_config: Dict[str, Any]
     fuel_type_raw = vehicle_data.get("fuel_type", "Gasolina")
     fuel_type = str(fuel_type_raw).lower()
     turbo = vehicle_data.get("turbo", False)
-    
+
     # Fatores de correção
     engine_factor = displacement_cc / 2000.0  # Normalizado para 2000cc
-    
+
     # Fator de combustível
     fuel_factor = 1.0
     if "e85" in fuel_type:
@@ -1205,11 +1231,11 @@ def calculate_2d_map_values(axis_values: List[float], map_config: Dict[str, Any]
     elif "etanol" in fuel_type or "ethanol" in fuel_type:
         fuel_factor = 1.3  # Etanol precisa de mais combustível
     elif "flex" in fuel_type:
-        fuel_factor = 1.15
-    
+        pass
+
     # Fator turbo
-    turbo_factor = 1.2 if turbo else 1.0
-    
+    1.2 if turbo else 1.0
+
     # Estratégias
     strategy_factors = {
         "conservador": 0.85,
@@ -1217,10 +1243,10 @@ def calculate_2d_map_values(axis_values: List[float], map_config: Dict[str, Any]
         "balanceado": 1.0,
         "balanced": 1.0,
         "agressivo": 1.15,
-        "aggressive": 1.15
+        "aggressive": 1.15,
     }
     base_factor = strategy_factors.get(strategy.lower(), 1.0)
-    
+
     calculated_values = []
 
     # Resolver vazão por bico (cc/min)
@@ -1248,7 +1274,9 @@ def calculate_2d_map_values(axis_values: List[float], map_config: Dict[str, Any]
 
     for i, axis_val in enumerate(axis_values):
         # Para mapas principais 2D (eixo = MAP), usar modelo físico simplificado
-        if ("fuel" in map_type.lower() or "injeção" in map_type.lower()) and map_config.get("axis_type") == "MAP":
+        if ("fuel" in map_type.lower() or "injeção" in map_type.lower()) and map_config.get(
+            "axis_type"
+        ) == "MAP":
             # MAP relativo (bar): -1.0 .. 2.0
             try:
                 map_rel = float(axis_val)
@@ -1307,19 +1335,19 @@ def calculate_2d_map_values(axis_values: List[float], map_config: Dict[str, Any]
             if turbo and progress > 0.5:
                 value *= 0.9  # Reduz avanço em boost
             value = min(max(value, min_val), max_val)
-            
+
         elif "lambda" in map_type.lower():
             # Mapa lambda
             if "etanol" in fuel_type or "ethanol" in fuel_type:
                 base_lambda = 0.85
             else:
                 base_lambda = 1.0
-            
+
             value = base_lambda * base_factor
             if progress > 0.7:  # Alta carga
                 value *= 0.88  # Enriquece
             value = min(max(value, min_val), max_val)
-            
+
         else:
             # Mapa genérico - escala linear
             if map_config.get("axis_type") == "RPM":
@@ -1330,9 +1358,9 @@ def calculate_2d_map_values(axis_values: List[float], map_config: Dict[str, Any]
                 progress = (axis_val + 1.0) / 3.0
             value = min_val + (max_val - min_val) * progress * base_factor
             value = min(max(value, min_val), max_val)
-        
+
         calculated_values.append(round(value, 2))
-    
+
     return calculated_values
 
 
@@ -1342,11 +1370,11 @@ def calculate_map_values_universal(
     vehicle_data: Dict[str, Any],
     strategy: str = "balanced",
     safety_factor: float = 1.0,
-    **kwargs
+    **kwargs,
 ) -> List[float]:
     """
     Função universal para cálculo de valores de mapas 2D.
-    
+
     Args:
         map_type: Tipo do mapa (ex: "tps_compensation_2d")
         axis_values: Valores do eixo
@@ -1354,7 +1382,7 @@ def calculate_map_values_universal(
         strategy: Estratégia de cálculo
         safety_factor: Fator de segurança
         **kwargs: Parâmetros adicionais específicos
-        
+
     Returns:
         Lista de valores calculados
     """
@@ -1368,14 +1396,14 @@ def calculate_map_values_universal(
             "voltage_compensation_2d": calculate_voltage_compensation,
             "rpm_compensation_2d": calculate_rpm_compensation,
         }
-        
+
         if map_type not in calculation_functions:
             logger.warning(f"Tipo de mapa 2D não suportado: {map_type}")
             return axis_values  # Retorna valores sem modificação
-        
+
         # Chamar função específica
         calc_func = calculation_functions[map_type]
-        
+
         # Preparar argumentos baseado no tipo
         if map_type == "main_fuel_2d_map":
             return calculate_main_fuel_2d_realistic(
@@ -1401,28 +1429,28 @@ def calculate_map_values_universal(
                 map_ref=kwargs.get("map_ref", 0.0),
                 cl_factor=kwargs.get("cl_factor", 1.0),
             )
-            
+
         elif map_type == "tps_compensation_2d":
             return calc_func(axis_values, strategy, safety_factor)
-            
+
         elif map_type == "temp_compensation_2d":
             cooling_type = vehicle_data.get("cooling_type", "water")
             climate = kwargs.get("climate", "temperate")
             return calc_func(axis_values, cooling_type, climate, strategy)
-            
+
         elif map_type == "air_temp_compensation_2d":
             altitude = kwargs.get("altitude", 0.0)
             humidity = kwargs.get("humidity", 50.0)
             return calc_func(axis_values, altitude, humidity)
-            
+
         elif map_type == "voltage_compensation_2d":
             injector_impedance = vehicle_data.get("injector_impedance", "high")
             injector_flow = vehicle_data.get("injector_flow", 440.0)
             return calc_func(axis_values, injector_impedance, injector_flow)
-            
+
         elif map_type == "rpm_compensation_2d":
             return calc_func(axis_values, vehicle_data, strategy)
-            
+
         else:
             # Função padrão para tipos não específicos
             map_config = {
@@ -1430,10 +1458,10 @@ def calculate_map_values_universal(
                 "min_value": -50.0,
                 "max_value": 50.0,
                 "name": map_type,
-                "axis_type": "GENERIC"
+                "axis_type": "GENERIC",
             }
             return calculate_2d_map_values(axis_values, map_config, vehicle_data, strategy)
-            
+
     except Exception as e:
         logger.error(f"Erro no cálculo universal de mapa 2D {map_type}: {e}")
         return [0.0] * len(axis_values)  # Retorna zeros em caso de erro

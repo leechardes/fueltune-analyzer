@@ -7,20 +7,21 @@ Author: A04-ANALYSIS-SCIPY Agent
 Created: 2025-01-02
 """
 
-import pytest
+from unittest.mock import patch
+
 import numpy as np
 import pandas as pd
-from unittest.mock import patch, MagicMock
+import pytest
 
-from src.analysis.statistics import StatisticalAnalyzer, DescriptiveStats
-from src.analysis.time_series import TimeSeriesAnalyzer
-from src.analysis.correlation import CorrelationAnalyzer
 from src.analysis.anomaly import AnomalyDetector
+from src.analysis.correlation import CorrelationAnalyzer
+from src.analysis.dynamics import VehicleDynamicsAnalyzer
 from src.analysis.fuel_efficiency import FuelEfficiencyAnalyzer
 from src.analysis.performance import PerformanceAnalyzer
-from src.analysis.dynamics import VehicleDynamicsAnalyzer
 from src.analysis.predictive import PredictiveAnalyzer
 from src.analysis.reports import ReportGenerator
+from src.analysis.statistics import DescriptiveStats, StatisticalAnalyzer
+from src.analysis.time_series import TimeSeriesAnalyzer
 
 
 class TestStatisticalAnalyzer:
@@ -44,7 +45,7 @@ class TestStatisticalAnalyzer:
     def test_analyze_method_series(self):
         """Test standard analyze method with Series."""
         results = self.analyzer.analyze(self.sample_data)
-        
+
         assert isinstance(results, dict)
         # Should not have error key if successful
         if "error" not in results:
@@ -53,17 +54,14 @@ class TestStatisticalAnalyzer:
 
     def test_analyze_method_dataframe(self):
         """Test standard analyze method with DataFrame."""
-        df_data = pd.DataFrame({
-            'col1': self.sample_data,
-            'col2': np.random.normal(50, 10, 1000)
-        })
+        df_data = pd.DataFrame({"col1": self.sample_data, "col2": np.random.normal(50, 10, 1000)})
         results = self.analyzer.analyze(df_data)
-        
+
         assert isinstance(results, dict)
         # Should analyze each numeric column
         if "error" not in results:
-            assert 'col1' in results
-            assert 'col2' in results
+            assert "col1" in results
+            assert "col2" in results
 
     def test_test_normality(self):
         """Test normality testing."""
@@ -94,7 +92,7 @@ class TestTimeSeriesAnalyzer:
     def test_analyze_method_series(self):
         """Test standard analyze method with Series."""
         results = self.analyzer.analyze(self.trend_data)
-        
+
         assert isinstance(results, dict)
         # Should not have error key if successful
         if "error" not in results:
@@ -106,9 +104,9 @@ class TestTimeSeriesAnalyzer:
 
     def test_analyze_method_dataframe(self):
         """Test standard analyze method with DataFrame."""
-        df_data = pd.DataFrame({'values': self.trend_data})
+        df_data = pd.DataFrame({"values": self.trend_data})
         results = self.analyzer.analyze(df_data)
-        
+
         assert isinstance(results, dict)
         # Should analyze the first numeric column
         if "error" not in results:
@@ -151,7 +149,7 @@ class TestCorrelationAnalyzer:
     def test_analyze_method(self):
         """Test standard analyze method."""
         results = self.analyzer.analyze(self.test_data)
-        
+
         assert isinstance(results, dict)
         # Should not have error key if successful
         if "error" not in results:
@@ -201,7 +199,7 @@ class TestAnomalyDetector:
     def test_analyze_method(self):
         """Test standard analyze method."""
         results = self.detector.analyze(self.test_data)
-        
+
         assert isinstance(results, dict)
         # Should not have error key if successful
         if "error" not in results:
@@ -298,7 +296,7 @@ class TestPerformanceAnalyzer:
     def test_analyze_method(self):
         """Test standard analyze method."""
         results = self.analyzer.analyze(self.test_data)
-        
+
         assert isinstance(results, dict)
         # Should not have error key if successful, or should provide warning about data
         if "error" not in results and "warning" not in results:
@@ -373,7 +371,7 @@ class TestPredictiveAnalyzer:
     def test_analyze_method(self):
         """Test standard analyze method."""
         results = self.analyzer.analyze(self.test_data)
-        
+
         assert isinstance(results, dict)
         # Should not have error key if successful, or should provide warning about data
         if "error" not in results and "warning" not in results:

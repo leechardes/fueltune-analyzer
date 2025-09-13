@@ -21,7 +21,7 @@ from sqlalchemy.sql import func
 from ..utils.logging_config import get_logger
 from .csv_parser import CSVParser
 from .models import DatabaseManager as BaseDBManager
-from .models import DataQualityCheck, DataSession, FuelTechCoreData, FuelTechExtendedData, Vehicle
+from .models import DataQualityCheck, DataSession, FuelTechCoreData, Vehicle
 from .normalizer import normalize_fueltech_data
 from .quality import assess_fueltech_data_quality
 from .validators import validate_fueltech_data
@@ -275,7 +275,7 @@ class FuelTechDatabase:
 
         except Exception as e:
             import_results["status"] = "failed"
-            
+
             # Handle specific constraint errors
             error_msg = str(e)
             if "CHECK constraint failed: chk_g_accel_range" in error_msg:
@@ -298,7 +298,7 @@ class FuelTechDatabase:
             else:
                 import_results["errors"].append(error_msg)
                 import_results["error_type"] = "general_error"
-            
+
             logger.error(f"Import failed: {error_msg}")
 
             # Update session status if record was created
@@ -366,10 +366,9 @@ class FuelTechDatabase:
         # Insert core data
         self.db_manager.bulk_insert_core_data(session_id, core_data)
 
-        # Insert extended data if version 2.0
+        # Include extended fields in core insert if present (schema unified)
         if version == "v2.0":
-            extended_fields = [
-                "time",
+            unified_fields = [
                 "total_consumption",
                 "average_consumption",
                 "instant_consumption",
@@ -398,24 +397,84 @@ class FuelTechDatabase:
                 "after_start_injection",
                 "start_button_toggle",
             ]
-
-            available_extended_fields = [f for f in extended_fields if f in df.columns]
-            if available_extended_fields:
-                extended_data = df[available_extended_fields].to_dict("records")
-                self.db_manager.bulk_insert_extended_data(session_id, extended_data)
+            # Merge into core records by index
+            for i, rec in enumerate(core_data):
+                for f in unified_fields:
+                    if f in df.columns:
+                        rec[f] = df.iloc[i].get(f)
 
     def _insert_quality_results(self, quality_results: Dict[str, Any], session_id: str) -> None:
-        """Insert quality assessment results."""
+        """Insert quality assessment results.
+
+        This method sanitizes numpy/pandas scalar types inside details to ensure
+        JSON serialization works with SQLAlchemy's JSON column.
+        """
+        # Local import to avoid hard dependency during module import
+        import numpy as np
+        import pandas as pd
+
+        def _to_jsonable(value):
+            """Recursively convert values to JSON-serializable Python types."""
+            # None and basic types
+            if value is None or isinstance(value, (bool, int, float, str)):
+                return value
+
+            # Numpy scalar types
+            if isinstance(value, np.generic):
+                py_val = value.item()
+                # Convert NaN/inf to None for JSON safety
+                if isinstance(py_val, float) and (np.isnan(py_val) or np.isinf(py_val)):
+                    return None
+                return py_val
+
+            # Pandas Timestamp / NaT
+            if isinstance(value, (pd.Timestamp,)):
+                return value.isoformat()
+
+            # Pandas NA/NaT or numpy NaN
+            try:
+                if pd.isna(value):
+                    return None
+            except Exception:
+                pass
+
+            # Sequences
+            if isinstance(value, (list, tuple, set)):
+                return [_to_jsonable(v) for v in value]
+
+            # Numpy arrays
+            if isinstance(value, np.ndarray):
+                return [_to_jsonable(v) for v in value.tolist()]
+
+            # Pandas Series/Index
+            if isinstance(value, (pd.Series, pd.Index)):
+                return [_to_jsonable(v) for v in value.tolist()]
+
+            # Dicts
+            if isinstance(value, dict):
+                return {str(k): _to_jsonable(v) for k, v in value.items()}
+
+            # Fallback to string representation
+            return str(value)
+
         with self.get_session() as db:
             for result in quality_results["detailed_results"]:
+                # Sanitize scalar numeric fields as well
+                try:
+                    error_pct = float(result.get("error_percentage", 0) or 0)
+                except Exception:
+                    error_pct = 0.0
+
+                sanitized_details = _to_jsonable(result.get("details", {}))
+
                 quality_check = DataQualityCheck(
                     session_id=session_id,
-                    check_type=result["check_name"],
-                    status=result["status"],
-                    severity=result["severity"],
-                    message=result["message"],
-                    error_percentage=result["error_percentage"],
-                    details_json=result["details"],
+                    check_type=result.get("check_name"),
+                    status=result.get("status"),
+                    severity=result.get("severity"),
+                    message=result.get("message"),
+                    error_percentage=error_pct,
+                    details_json=sanitized_details,
                 )
                 db.add(quality_check)
 
@@ -457,30 +516,7 @@ class FuelTechDatabase:
             # Convert to DataFrame
             core_data = pd.read_sql(query.statement, db.bind)
 
-            if include_extended:
-                # Get extended data
-                ext_query = db.query(FuelTechExtendedData).filter(
-                    FuelTechExtendedData.session_id == session_id
-                )
-
-                if time_range:
-                    ext_query = ext_query.filter(
-                        FuelTechExtendedData.time >= time_range[0],
-                        FuelTechExtendedData.time <= time_range[1],
-                    )
-
-                extended_data = pd.read_sql(ext_query.statement, db.bind)
-
-                if not extended_data.empty:
-                    # Merge on time
-                    merged_data = pd.merge(
-                        core_data,
-                        extended_data,
-                        on="time",
-                        how="left",
-                        suffixes=("", "_ext"),
-                    )
-                    core_data = merged_data
+            # include_extended is kept for compatibility; unified table already has these fields
 
             # Filter columns if specified
             if columns:
@@ -594,12 +630,10 @@ class FuelTechDatabase:
 
             # Data statistics
             total_core_records = db.query(FuelTechCoreData).count()
-            total_extended_records = db.query(FuelTechExtendedData).count()
 
             stats["records"] = {
                 "core_data": total_core_records,
-                "extended_data": total_extended_records,
-                "total": total_core_records + total_extended_records,
+                "total": total_core_records,
             }
 
             # Quality statistics
@@ -649,152 +683,152 @@ def get_database(db_path: str = "data/fueltech_data.db") -> FuelTechDatabase:
 # CRUD Operations para Vehicle
 # ========================================
 
+
 def get_db_session():
     """Helper para obter sessão do banco de dados usando a instância global."""
     return get_database().get_session()
 
+
 def create_vehicle(vehicle_data: dict) -> str:
     """
     Cria um novo veículo no banco de dados.
-    
+
     Args:
         vehicle_data: Dicionário com dados do veículo
-    
+
     Returns:
         str: ID do veículo criado
-    
+
     Raises:
         ValueError: Se dados obrigatórios estão ausentes
         Exception: Para outros erros de banco
     """
     if not vehicle_data.get("name"):
         raise ValueError("Nome do veículo é obrigatório")
-    
+
     try:
         with get_db_session() as session:
             vehicle = Vehicle(**vehicle_data)
             session.add(vehicle)
             session.commit()
-            
+
             logger.info(f"Veículo criado: {vehicle.id} - {vehicle.name}")
             return vehicle.id
-            
+
     except Exception as e:
         logger.error(f"Erro ao criar veículo: {str(e)}")
         raise
 
+
 def get_vehicle_by_id(vehicle_id: str) -> Optional[Vehicle]:
     """
     Busca veículo por ID.
-    
+
     Args:
         vehicle_id: ID do veículo
-    
+
     Returns:
         Vehicle ou None se não encontrado
     """
     try:
         with get_db_session() as session:
-            return session.query(Vehicle).filter(
-                Vehicle.id == vehicle_id
-            ).first()
-            
+            return session.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+
     except Exception as e:
         logger.error(f"Erro ao buscar veículo {vehicle_id}: {str(e)}")
         return None
 
+
 def get_all_vehicles(active_only: bool = True) -> List[Vehicle]:
     """
     Lista todos os veículos.
-    
+
     Args:
         active_only: Se True, retorna apenas veículos ativos
-    
+
     Returns:
         List[Vehicle]: Lista de veículos
     """
     try:
         with get_db_session() as session:
             query = session.query(Vehicle)
-            
+
             if active_only:
                 query = query.filter(Vehicle.is_active == True)
-            
+
             return query.order_by(Vehicle.name).all()
-            
+
     except Exception as e:
         logger.error(f"Erro ao listar veículos: {str(e)}")
         return []
 
+
 def update_vehicle(vehicle_id: str, update_data: dict) -> bool:
     """
     Atualiza dados do veículo.
-    
+
     Args:
         vehicle_id: ID do veículo
         update_data: Dados para atualizar
-    
+
     Returns:
         bool: True se atualizado com sucesso
     """
     try:
         with get_db_session() as session:
-            vehicle = session.query(Vehicle).filter(
-                Vehicle.id == vehicle_id
-            ).first()
-            
+            vehicle = session.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+
             if not vehicle:
                 logger.warning(f"Veículo não encontrado: {vehicle_id}")
                 return False
-            
+
             # Atualizar campos fornecidos
             for field, value in update_data.items():
                 if hasattr(vehicle, field):
                     setattr(vehicle, field, value)
-            
+
             # Atualizar timestamp
             vehicle.updated_at = func.now()
-            
+
             session.commit()
             logger.info(f"Veículo atualizado: {vehicle_id}")
             return True
-            
+
     except Exception as e:
         logger.error(f"Erro ao atualizar veículo {vehicle_id}: {str(e)}")
         return False
 
+
 def delete_vehicle(vehicle_id: str, soft_delete: bool = True) -> bool:
     """
     Remove veículo (soft delete por padrão).
-    
+
     Args:
         vehicle_id: ID do veículo
         soft_delete: Se True, apenas marca como inativo
-    
+
     Returns:
         bool: True se removido com sucesso
     """
     try:
         with get_db_session() as session:
-            vehicle = session.query(Vehicle).filter(
-                Vehicle.id == vehicle_id
-            ).first()
-            
+            vehicle = session.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+
             if not vehicle:
                 logger.warning(f"Veículo não encontrado: {vehicle_id}")
                 return False
-            
+
             # Verificar se há sessões vinculadas
-            session_count = session.query(DataSession).filter(
-                DataSession.vehicle_id == vehicle_id
-            ).count()
-            
+            session_count = (
+                session.query(DataSession).filter(DataSession.vehicle_id == vehicle_id).count()
+            )
+
             if session_count > 0 and not soft_delete:
                 raise ValueError(
                     f"Não é possível excluir veículo com {session_count} sessões vinculadas. "
                     "Use soft delete ou migre as sessões primeiro."
                 )
-            
+
             if soft_delete:
                 vehicle.is_active = False
                 vehicle.updated_at = func.now()
@@ -802,84 +836,93 @@ def delete_vehicle(vehicle_id: str, soft_delete: bool = True) -> bool:
             else:
                 session.delete(vehicle)
                 logger.info(f"Veículo removido: {vehicle_id}")
-            
+
             session.commit()
             return True
-            
+
     except Exception as e:
         logger.error(f"Erro ao remover veículo {vehicle_id}: {str(e)}")
         return False
 
+
 def search_vehicles(search_term: str, active_only: bool = True) -> List[Vehicle]:
     """
     Busca veículos por termo.
-    
+
     Args:
         search_term: Termo para buscar (nome, marca, modelo)
         active_only: Se True, busca apenas veículos ativos
-    
+
     Returns:
         List[Vehicle]: Lista de veículos encontrados
     """
     try:
         with get_db_session() as session:
             query = session.query(Vehicle)
-            
+
             if active_only:
                 query = query.filter(Vehicle.is_active == True)
-            
+
             # Buscar em múltiplos campos
             search_filter = or_(
                 Vehicle.name.ilike(f"%{search_term}%"),
                 Vehicle.brand.ilike(f"%{search_term}%"),
                 Vehicle.model.ilike(f"%{search_term}%"),
-                Vehicle.nickname.ilike(f"%{search_term}%")
+                Vehicle.nickname.ilike(f"%{search_term}%"),
             )
-            
+
             return query.filter(search_filter).order_by(Vehicle.name).all()
-            
+
     except Exception as e:
         logger.error(f"Erro ao buscar veículos com termo '{search_term}': {str(e)}")
         return []
 
+
 def get_vehicle_statistics(vehicle_id: str) -> dict:
     """
     Obtém estatísticas do veículo (sessões, dados, etc.).
-    
+
     Args:
         vehicle_id: ID do veículo
-    
+
     Returns:
         dict: Estatísticas do veículo
     """
     try:
         with get_db_session() as session:
-            vehicle = session.query(Vehicle).filter(
-                Vehicle.id == vehicle_id
-            ).first()
-            
+            vehicle = session.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+
             if not vehicle:
                 return {}
-            
+
             # Contar sessões
-            session_count = session.query(DataSession).filter(
-                DataSession.vehicle_id == vehicle_id
-            ).count()
-            
+            session_count = (
+                session.query(DataSession).filter(DataSession.vehicle_id == vehicle_id).count()
+            )
+
             # Data da primeira e última sessão
-            first_session = session.query(DataSession).filter(
-                DataSession.vehicle_id == vehicle_id
-            ).order_by(DataSession.created_at).first()
-            
-            last_session = session.query(DataSession).filter(
-                DataSession.vehicle_id == vehicle_id
-            ).order_by(DataSession.created_at.desc()).first()
-            
+            first_session = (
+                session.query(DataSession)
+                .filter(DataSession.vehicle_id == vehicle_id)
+                .order_by(DataSession.created_at)
+                .first()
+            )
+
+            last_session = (
+                session.query(DataSession)
+                .filter(DataSession.vehicle_id == vehicle_id)
+                .order_by(DataSession.created_at.desc())
+                .first()
+            )
+
             # Contar registros de dados
-            core_data_count = session.query(FuelTechCoreData).join(DataSession).filter(
-                DataSession.vehicle_id == vehicle_id
-            ).count()
-            
+            core_data_count = (
+                session.query(FuelTechCoreData)
+                .join(DataSession)
+                .filter(DataSession.vehicle_id == vehicle_id)
+                .count()
+            )
+
             return {
                 "vehicle_id": vehicle_id,
                 "vehicle_name": vehicle.display_name,
@@ -888,9 +931,9 @@ def get_vehicle_statistics(vehicle_id: str) -> dict:
                 "first_session_date": first_session.created_at if first_session else None,
                 "last_session_date": last_session.created_at if last_session else None,
                 "created_at": vehicle.created_at,
-                "updated_at": vehicle.updated_at
+                "updated_at": vehicle.updated_at,
             }
-            
+
     except Exception as e:
         logger.error(f"Erro ao obter estatísticas do veículo {vehicle_id}: {str(e)}")
         return {}

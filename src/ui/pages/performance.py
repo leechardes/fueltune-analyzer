@@ -28,7 +28,7 @@ from plotly.subplots import make_subplots
 
 try:
     # Tentar importação relativa primeiro (para quando chamado como módulo)
-    from ...data.database import FuelTechCoreData, FuelTechExtendedData, get_database
+    from ...data.database import FuelTechCoreData, get_database
     from ...utils.logging_config import get_logger
     from ..components.metric_card import MetricCard
     from ..components.session_selector import SessionSelector
@@ -36,11 +36,12 @@ except ImportError:
     # Fallback para importação absoluta (quando executado via st.navigation)
     import sys
     from pathlib import Path
+
     sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-    from src.data.database import FuelTechCoreData, FuelTechExtendedData, get_database
-    from src.utils.logging_config import get_logger
+    from src.data.database import FuelTechCoreData, get_database
     from src.ui.components.metric_card import MetricCard
     from src.ui.components.session_selector import SessionSelector
+    from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -62,6 +63,23 @@ class PerformanceAnalysisManager:
         self.db = get_database()
         self.metric_card = MetricCard()
 
+    @staticmethod
+    def _ols_trendline_if_available(enable: bool = True, warn_key: str = "performance_trend_warn"):
+        """Retorna 'ols' se statsmodels estiver disponível e enable=True; caso contrário, None.
+        Mostra um aviso uma única vez se não estiver disponível.
+        """
+        if not enable:
+            return None
+        try:
+            import statsmodels.api  # type: ignore  # noqa: F401
+
+            return "ols"
+        except Exception:
+            if not st.session_state.get(warn_key):
+                st.info("Linha de tendência desativada: pacote 'statsmodels' não está instalado.")
+                st.session_state[warn_key] = True
+            return None
+
     @st.cache_data(ttl=300)
     def load_performance_data(_self, session_id: str) -> Optional[pd.DataFrame]:
         """Carregar dados de performance da sessão."""
@@ -75,14 +93,7 @@ class PerformanceAnalysisManager:
                     .order_by(FuelTechCoreData.time)
                 )
 
-                extended_query = (
-                    db_session.query(FuelTechExtendedData)
-                    .filter(FuelTechExtendedData.session_id == session_id)
-                    .order_by(FuelTechExtendedData.time)
-                )
-
                 core_data = core_query.all()
-                extended_data = extended_query.all()
                 # Session is automatically closed by context manager
 
             if not core_data:
@@ -109,24 +120,15 @@ class PerformanceAnalysisManager:
 
             df = pd.DataFrame(data_list)
 
-            # Adicionar dados extended se disponíveis
-            if extended_data:
-                extended_dict = {}
-                for record in extended_data:
-                    extended_dict[record.time] = {
-                        "estimated_power": record.estimated_power,
-                        "estimated_torque": record.estimated_torque,
-                        "acceleration_speed": record.acceleration_speed,
-                        "traction_speed": record.traction_speed,
-                    }
-
-                for col in [
-                    "estimated_power",
-                    "estimated_torque",
-                    "acceleration_speed",
-                    "traction_speed",
-                ]:
-                    df[col] = df["time"].map(lambda t: extended_dict.get(t, {}).get(col))
+            # Campos estendidos já no core após unificação
+            for col in [
+                "estimated_power",
+                "estimated_torque",
+                "acceleration_speed",
+                "traction_speed",
+            ]:
+                if hasattr(core_data[0], col):
+                    df[col] = [getattr(r, col, None) for r in core_data]
 
             # Calcular métricas derivadas
             df = _self.calculate_performance_metrics(df)
@@ -393,7 +395,7 @@ class PerformanceAnalysisManager:
             hovermode="x unified",
         )
 
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, width="stretch")
 
     def render_boost_analysis(self, df: pd.DataFrame) -> None:
         """Renderizar análise de boost."""
@@ -420,7 +422,7 @@ class PerformanceAnalysisManager:
                 labels={"x": "Boost (bar)"},
                 marginal="box",
             )
-            st.plotly_chart(fig_hist, width='stretch')
+            st.plotly_chart(fig_hist, width="stretch")
 
         with col2:
             # Boost vs RPM
@@ -434,9 +436,11 @@ class PerformanceAnalysisManager:
                         title="Boost vs RPM",
                         labels={"rpm": "RPM", "boost": "Boost (bar)"},
                         opacity=0.6,
-                        trendline="ols",
+                        trendline=self._ols_trendline_if_available(
+                            True, warn_key="performance_trend_boost_rpm"
+                        ),
                     )
-                    st.plotly_chart(fig_boost_rpm, width='stretch')
+                    st.plotly_chart(fig_boost_rpm, width="stretch")
 
     def render_efficiency_metrics(self, df: pd.DataFrame) -> None:
         """Renderizar métricas de eficiência."""
@@ -465,7 +469,7 @@ class PerformanceAnalysisManager:
                             title="Distribuição de Eficiência Térmica",
                             labels={"x": "Eficiência (%)"},
                         )
-                        st.plotly_chart(fig_eff, width='stretch')
+                        st.plotly_chart(fig_eff, width="stretch")
 
                     with col2:
                         st.markdown("**Estatísticas:**")
@@ -483,7 +487,7 @@ class PerformanceAnalysisManager:
                         title="BMEP vs Tempo",
                         labels={"x": "Tempo", "y": "BMEP (bar)"},
                     )
-                    st.plotly_chart(fig_bmep, width='stretch')
+                    st.plotly_chart(fig_bmep, width="stretch")
 
         with eff_tabs[2]:
             if "load_factor" in df.columns:
@@ -496,7 +500,7 @@ class PerformanceAnalysisManager:
                         title="Load Factor vs Performance",
                         opacity=0.6,
                     )
-                    st.plotly_chart(fig_load, width='stretch')
+                    st.plotly_chart(fig_load, width="stretch")
 
 
 def render_performance_page() -> None:

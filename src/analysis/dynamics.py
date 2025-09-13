@@ -9,19 +9,14 @@ Author: A04-ANALYSIS-SCIPY Agent
 Created: 2025-01-02
 """
 
-import logging
 from dataclasses import dataclass
-from functools import lru_cache
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from scipy import signal, integrate
-from scipy.spatial.transform import Rotation
-from sklearn.cluster import KMeans
+from scipy import signal
 
 from ..data.cache import cached_analysis as cache_result
 from ..utils.logging_config import get_logger
@@ -316,14 +311,14 @@ class VehicleDynamicsAnalyzer:
 
             # Extract gyroscope data (angular rates)
             if gyro_x_col in clean_data.columns:
-                gyro_x = clean_data[gyro_x_col].fillna(0).values
+                clean_data[gyro_x_col].fillna(0).values
             else:
-                gyro_x = np.zeros(len(clean_data))
+                np.zeros(len(clean_data))
 
             if gyro_y_col in clean_data.columns:
-                gyro_y = clean_data[gyro_y_col].fillna(0).values
+                clean_data[gyro_y_col].fillna(0).values
             else:
-                gyro_y = np.zeros(len(clean_data))
+                np.zeros(len(clean_data))
 
             if gyro_z_col in clean_data.columns:
                 yaw_rate = clean_data[gyro_z_col].fillna(0).values
@@ -348,7 +343,6 @@ class VehicleDynamicsAnalyzer:
 
             # Estimate pitch and roll from accelerometer (when not accelerating)
             # This is a simplified approach - real implementation would use sensor fusion
-            g = 9.80665
 
             # Low-pass filter accelerometer data to remove noise
             if len(accel_x) > 5:

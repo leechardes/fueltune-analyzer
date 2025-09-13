@@ -13,18 +13,18 @@ CRITICAL: Follows PYTHON-CODE-STANDARDS.md:
 - Robust format detection algorithms
 """
 
-from typing import Dict, List, Optional, Tuple, Any, Literal
+import logging
 from dataclasses import dataclass
 from datetime import datetime
-import logging
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
-import streamlit as st
 import pandas as pd
+import streamlit as st
 
-from .format_detector import FTManagerFormatDetector
-from .clipboard_manager import ClipboardManager
-from .validators import FTManagerValidator, ValidationResult
 from ..maps.ftmanager import FTManagerBridge as CoreBridge
+from .clipboard_manager import ClipboardManager
+from .format_detector import FTManagerFormatDetector
+from .validators import FTManagerValidator, ValidationResult
 
 logger = logging.getLogger(__name__)
 

@@ -8,14 +8,12 @@ that are used throughout the application.
 import logging
 import tempfile
 import threading
-import time
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime, timedelta
+from pathlib import Path
+from unittest.mock import patch
 
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from src.utils.logger import CustomFormatter, setup_logger
 from src.utils.logging_config import get_logger

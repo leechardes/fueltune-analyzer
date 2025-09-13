@@ -15,10 +15,7 @@ Author: FuelTune Development Team
 Version: 1.0.0
 """
 
-import asyncio
-import io
 import json
-import os
 import tempfile
 import zipfile
 from abc import ABC, abstractmethod
@@ -26,17 +23,15 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, BinaryIO, TextIO
+from typing import Any, Dict, List, Optional, Union
+
 import pandas as pd
-import openpyxl
-from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.chart import LineChart, Reference
-import matplotlib.pyplot as plt
-import seaborn as sns
+from openpyxl.styles import Alignment, Font, PatternFill
 
 from ..utils.logger import get_logger
-from .events import event_bus, DataEvent
-from .notifications import notify_info, notify_success, notify_error, notify_progress
+from .events import DataEvent, event_bus
+from .notifications import notify_error, notify_info, notify_success
 
 logger = get_logger(__name__)
 
@@ -152,7 +147,6 @@ class DataExporter(ABC):
     @abstractmethod
     def export(self, data: Any, settings: ExportSettings, output_path: Path) -> ExportResult:
         """Exportar dados no formato específico."""
-        pass
 
     def validate_data(self, data: Any) -> List[str]:
         """Validar dados antes da exportação."""
@@ -476,7 +470,6 @@ class DataImporter(ABC):
     @abstractmethod
     def import_data(self, file_path: Path, **kwargs) -> ImportResult:
         """Importar dados do arquivo."""
-        pass
 
     def validate_file(self, file_path: Path) -> List[str]:
         """Validar arquivo antes da importação."""
@@ -752,7 +745,7 @@ class ExportImportManager:
         try:
             # Criar diretório temporário para o pacote
             with tempfile.TemporaryDirectory() as temp_dir:
-                temp_path = Path(temp_dir)
+                Path(temp_dir)
                 package_files = []
 
                 # TODO: Integrar com dados reais quando disponível

@@ -120,7 +120,6 @@ class TestFuelTechDatabase:
         expected_tables = {
             "data_sessions",
             "fueltech_core_data",
-            "fueltech_extended_data",
             "data_quality_checks",
         }
 

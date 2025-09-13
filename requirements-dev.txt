@@ -17,6 +17,7 @@ coverage>=7.3.0            # Coverage reporting
 PyYAML==6.0.1              # YAML parser (required by bandit, pre-compiled version)
 black>=23.0.0              # Code formatting
 isort>=5.12.0              # Import sorting
+autoflake>=2.3.1           # Remove unused imports/variables
 pylint>=3.0.0              # Comprehensive linting
 mypy>=1.7.0                # Type checking
 flake8>=6.0.0              # Style guide enforcement

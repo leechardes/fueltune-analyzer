@@ -5,21 +5,18 @@ Tests CSV parser, data validators, normalizers, and related
 data processing functionality with extensive coverage.
 """
 
-import tempfile
 import csv
+import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, mock_open
-from io import StringIO
-import sqlite3
 
+import numpy as np
 import pandas as pd
 import pytest
-import numpy as np
 
-from src.data.csv_parser import CSVParser, CSVParsingError, FieldMappingError
-from src.data.validators import DataValidator, ValidationError
+from src.data.csv_parser import CSVParser, CSVParsingError
 from src.data.normalizer import DataNormalizer
 from src.data.quality import DataQualityAssessor as DataQualityChecker
+from src.data.validators import DataValidator
 
 
 class TestDataParser:
@@ -527,9 +524,9 @@ class TestIntegrationParsing:
 
             try:
                 checker = DataQualityChecker()
-                quality_report = checker.check_quality(normalized_data)
+                checker.check_quality(normalized_data)
             except ImportError:
-                quality_report = {}
+                pass
 
             total_time = time.time() - start_time
 

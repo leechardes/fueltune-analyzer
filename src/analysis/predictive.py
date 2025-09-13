@@ -9,19 +9,18 @@ Author: A04-ANALYSIS-SCIPY Agent
 Created: 2025-01-02
 """
 
-import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from scipy import stats
-from sklearn.ensemble import RandomForestRegressor, IsolationForest
+from sklearn.ensemble import IsolationForest, RandomForestRegressor
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import r2_score
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, PolynomialFeatures
+from sklearn.preprocessing import StandardScaler
 
 from ..data.cache import cached_analysis as cache_result
 from ..utils.logging_config import get_logger
@@ -99,28 +98,28 @@ class PredictiveAnalyzer:
         """
         try:
             results = {}
-            
+
             # Failure prediction
             try:
                 failure_results = self.predict_failures(data)
                 results["failure_prediction"] = failure_results
             except Exception as e:
                 self.logger.warning(f"Failure prediction failed: {e}")
-            
+
             # Maintenance scheduling
             try:
                 maintenance = self.schedule_maintenance(data)
                 results["maintenance_schedule"] = maintenance
             except Exception as e:
                 self.logger.warning(f"Maintenance scheduling failed: {e}")
-            
+
             # Performance degradation analysis
             try:
                 degradation = self.analyze_performance_degradation(data)
                 results["performance_degradation"] = degradation
             except Exception as e:
                 self.logger.warning(f"Performance degradation analysis failed: {e}")
-            
+
             # Consumption forecasting if fuel data available
             fuel_cols = [col for col in data.columns if "fuel" in col.lower()]
             if fuel_cols:
@@ -129,13 +128,13 @@ class PredictiveAnalyzer:
                     results["consumption_forecast"] = consumption
                 except Exception as e:
                     self.logger.warning(f"Consumption forecasting failed: {e}")
-            
+
             if not results:
                 results["warning"] = "No predictive analysis could be performed"
                 results["available_columns"] = list(data.columns)
-            
+
             return results
-            
+
         except Exception as e:
             self.logger.error(f"Predictive analysis failed: {e}")
             return {"error": str(e)}

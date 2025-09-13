@@ -14,26 +14,24 @@ Author: FuelTune Development Team
 Version: 1.0.0
 """
 
-import asyncio
-import json
+import platform
 import smtplib
+import subprocess
+import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from email.mime.text import MIMEText as MimeText
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart as MimeMultipart
+from email.mime.text import MIMEText as MimeText
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set, Union
-from queue import Queue, Empty
-import threading
-import platform
-import subprocess
+from queue import Empty, Queue
+from typing import Any, Dict, List, Optional, Set
 
 import streamlit as st
 
 from ..utils.logger import get_logger
-from .events import event_bus, NotificationEvent
+from .events import NotificationEvent, event_bus
 
 logger = get_logger(__name__)
 
@@ -185,7 +183,6 @@ class NotificationHandler(ABC):
     @abstractmethod
     def send_notification(self, notification: Notification) -> bool:
         """Enviar notificação através do canal."""
-        pass
 
     def is_available(self) -> bool:
         """Verificar se o canal está disponível."""
@@ -337,7 +334,7 @@ class SystemHandler(NotificationHandler):
 
         if self.system == "windows":
             try:
-                import win10toast
+                pass
 
                 return True
             except ImportError:

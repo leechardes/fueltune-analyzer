@@ -717,7 +717,9 @@ class DataQualityAssessor:
         # Detailed results
         for result in self.quality_results:
             status_symbol = (
-                "PASS" if result.status == "passed" else "WARN" if result.status == "warning" else "FAIL"
+                "PASS"
+                if result.status == "passed"
+                else "WARN" if result.status == "warning" else "FAIL"
             )
             report.append(f"{status_symbol} {result.check_name.upper()}")
             report.append(f"   Status: {result.status.upper()}")

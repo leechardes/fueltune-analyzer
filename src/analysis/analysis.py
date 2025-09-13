@@ -7,9 +7,11 @@ Author: FuelTune Development Team
 Version: 1.0.0
 """
 
-from typing import Dict, Any, Optional, List
-import pandas as pd
+from typing import Any, Dict, List, Optional
+
 import numpy as np
+import pandas as pd
+
 from ..utils.logger import get_logger
 
 # Import all analysis modules
@@ -19,9 +21,9 @@ from .dynamics import VehicleDynamicsAnalyzer
 from .fuel_efficiency import FuelEfficiencyAnalyzer
 from .performance import PerformanceAnalyzer
 from .predictive import PredictiveAnalyzer
+from .reports import ReportGenerator
 from .statistics import StatisticalAnalyzer
 from .time_series import TimeSeriesAnalyzer
-from .reports import ReportGenerator
 
 logger = get_logger(__name__)
 

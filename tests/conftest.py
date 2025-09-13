@@ -2,10 +2,10 @@
 Pytest configuration and shared fixtures for FuelTune Streamlit tests.
 """
 
-import tempfile
-from pathlib import Path
 import os
 import sys
+import tempfile
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -14,8 +14,6 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 # Import fixtures from fixtures module
-from tests.fixtures.data import *
-from tests.fixtures.mocks import *
 
 
 # Test data fixtures

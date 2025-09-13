@@ -9,7 +9,6 @@ Author: A04-ANALYSIS-SCIPY Agent
 Created: 2025-01-02
 """
 
-import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -17,10 +16,8 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from scipy import signal
-from scipy.fft import fft, fftfreq
-from scipy.signal import butter, filtfilt, find_peaks, welch
+from scipy.signal import find_peaks, welch
 from scipy.stats import linregress
-from sklearn.preprocessing import StandardScaler
 
 from ..data.cache import cached_analysis as cache_result
 from ..utils.logging_config import get_logger
@@ -122,16 +119,16 @@ class TimeSeriesAnalyzer:
                 numeric_columns = data.select_dtypes(include=[np.number]).columns
                 if len(numeric_columns) == 0:
                     raise ValueError("No numeric columns found in DataFrame")
-                
+
                 series_data = data[numeric_columns[0]]
             else:
                 series_data = data
-            
+
             # Perform comprehensive time series analysis
             trend_result = self.analyze_trend(series_data)
             autocorr_result = self.compute_autocorrelation(series_data)
             freq_result = self.analyze_frequency_domain(series_data)
-            
+
             return {
                 "trend_analysis": trend_result,
                 "autocorrelation": autocorr_result,
@@ -139,7 +136,7 @@ class TimeSeriesAnalyzer:
                 "data_length": len(series_data),
                 "sample_rate": self.sample_rate,
             }
-            
+
         except Exception as e:
             self.logger.error(f"Time series analysis failed: {e}")
             return {"error": str(e)}

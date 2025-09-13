@@ -14,22 +14,19 @@ Author: FuelTune Development Team
 Version: 1.0.0
 """
 
-import asyncio
 import queue
 import threading
 import time
-import traceback
 import uuid
 from abc import ABC, abstractmethod
-from concurrent.futures import ThreadPoolExecutor, Future, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set, Union
-import weakref
+from typing import Any, Callable, Dict, List, Optional
 
 from ..utils.logger import get_logger
-from .events import event_bus, SystemEvent
-from .notifications import notify_info, notify_success, notify_error, notify_progress
+from .events import SystemEvent, event_bus
+from .notifications import notify_error, notify_info, notify_progress, notify_success
 
 logger = get_logger(__name__)
 
@@ -232,7 +229,6 @@ class TaskExecutor(ABC):
     @abstractmethod
     def execute(self, task: Task) -> TaskResult:
         """Executar tarefa específica."""
-        pass
 
 
 class FunctionTaskExecutor(TaskExecutor):

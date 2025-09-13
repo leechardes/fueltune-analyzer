@@ -534,9 +534,7 @@ Variáveis de ambiente:
 
     parser.add_argument("--setup", action="store_true", help="Executar setup inicial")
 
-    parser.add_argument(
-        "--clean", action="store_true", help="Limpar caches e arquivos temporários"
-    )
+    parser.add_argument("--clean", action="store_true", help="Limpar caches e arquivos temporários")
 
     # Streamlit options
     parser.add_argument(

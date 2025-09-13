@@ -38,14 +38,15 @@ except ImportError:
     # Fallback para importação absoluta (quando executado via st.navigation)
     import sys
     from pathlib import Path
+
     sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
     from src.data.csv_parser import CSVParser
     from src.data.database import get_database
     from src.data.quality import DataQualityAssessor
     from src.data.validators import DataValidator
-    from src.utils.logging_config import get_logger
     from src.ui.components.chart_builder import ChartBuilder, ChartConfig
     from src.ui.components.metric_card import MetricCard, MetricData
+    from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -322,7 +323,7 @@ class UploadManager:
 
         with tab1:
             # Preview dos dados
-            st.dataframe(df.head(50), width='stretch', hide_index=True)
+            st.dataframe(df.head(50), width="stretch", hide_index=True)
 
         with tab2:
             # Informações das colunas
@@ -340,7 +341,7 @@ class UploadManager:
                 ]
             )
 
-            st.dataframe(columns_df, width='stretch', hide_index=True)
+            st.dataframe(columns_df, width="stretch", hide_index=True)
 
         with tab3:
             # Quality assessment
@@ -534,7 +535,7 @@ class UploadManager:
                     step=1000,
                     help="Linhas processadas por vez",
                 )
-                
+
                 force_reimport = st.checkbox(
                     "Sobrescrever se já existir",
                     value=False,
@@ -609,14 +610,14 @@ class UploadManager:
             step_status.info("Importando dados para o banco...")
 
             # Salvar arquivo temporário
-            import tempfile
             import os
-            
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
+            import tempfile
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp_file:
                 uploaded_file.seek(0)
                 tmp_file.write(uploaded_file.read())
                 tmp_file_path = tmp_file.name
-            
+
             try:
                 # Usar a função import_csv_file que já tem toda a lógica
                 import_results = self.db.import_csv_file(
@@ -627,18 +628,20 @@ class UploadManager:
                     normalize_data=True,
                     assess_quality=True,
                 )
-                
+
                 overall_progress.progress(100, text="Finalizando...")
-                
+
                 if import_results.get("status") == "completed":
                     step_status.success("Importação concluída!")
                     session_id = import_results.get("session_id")
                 elif import_results.get("status") == "skipped":
-                    step_status.warning("Arquivo já importado. Marque 'Sobrescrever' para reimportar.")
+                    step_status.warning(
+                        "Arquivo já importado. Marque 'Sobrescrever' para reimportar."
+                    )
                     session_id = import_results.get("session_id")
                 else:
                     raise Exception("Falha na importação")
-                    
+
             finally:
                 # Limpar arquivo temporário
                 if os.path.exists(tmp_file_path):
@@ -836,7 +839,7 @@ def render_upload_page() -> None:
                             col1, col2, col3 = st.columns(3)
 
                             with col1:
-                                records = session.get('records', 0)
+                                records = session.get("records", 0)
                                 records_value = records if records is not None else 0
                                 st.metric("Registros", f"{records_value:,}")
 
@@ -847,7 +850,9 @@ def render_upload_page() -> None:
                                 st.metric("Qualidade", f"{quality_value:.1f}%")
 
                             with col3:
-                                status = "Completo" if session["status"] == "completed" else "Aguardando"
+                                status = (
+                                    "Completo" if session["status"] == "completed" else "Aguardando"
+                                )
                                 st.metric(
                                     "Status",
                                     f"{status}",

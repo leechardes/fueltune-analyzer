@@ -17,13 +17,11 @@ import io
 import json
 import platform
 import subprocess
-import tempfile
-import traceback
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
 
 from ..utils.logger import get_logger
@@ -91,12 +89,10 @@ class DataFormatter(ABC):
     @abstractmethod
     def format_for_clipboard(self, data: Any, metadata: Dict[str, Any] = None) -> str:
         """Formatar dados para o clipboard."""
-        pass
 
     @abstractmethod
     def parse_from_clipboard(self, content: str) -> Any:
         """Analisar dados do clipboard."""
-        pass
 
 
 class TextFormatter(DataFormatter):
@@ -230,7 +226,7 @@ class ClipboardManager:
         """Verificar se clipboard está disponível."""
         try:
             if self.system == "windows":
-                import win32clipboard
+                pass
 
                 return True
             elif self.system == "darwin":  # macOS
@@ -482,7 +478,7 @@ class ClipboardManager:
     ) -> None:
         """Disparar evento de cópia."""
         try:
-            from .events import event_bus, SystemEvent
+            from .events import SystemEvent, event_bus
 
             event = SystemEvent(
                 component="clipboard",
@@ -501,7 +497,7 @@ class ClipboardManager:
     def _emit_paste_event(self, clipboard_data: ClipboardData) -> None:
         """Disparar evento de colagem."""
         try:
-            from .events import event_bus, SystemEvent
+            from .events import SystemEvent, event_bus
 
             event = SystemEvent(
                 component="clipboard",

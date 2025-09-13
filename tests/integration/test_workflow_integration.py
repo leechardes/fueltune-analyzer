@@ -5,26 +5,22 @@ Tests end-to-end workflows including data loading, processing,
 analysis, and reporting with all components working together.
 """
 
-import asyncio
 import tempfile
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
-import sqlite3
-import json
 
+import numpy as np
 import pandas as pd
 import pytest
-import numpy as np
 
 # Import modules with graceful fallbacks
 modules_available = {}
 
 try:
+    from src.data.cache import CacheManager
     from src.data.csv_parser import CSVParser
     from src.data.validators import DataValidator
-    from src.data.cache import CacheManager
 
     modules_available["csv_parser"] = CSVParser
     modules_available["data_validator"] = DataValidator
@@ -33,9 +29,9 @@ except ImportError:
     pass
 
 try:
+    from src.analysis.anomaly import AnomalyDetector
     from src.analysis.fuel_efficiency import FuelEfficiencyAnalyzer
     from src.analysis.performance import PerformanceAnalyzer
-    from src.analysis.anomaly import AnomalyDetector
 
     modules_available["fuel_efficiency"] = FuelEfficiencyAnalyzer
     modules_available["performance"] = PerformanceAnalyzer
@@ -44,9 +40,9 @@ except ImportError:
     pass
 
 try:
-    from src.integration.workflow import WorkflowManager
-    from src.integration.events import EventSystem
     from src.integration.background import BackgroundProcessor
+    from src.integration.events import EventSystem
+    from src.integration.workflow import WorkflowManager
 
     modules_available["workflow"] = WorkflowManager
     modules_available["events"] = EventSystem
@@ -202,7 +198,7 @@ class TestCompleteDataWorkflow:
                         if parsed_data is not None and len(parsed_data) > 0:
                             workflow_success = True
 
-                except Exception as parsing_error:
+                except Exception:
                     error_handled = True
 
                     # Try fallback processing
@@ -221,7 +217,7 @@ class TestCompleteDataWorkflow:
                         # Continue workflow with fallback data
                         if "fuel_efficiency" in modules_available:
                             analyzer = modules_available["fuel_efficiency"]()
-                            result = analyzer.analyze(fallback_data)
+                            analyzer.analyze(fallback_data)
                             workflow_success = True
 
                     except Exception:
@@ -447,7 +443,7 @@ class TestBackgroundWorkflow:
         def long_running_task(data):
             """Simulate a long-running analysis task."""
             total_batches = 5
-            batch_size = len(data) // total_batches
+            len(data) // total_batches
 
             for i in range(total_batches):
                 time.sleep(0.02)  # Simulate processing
@@ -624,7 +620,7 @@ class TestFullSystemIntegration:
         if "data_validator" in modules_available:
             try:
                 validator = modules_available["data_validator"]()
-                validation_result = validator.validate(realistic_telemetry_data)
+                validator.validate(realistic_telemetry_data)
                 workflow_log.append(("data_validation", "completed", datetime.now()))
             except Exception as e:
                 workflow_log.append(("data_validation", "failed", datetime.now(), str(e)))
@@ -645,7 +641,7 @@ class TestFullSystemIntegration:
             if module_name in modules_available:
                 try:
                     analyzer = modules_available[module_name]()
-                    result = analyzer.analyze(realistic_telemetry_data)
+                    analyzer.analyze(realistic_telemetry_data)
                     workflow_log.append((f"{module_name}_analysis", "completed", datetime.now()))
                 except Exception as e:
                     workflow_log.append(
@@ -712,7 +708,7 @@ class TestFullSystemIntegration:
                 analysis_start = time.time()
                 try:
                     analyzer = modules_available[module_name]()
-                    result = analyzer.analyze(performance_test_data)
+                    analyzer.analyze(performance_test_data)
                     processing_times[f"{module_name}_analysis"] = time.time() - analysis_start
                 except Exception as e:
                     processing_times[f"{module_name}_analysis"] = f"failed: {e}"
@@ -755,7 +751,7 @@ class TestFullSystemIntegration:
         try:
             if "anomaly" in modules_available:
                 detector = modules_available["anomaly"]()
-                anomalies = detector.detect_anomalies(anomaly_data)
+                detector.detect_anomalies(anomaly_data)
                 resilience_results["anomaly_handling"].append("detection_successful")
 
             # Try other analyses with anomalous data
@@ -767,7 +763,7 @@ class TestFullSystemIntegration:
                         resilience_results["anomaly_handling"].append(
                             f"{module_name}_handled_anomalies"
                         )
-                    except Exception as e:
+                    except Exception:
                         resilience_results["anomaly_handling"].append(
                             f"{module_name}_failed_with_anomalies"
                         )
@@ -798,7 +794,7 @@ class TestFullSystemIntegration:
                                 f"{corruption_type}_parsed_empty"
                             )
 
-                except Exception as e:
+                except Exception:
                     resilience_results["corruption_handling"].append(
                         f"{corruption_type}_parsing_failed"
                     )
@@ -824,7 +820,7 @@ class TestFullSystemIntegration:
                 finally:
                     corrupt_path.unlink(missing_ok=True)
 
-            except Exception as e:
+            except Exception:
                 resilience_results["corruption_handling"].append(
                     f"{corruption_type}_test_setup_failed"
                 )

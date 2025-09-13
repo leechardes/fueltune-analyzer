@@ -9,36 +9,34 @@ Version: 1.0.0
 """
 
 import asyncio
-import pytest
 import tempfile
 import time
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+
 import pandas as pd
+import pytest
 
 # Import integration modules
 from src.integration import (
-    IntegrationManager,
-    WorkflowManager,
-    EventBus,
+    BackgroundTaskManager,
     ClipboardManager,
     DataPipeline,
-    NotificationSystem,
+    EventBus,
     ExportImportManager,
-    BackgroundTaskManager,
+    IntegrationManager,
+    NotificationSystem,
     PluginSystem,
+    WorkflowManager,
 )
-from src.integration.events import (
-    CSVImportStartedEvent,
-    CSVImportCompletedEvent,
-    AnalysisCompletedEvent,
-    SystemEvent,
-    DataModifiedEvent,
-)
-from src.integration.workflow import WorkflowContext, WorkflowStage
 from src.integration.background import TaskStatus
+from src.integration.events import (
+    CSVImportCompletedEvent,
+    CSVImportStartedEvent,
+    SystemEvent,
+)
 from src.integration.export_import import ExportFormat, ExportType
-from src.integration.plugins import PluginType, HookPoint
+from src.integration.plugins import HookPoint, PluginType
+from src.integration.workflow import WorkflowContext, WorkflowStage
 
 
 @pytest.fixture
@@ -134,11 +132,11 @@ class TestEventSystem:
             received_events.append(event)
 
         # Inscrever handler
-        subscription = event_bus.subscribe(SystemEvent, test_handler, "test_handler")
+        event_bus.subscribe(SystemEvent, test_handler, "test_handler")
 
         # Publicar evento
         test_event = SystemEvent(component="test", metadata={"test": True})
-        results = event_bus.publish_sync(test_event)
+        event_bus.publish_sync(test_event)
 
         # Verificar recebimento
         assert len(received_events) == 1
@@ -654,7 +652,7 @@ class TestFullSystemIntegration:
         )
 
         # Executar workflow
-        result = integration_manager.workflow_manager.execute_sync("full_analysis", context)
+        integration_manager.workflow_manager.execute_sync("full_analysis", context)
 
         # Verificar notificações
         notifications = integration_manager.notification_system.get_notifications()

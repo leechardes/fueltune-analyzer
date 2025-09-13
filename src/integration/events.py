@@ -16,11 +16,12 @@ Version: 1.0.0
 
 import asyncio
 import inspect
-import logging
+import threading
 import time
 import traceback
-import weakref
 from abc import ABC, abstractmethod
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import (
@@ -29,17 +30,9 @@ from typing import (
     Dict,
     List,
     Optional,
-    Set,
     Type,
     TypeVar,
-    Union,
-    get_type_hints,
-    get_origin,
-    get_args,
 )
-from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
-import threading
 
 from ..utils.logger import get_logger
 
@@ -225,7 +218,6 @@ class EventHandler(ABC):
     @abstractmethod
     async def handle_event(self, event: Event) -> Any:
         """Manipular evento. Deve ser implementado pelas subclasses."""
-        pass
 
     def subscribe_to(self, event_bus: "EventBus", event_type: Type[Event]) -> None:
         """Inscrever-se em um tipo de evento."""

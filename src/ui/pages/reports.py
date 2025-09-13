@@ -30,11 +30,12 @@ except ImportError:
     # Fallback para importação absoluta (quando executado via st.navigation)
     import sys
     from pathlib import Path
+
     sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
     from src.data.database import get_database
-    from src.utils.logging_config import get_logger
     from src.ui.components.metric_card import MetricCard
     from src.ui.components.session_selector import SessionSelector
+    from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -276,7 +277,7 @@ class ReportsManager:
             st.markdown("## Detalhes das Sessões")
 
             sessions_df = pd.DataFrame(report_data["sessions"])
-            st.dataframe(sessions_df, width='stretch', hide_index=True)
+            st.dataframe(sessions_df, width="stretch", hide_index=True)
 
         # Placeholder para gráficos
         st.markdown("## Visualizações")
@@ -392,7 +393,7 @@ class ReportsManager:
         ]
 
         history_df = pd.DataFrame(history_data)
-        st.dataframe(history_df, width='stretch', hide_index=True)
+        st.dataframe(history_df, width="stretch", hide_index=True)
 
         # Ações do histórico
         col1, col2, col3 = st.columns(3)

@@ -19,19 +19,16 @@ import importlib
 import importlib.util
 import inspect
 import json
-import sys
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Type, Union
-import threading
-import traceback
-import weakref
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 from ..utils.logger import get_logger
-from .events import event_bus, SystemEvent
-from .notifications import notify_info, notify_warning, notify_error
+from .events import SystemEvent, event_bus
+from .notifications import notify_error, notify_info
 
 logger = get_logger(__name__)
 
@@ -177,7 +174,6 @@ class Plugin(ABC):
     @abstractmethod
     def get_metadata(self) -> PluginMetadata:
         """Retornar metadados do plugin."""
-        pass
 
     def initialize(self) -> bool:
         """Inicializar plugin. Override se necessário."""
@@ -213,7 +209,6 @@ class AnalysisPlugin(Plugin):
     @abstractmethod
     def analyze(self, data: Any, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Executar análise personalizada."""
-        pass
 
 
 class ExportPlugin(Plugin):
@@ -222,12 +217,10 @@ class ExportPlugin(Plugin):
     @abstractmethod
     def export(self, data: Any, output_path: Path, options: Dict[str, Any]) -> bool:
         """Exportar dados no formato personalizado."""
-        pass
 
     @abstractmethod
     def get_file_extension(self) -> str:
         """Retornar extensão do arquivo."""
-        pass
 
 
 class VisualizationPlugin(Plugin):
@@ -236,7 +229,6 @@ class VisualizationPlugin(Plugin):
     @abstractmethod
     def create_visualization(self, data: Any, options: Dict[str, Any]) -> Any:
         """Criar visualização personalizada."""
-        pass
 
 
 class UIComponentPlugin(Plugin):
@@ -245,7 +237,6 @@ class UIComponentPlugin(Plugin):
     @abstractmethod
     def render_component(self, **kwargs) -> None:
         """Renderizar componente na interface."""
-        pass
 
 
 class HookManager:

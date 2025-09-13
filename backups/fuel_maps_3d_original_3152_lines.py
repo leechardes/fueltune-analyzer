@@ -23,8 +23,7 @@ import streamlit as st
 
 # Importações do projeto
 try:
-    from src.data.fuel_maps_models import MapDataValidator, MapInterpolator
-    from src.data.vehicle_database import get_all_vehicles, get_vehicle_by_id
+    from src.data.vehicle_database import get_all_vehicles
     from src.ui.components.vehicle_selector import get_vehicle_context
 except ImportError:
     # Fallback para desenvolvimento
@@ -79,14 +78,15 @@ def load_map_types_config():
 # Carregar configuração de tipos de mapas
 MAP_TYPES_3D = load_map_types_config()
 
+
 def get_map_config_values(map_type: str, key: str, grid_size: int = 32):
     """Obtém valores de configuração do mapa específico do arquivo JSON.
-    
+
     Args:
         map_type: Tipo do mapa (ex: 'main_fuel_3d_map')
         key: Chave da configuração (ex: 'default_rpm_values')
         grid_size: Tamanho do grid
-        
+
     Returns:
         Lista com os valores da configuração ou valores padrão
     """
@@ -99,7 +99,7 @@ def get_map_config_values(map_type: str, key: str, grid_size: int = 32):
                     return config_value[:grid_size]
                 else:
                     # Preencher com valores padrão se menor
-                    if 'enabled' in key:
+                    if "enabled" in key:
                         return config_value + [False] * (grid_size - len(config_value))
                     else:
                         # Para valores numéricos, repetir o último valor
@@ -108,6 +108,7 @@ def get_map_config_values(map_type: str, key: str, grid_size: int = 32):
                             return config_value + [last_value] * (grid_size - len(config_value))
             return config_value
     return None
+
 
 # DEPRECATED: Eixos padrão - Manter apenas para compatibilidade
 # Usar get_map_config_values() em vez destas constantes
@@ -234,14 +235,10 @@ def get_vehicle_data_from_session() -> Dict[str, Any]:
             if vehicle:
                 # Calcular vazão total dos bicos em lbs/h
                 total_flow_a = (
-                    vehicle.get("bank_a_total_flow", 0)
-                    if vehicle.get("bank_a_enabled")
-                    else 0
+                    vehicle.get("bank_a_total_flow", 0) if vehicle.get("bank_a_enabled") else 0
                 )
                 total_flow_b = (
-                    vehicle.get("bank_b_total_flow", 0)
-                    if vehicle.get("bank_b_enabled")
-                    else 0
+                    vehicle.get("bank_b_total_flow", 0) if vehicle.get("bank_b_enabled") else 0
                 )
                 total_flow_lbs = total_flow_a + total_flow_b
 
@@ -256,9 +253,7 @@ def get_vehicle_data_from_session() -> Dict[str, Any]:
                 boost_value = 0.0
                 if is_turbo:
                     boost_value = (
-                        vehicle.get("boost_pressure")
-                        or vehicle.get("max_boost_pressure")
-                        or 1.0
+                        vehicle.get("boost_pressure") or vehicle.get("max_boost_pressure") or 1.0
                     )
                     if boost_value is None:
                         boost_value = 1.0
@@ -369,9 +364,7 @@ def calculate_base_injection_time_3d(
         injector_flow_g_min = (injector_flow_corrected / cylinders) * fuel_density
 
         # Calcular duty cycle necessário
-        duty_cycle = (
-            (fuel_mass_per_min / injector_flow_g_min) if injector_flow_g_min > 0 else 0
-        )
+        duty_cycle = (fuel_mass_per_min / injector_flow_g_min) if injector_flow_g_min > 0 else 0
 
         # Tempo disponível por ciclo (ms)
         time_per_cycle = (60000 / rpm) * 2
@@ -392,7 +385,7 @@ def calculate_base_injection_time_3d(
 
         return max(1.5, min(injection_time, 35.0))
 
-    except Exception as e:
+    except Exception:
         return 2.0
 
 
@@ -424,9 +417,7 @@ def calculate_fuel_3d_matrix(
 
     for i, map_value in enumerate(map_axis):
         # Converter MAP de bar para kPa
-        map_kpa = (
-            (map_value + 1.013) * 100 if map_value < 0 else (map_value + 1.013) * 100
-        )
+        map_kpa = (map_value + 1.013) * 100 if map_value < 0 else (map_value + 1.013) * 100
 
         for j, rpm_value in enumerate(rpm_axis):
             if rpm_value > 0:  # Apenas para RPM ativos
@@ -467,9 +458,7 @@ def calculate_ignition_3d_matrix(
     advances = base_advance.get(strategy, base_advance["balanced"])
 
     for i, map_value in enumerate(map_axis):
-        map_kpa = (
-            (map_value + 1.013) * 100 if map_value < 0 else (map_value + 1.013) * 100
-        )
+        map_kpa = (map_value + 1.013) * 100 if map_value < 0 else (map_value + 1.013) * 100
 
         for j, rpm_value in enumerate(rpm_axis):
             if rpm_value > 0:
@@ -509,14 +498,14 @@ def calculate_lambda_3d_matrix(
     safety_factor: float = 1.0,
 ) -> np.ndarray:
     """Calcula matriz 3D de valores de lambda considerando RPM e MAP.
-    
+
     Implementa cálculo realista por zonas de operação:
     - Zona 1 (Vácuo alto): -1.0 a -0.4 bar -> Lambda 1.00-1.05 (economia)
     - Zona 2 (Carga parcial): -0.4 a 0.2 bar -> Lambda 0.88-0.94 (transição)
     - Zona 3 (Boost): 0.2+ bar -> Lambda 0.68-0.85 (proteção)
-    
+
     Considera tipo de combustível e correções por RPM.
-    
+
     IMPORTANTE: A matriz resultante tem shape (len(map_axis), len(rpm_axis))
     Onde matrix[i][j] corresponde a map_axis[i] e rpm_axis[j]
     """
@@ -524,31 +513,31 @@ def calculate_lambda_3d_matrix(
     # Linhas = MAP, Colunas = RPM (para cálculo)
     # Mas será transposta para exibição onde Linhas = RPM, Colunas = MAP
     matrix = np.zeros((len(map_axis), len(rpm_axis)))
-    
+
     # Configurações por combustível
-    fuel_type = vehicle_data.get('fuel_type', 'Gasolina')
-    is_ethanol = fuel_type == 'Ethanol'
-    
+    fuel_type = vehicle_data.get("fuel_type", "Gasolina")
+    is_ethanol = fuel_type == "Ethanol"
+
     # Limites mínimos de lambda por combustível
     lambda_min = 0.68 if is_ethanol else 0.78
-    
+
     # Fator de combustível para cálculo em boost
     fuel_factor = 0.08 if is_ethanol else 0.12
-    
+
     # Boost máximo configurado
-    boost_max = vehicle_data.get('boost_pressure', 1.0)
+    boost_max = vehicle_data.get("boost_pressure", 1.0)
 
     for i, map_value in enumerate(map_axis):
         for j, rpm_value in enumerate(rpm_axis):
             if rpm_value > 0:
                 # === CÁLCULO BASE POR ZONA DE OPERAÇÃO ===
-                
+
                 # Zona 1: Vácuo alto (-1.0 a -0.4 bar)
                 if map_value <= -0.4:
                     # Lambda = 0.95 + (|MAP| × 0.05)
                     # Resulta em valores de 1.00-1.05 para economia
                     lambda_value = 0.95 + (abs(map_value) * 0.05)
-                
+
                 # Zona 2: Carga parcial (-0.4 a 0.2 bar)
                 elif map_value <= 0.2:
                     # Lambda = 0.90 - (MAP × 0.1)
@@ -557,53 +546,53 @@ def calculate_lambda_3d_matrix(
                     # Em 0.0: 0.90 - (0.0 × 0.1) = 0.90
                     # Em 0.2: 0.90 - (0.2 × 0.1) = 0.88
                     lambda_value = 0.90 - (map_value * 0.1)
-                
+
                 # Zona 3: Boost (0.2+ bar)
                 else:
                     # Lambda = 0.85 - (MAP × Fator_combustível × Fator_RPM)
                     # Fator_RPM = 1.0 + (RPM-3000)/10000
                     rpm_factor = 1.0 + ((rpm_value - 3000) / 10000)
                     rpm_factor = max(0.8, min(1.3, rpm_factor))  # Limitar fator RPM
-                    
+
                     lambda_value = 0.85 - (map_value * fuel_factor * rpm_factor)
-                    
+
                     # Proteção adicional para boost muito alto
                     if map_value > boost_max:
                         # Aplicar fator de segurança adicional
                         over_boost = map_value - boost_max
-                        lambda_value -= (over_boost * 0.05)
-                
+                        lambda_value -= over_boost * 0.05
+
                 # === CORREÇÕES POR RPM ===
-                
+
                 # RPM baixo (< 2000): multiplicar por 0.90 para estabilidade
                 if rpm_value < 2000:
                     # Interpolação suave: em 0 RPM fator = 0.90, em 2000 RPM fator = 1.0
                     rpm_correction = 0.90 + (rpm_value / 2000 * 0.10)
                     lambda_value *= rpm_correction
-                
+
                 # RPM alto (> 6000): multiplicar por 0.95 para resfriamento
                 elif rpm_value > 6000:
                     # Interpolação suave: em 6000 RPM fator = 1.0, em 8000+ fator = 0.95
                     rpm_high_factor = 1.0 - ((rpm_value - 6000) / 2000 * 0.05)
                     rpm_high_factor = max(0.95, rpm_high_factor)
                     lambda_value *= rpm_high_factor
-                
+
                 # === APLICAR ESTRATÉGIA ===
                 if strategy == "conservative":
                     lambda_value *= 0.96  # 4% mais rico para segurança
                 elif strategy == "aggressive":
                     lambda_value *= 1.02  # 2% mais pobre para performance
-                
+
                 # === APLICAR FATOR DE SEGURANÇA DO USUÁRIO ===
                 lambda_value *= safety_factor
-                
+
                 # === VALIDAÇÃO FINAL ===
                 # Aplicar limites baseados no combustível
                 lambda_value = max(lambda_min, lambda_value)
-                
+
                 # Limite superior sempre 1.2 (economia máxima)
                 lambda_value = min(1.2, lambda_value)
-                
+
                 matrix[i, j] = lambda_value
             else:
                 # RPM = 0, sem combustível
@@ -623,9 +612,7 @@ def calculate_afr_3d_matrix(
     matrix = np.zeros((len(map_axis), len(rpm_axis)))
 
     for i, map_value in enumerate(map_axis):
-        map_kpa = (
-            (map_value + 1.013) * 100 if map_value < 0 else (map_value + 1.013) * 100
-        )
+        map_kpa = (map_value + 1.013) * 100 if map_value < 0 else (map_value + 1.013) * 100
 
         for j, rpm_value in enumerate(rpm_axis):
             if rpm_value > 0:
@@ -646,21 +633,15 @@ def calculate_3d_map_values_universal(
     """Função universal para calcular valores de mapas 3D."""
 
     if map_type == "main_fuel_3d_map":
-        return calculate_fuel_3d_matrix(
-            rpm_axis, map_axis, vehicle_data, strategy, safety_factor
-        )
+        return calculate_fuel_3d_matrix(rpm_axis, map_axis, vehicle_data, strategy, safety_factor)
     elif map_type == "ignition_timing_3d_map":
         return calculate_ignition_3d_matrix(
             rpm_axis, map_axis, vehicle_data, strategy, safety_factor
         )
     elif map_type == "lambda_target_3d_map":
-        return calculate_lambda_3d_matrix(
-            rpm_axis, map_axis, vehicle_data, strategy, safety_factor
-        )
+        return calculate_lambda_3d_matrix(rpm_axis, map_axis, vehicle_data, strategy, safety_factor)
     elif map_type == "afr_target_3d_map":
-        return calculate_afr_3d_matrix(
-            rpm_axis, map_axis, vehicle_data, strategy, safety_factor
-        )
+        return calculate_afr_3d_matrix(rpm_axis, map_axis, vehicle_data, strategy, safety_factor)
     else:
         # Valores padrão baseados no tipo
         grid_size = len(map_axis)
@@ -675,12 +656,8 @@ def get_default_3d_enabled_matrix(
     map_config = config.get(map_type, {})
 
     # Obter configurações padrão
-    rpm_enabled = map_config.get(
-        "default_rpm_enabled", [True] * map_config.get("grid_size", 32)
-    )
-    map_enabled = map_config.get(
-        "default_map_enabled", [True] * map_config.get("grid_size", 32)
-    )
+    rpm_enabled = map_config.get("default_rpm_enabled", [True] * map_config.get("grid_size", 32))
+    map_enabled = map_config.get("default_map_enabled", [True] * map_config.get("grid_size", 32))
 
     # Ajustar para motores aspirados vs turbo
     turbo_config = map_config.get("turbo_adjustment", {})
@@ -779,9 +756,7 @@ def get_default_3d_map_values(
         return np.ones((grid_size, grid_size)) * 5.0
 
 
-def validate_3d_map_values(
-    values: np.ndarray, min_val: float, max_val: float
-) -> Tuple[bool, str]:
+def validate_3d_map_values(values: np.ndarray, min_val: float, max_val: float) -> Tuple[bool, str]:
     """Valida se os valores estão dentro dos limites permitidos."""
     if np.any(values < min_val) or np.any(values > max_val):
         return False, f"Valores devem estar entre {min_val} e {max_val}"
@@ -911,15 +886,9 @@ def format_value_by_type(value: float, map_type: str) -> str:
     return format_value_3_decimals(value)
 
 
-def get_active_axis_values(
-    axis_values: List[float], enabled: List[bool]
-) -> List[float]:
+def get_active_axis_values(axis_values: List[float], enabled: List[bool]) -> List[float]:
     """Retorna apenas os valores ativos do eixo."""
-    return [
-        axis_values[i]
-        for i in range(len(axis_values))
-        if i < len(enabled) and enabled[i]
-    ]
+    return [axis_values[i] for i in range(len(axis_values)) if i < len(enabled) and enabled[i]]
 
 
 def ensure_all_3d_maps_exist(vehicle_id: str, vehicle_data: Dict[str, Any]) -> bool:
@@ -940,12 +909,14 @@ def ensure_all_3d_maps_exist(vehicle_id: str, vehicle_data: Dict[str, Any]) -> b
                     grid_size = map_config.get("grid_size", 32)
 
                     # Obter configurações padrão
-                    rpm_axis = get_map_config_values(
-                        selected_map_type, "default_rpm_values", grid_size
-                    ) or DEFAULT_RPM_AXIS[:grid_size]
-                    map_axis = get_map_config_values(
-                        selected_map_type, "default_map_values", grid_size
-                    ) or DEFAULT_MAP_AXIS[:grid_size]
+                    rpm_axis = (
+                        get_map_config_values(selected_map_type, "default_rpm_values", grid_size)
+                        or DEFAULT_RPM_AXIS[:grid_size]
+                    )
+                    map_axis = (
+                        get_map_config_values(selected_map_type, "default_map_values", grid_size)
+                        or DEFAULT_MAP_AXIS[:grid_size]
+                    )
 
                     # Ajustar tamanhos
                     if len(rpm_axis) != grid_size:
@@ -962,22 +933,18 @@ def ensure_all_3d_maps_exist(vehicle_id: str, vehicle_data: Dict[str, Any]) -> b
                         )
 
                     # Obter configurações enable/disable inteligentes
-                    rpm_enabled, map_enabled = get_default_3d_enabled_matrix(
-                        map_type, vehicle_data
-                    )
+                    rpm_enabled, map_enabled = get_default_3d_enabled_matrix(map_type, vehicle_data)
 
                     # Ajustar tamanhos se necessário
                     if len(rpm_enabled) != grid_size:
                         rpm_enabled = (
-                            rpm_enabled[:grid_size]
-                            + [False] * (grid_size - len(rpm_enabled))
+                            rpm_enabled[:grid_size] + [False] * (grid_size - len(rpm_enabled))
                             if len(rpm_enabled) < grid_size
                             else rpm_enabled[:grid_size]
                         )
                     if len(map_enabled) != grid_size:
                         map_enabled = (
-                            map_enabled[:grid_size]
-                            + [False] * (grid_size - len(map_enabled))
+                            map_enabled[:grid_size] + [False] * (grid_size - len(map_enabled))
                             if len(map_enabled) < grid_size
                             else map_enabled[:grid_size]
                         )
@@ -998,12 +965,8 @@ def ensure_all_3d_maps_exist(vehicle_id: str, vehicle_data: Dict[str, Any]) -> b
 
                         # Expandir para o grid completo
                         full_matrix = np.zeros((grid_size, grid_size))
-                        active_rpm_indices = [
-                            i for i, enabled in enumerate(rpm_enabled) if enabled
-                        ]
-                        active_map_indices = [
-                            i for i, enabled in enumerate(map_enabled) if enabled
-                        ]
+                        active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled) if enabled]
+                        active_map_indices = [i for i, enabled in enumerate(map_enabled) if enabled]
 
                         for i, map_idx in enumerate(active_map_indices):
                             for j, rpm_idx in enumerate(active_rpm_indices):
@@ -1011,9 +974,7 @@ def ensure_all_3d_maps_exist(vehicle_id: str, vehicle_data: Dict[str, Any]) -> b
                                     i < calculated_matrix.shape[0]
                                     and j < calculated_matrix.shape[1]
                                 ):
-                                    full_matrix[map_idx, rpm_idx] = calculated_matrix[
-                                        i, j
-                                    ]
+                                    full_matrix[map_idx, rpm_idx] = calculated_matrix[i, j]
                     else:
                         # Fallback para valores padrão simples
                         full_matrix = get_default_3d_map_values(map_type, grid_size)
@@ -1044,9 +1005,7 @@ def ensure_all_3d_maps_exist(vehicle_id: str, vehicle_data: Dict[str, Any]) -> b
 selected_vehicle_id = get_vehicle_context()
 
 if not selected_vehicle_id:
-    st.warning(
-        "Nenhum veículo selecionado. Por favor, selecione um veículo na página inicial."
-    )
+    st.warning("Nenhum veículo selecionado. Por favor, selecione um veículo na página inicial.")
     st.stop()
 
 # Garantir que todos os mapas 3D existam
@@ -1057,9 +1016,7 @@ with st.spinner("Verificando mapas 3D..."):
 # Atualizar título com informações do veículo
 if vehicle_data and "name" in vehicle_data and "nickname" in vehicle_data:
     st.empty()  # Limpar título anterior
-    st.markdown(
-        f"# Mapas de Injeção 3D - {vehicle_data['name']} ({vehicle_data['nickname']})"
-    )
+    st.markdown(f"# Mapas de Injeção 3D - {vehicle_data['name']} ({vehicle_data['nickname']})")
 
 # Seção de configuração (movida para cima)
 st.container()
@@ -1110,9 +1067,7 @@ with tab1:
     st.caption("Editor de matriz 3D")
 
     # Inicializar dados se não existirem
-    session_key = (
-        f"map_3d_data_{selected_vehicle_id}_{selected_map_type}_{selected_bank}"
-    )
+    session_key = f"map_3d_data_{selected_vehicle_id}_{selected_map_type}_{selected_bank}"
 
     if session_key not in st.session_state:
         # Obter grid_size do tipo de mapa
@@ -1123,43 +1078,37 @@ with tab1:
         map_config = config.get(selected_map_type, {})
 
         # Obter valores enabled padrão da configuração
-        default_rpm_enabled = get_map_config_values(
-            selected_map_type, "default_rpm_enabled", grid_size
-        ) or RPM_ENABLED[:grid_size]
-        default_map_enabled = get_map_config_values(
-            selected_map_type, "default_map_enabled", grid_size
-        ) or MAP_ENABLED[:grid_size]
+        default_rpm_enabled = (
+            get_map_config_values(selected_map_type, "default_rpm_enabled", grid_size)
+            or RPM_ENABLED[:grid_size]
+        )
+        default_map_enabled = (
+            get_map_config_values(selected_map_type, "default_map_enabled", grid_size)
+            or MAP_ENABLED[:grid_size]
+        )
 
         # Ajustar tamanhos dos defaults
         if len(default_rpm_enabled) != grid_size:
             default_rpm_enabled = (
                 default_rpm_enabled[:grid_size]
                 if len(default_rpm_enabled) > grid_size
-                else default_rpm_enabled
-                + [False] * (grid_size - len(default_rpm_enabled))
+                else default_rpm_enabled + [False] * (grid_size - len(default_rpm_enabled))
             )
         if len(default_map_enabled) != grid_size:
             default_map_enabled = (
                 default_map_enabled[:grid_size]
                 if len(default_map_enabled) > grid_size
-                else default_map_enabled
-                + [False] * (grid_size - len(default_map_enabled))
+                else default_map_enabled + [False] * (grid_size - len(default_map_enabled))
             )
 
         # Tentar carregar dados salvos
-        loaded_data = load_3d_map_data(
-            selected_vehicle_id, selected_map_type, selected_bank
-        )
+        loaded_data = load_3d_map_data(selected_vehicle_id, selected_map_type, selected_bank)
         if loaded_data:
             # Ajustar tamanho se necessário
             if len(loaded_data["rpm_axis"]) != grid_size:
                 # Redimensionar eixos e matriz para o grid_size correto
-                rpm_axis = map_config.get(
-                    "default_rpm_values", DEFAULT_RPM_AXIS[:grid_size]
-                )
-                map_axis = map_config.get(
-                    "default_map_values", DEFAULT_MAP_AXIS[:grid_size]
-                )
+                rpm_axis = map_config.get("default_rpm_values", DEFAULT_RPM_AXIS[:grid_size])
+                map_axis = map_config.get("default_map_values", DEFAULT_MAP_AXIS[:grid_size])
                 rpm_enabled = default_rpm_enabled
                 map_enabled = default_map_enabled
                 values_matrix = get_default_3d_map_values(selected_map_type, grid_size)
@@ -1184,12 +1133,8 @@ with tab1:
             map_config = config.get(selected_map_type, {})
 
             # Obter eixos padrão da configuração
-            rpm_axis = map_config.get(
-                "default_rpm_values", DEFAULT_RPM_AXIS[:grid_size]
-            )
-            map_axis = map_config.get(
-                "default_map_values", DEFAULT_MAP_AXIS[:grid_size]
-            )
+            rpm_axis = map_config.get("default_rpm_values", DEFAULT_RPM_AXIS[:grid_size])
+            map_axis = map_config.get("default_map_values", DEFAULT_MAP_AXIS[:grid_size])
 
             # Obter os valores enabled da configuração (se existirem)
             rpm_enabled = map_config.get("default_rpm_enabled", None)
@@ -1204,13 +1149,9 @@ with tab1:
 
             # Ajustar para o tamanho correto (garantir que o tamanho dos eixos corresponde ao grid_size)
             if len(rpm_axis) != grid_size:
-                rpm_axis = (
-                    rpm_axis[:grid_size] if len(rpm_axis) >= grid_size else rpm_axis
-                )
+                rpm_axis = rpm_axis[:grid_size] if len(rpm_axis) >= grid_size else rpm_axis
             if len(map_axis) != grid_size:
-                map_axis = (
-                    map_axis[:grid_size] if len(map_axis) >= grid_size else map_axis
-                )
+                map_axis = map_axis[:grid_size] if len(map_axis) >= grid_size else map_axis
 
             # Ajustar tamanhos se necessário
             if len(rpm_enabled) != grid_size:
@@ -1231,9 +1172,7 @@ with tab1:
                 "map_axis": map_axis,
                 "rpm_enabled": rpm_enabled,
                 "map_enabled": map_enabled,
-                "values_matrix": get_default_3d_map_values(
-                    selected_map_type, grid_size
-                ),
+                "values_matrix": get_default_3d_map_values(selected_map_type, grid_size),
             }
 
     current_data = st.session_state[session_key]
@@ -1334,28 +1273,20 @@ with tab1:
                                 help="Compensa alteração de vazão em MAP positivo (regulador 1:1 em boost)",
                             )
                             if pressure_compensation:
-                                st.caption(
-                                    f":material/lightbulb: Regulador 1:1 (MAP > 0)"
-                                )
+                                st.caption(f":material/lightbulb: Regulador 1:1 (MAP > 0)")
                     elif selected_map_type == "ve_table_3d_map":
                         # Controles para VE Table
-                        st.info(
-                            "Configurações automáticas para VE Table baseadas no motor"
-                        )
+                        st.info("Configurações automáticas para VE Table baseadas no motor")
                     elif selected_map_type == "ignition_3d_map":
                         # Controles para mapa de ignição
-                        st.info(
-                            "Configurações automáticas para Ignição baseadas no motor"
-                        )
+                        st.info("Configurações automáticas para Ignição baseadas no motor")
                     elif selected_map_type == "lambda_target_3d_map":
                         # Controles para Lambda Target
                         st.info(
                             "Configurações automáticas para Lambda Target baseadas no combustível"
                         )
                     else:
-                        st.info(
-                            "Configurações automáticas baseadas no tipo de mapa 3D selecionado"
-                        )
+                        st.info("Configurações automáticas baseadas no tipo de mapa 3D selecionado")
 
                 with calc_col2:
                     st.subheader("Dados do Veículo")
@@ -1406,12 +1337,8 @@ with tab1:
                 preview_matrix = []
 
                 # Obter apenas valores ativos
-                active_rpm_indices = [
-                    i for i, enabled in enumerate(rpm_enabled) if enabled
-                ]
-                active_map_indices = [
-                    i for i, enabled in enumerate(map_enabled) if enabled
-                ]
+                active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled) if enabled]
+                active_map_indices = [i for i, enabled in enumerate(map_enabled) if enabled]
 
                 if active_rpm_indices and active_map_indices:
                     # Criar matriz de preview com valores calculados
@@ -1427,18 +1354,14 @@ with tab1:
                                 if selected_map_type == "main_fuel_3d_map":
                                     # Fórmula mais realista baseada em RPM e MAP
                                     # Base: 2.1ms em idle (400rpm, -1bar), até 11.5ms em alta carga (8000rpm, 2bar)
-                                    rpm_normalized = (rpm_value - 400) / (
-                                        8000 - 400
-                                    )  # 0 to 1
+                                    rpm_normalized = (rpm_value - 400) / (8000 - 400)  # 0 to 1
                                     map_normalized = (
                                         map_value + 1.0
                                     ) / 3.0  # -1 to 2 bar -> 0 to 1
 
                                     # Cálculo progressivo similar ao 2D
                                     base_value = (
-                                        2.1
-                                        + (rpm_normalized * 5.0)
-                                        + (map_normalized * 4.4)
+                                        2.1 + (rpm_normalized * 5.0) + (map_normalized * 4.4)
                                     )
 
                                     # Compensação de pressão de combustível (regulador 1:1)
@@ -1456,9 +1379,7 @@ with tab1:
                                         )
 
                                         # Nova pressão = base + MAP (regulador 1:1 apenas em boost)
-                                        fuel_pressure_actual = (
-                                            fuel_pressure_base + map_value
-                                        )
+                                        fuel_pressure_actual = fuel_pressure_base + map_value
 
                                         # Correção de vazão: sqrt(pressão_atual / pressão_base)
                                         # Mais pressão -> mais vazão -> tempo DIMINUI
@@ -1473,19 +1394,13 @@ with tab1:
                                         base_value *= time_correction
 
                                     # Aplicar correções baseadas nas configurações
-                                    if st.session_state.get(
-                                        f"fuel_correction_{session_key}", True
-                                    ):
+                                    if st.session_state.get(f"fuel_correction_{session_key}", True):
                                         # Aplicar correção de combustível se habilitada
-                                        fuel_type = vehicle_data.get(
-                                            "fuel_type", "gasoline"
-                                        )
+                                        fuel_type = vehicle_data.get("fuel_type", "gasoline")
                                         if fuel_type == "ethanol":
                                             base_value *= 1.3  # Etanol precisa de mais combustível
 
-                                    if st.session_state.get(
-                                        f"consider_boost_{session_key}", False
-                                    ):
+                                    if st.session_state.get(f"consider_boost_{session_key}", False):
                                         # Aplicar enriquecimento adicional de boost se habilitado
                                         # Esta é uma correção ADICIONAL para segurança em boost
                                         if map_value > 0:  # Pressão positiva (boost)
@@ -1514,9 +1429,7 @@ with tab1:
                                     map_normalized = (map_value + 1.0) / 3.0
 
                                     default_value = (
-                                        2.1
-                                        + (rpm_normalized * 5.0)
-                                        + (map_normalized * 4.4)
+                                        2.1 + (rpm_normalized * 5.0) + (map_normalized * 4.4)
                                     )
                                 else:
                                     default_value = 5.0
@@ -1534,11 +1447,7 @@ with tab1:
 
                     # Criar headers das colunas com valores de MAP
                     column_headers = [
-                        (
-                            f"{map_val:.2f}"
-                            if isinstance(map_val, (int, float))
-                            else str(map_val)
-                        )
+                        (f"{map_val:.2f}" if isinstance(map_val, (int, float)) else str(map_val))
                         for map_val in active_map_values
                     ]
 
@@ -1561,9 +1470,7 @@ with tab1:
                                 ":material/check_circle: Correção Etanol (+30%)"
                             )
 
-                    fuel_pressure_value = st.session_state.get(
-                        f"fuel_pressure_{session_key}", 3.0
-                    )
+                    fuel_pressure_value = st.session_state.get(f"fuel_pressure_{session_key}", 3.0)
                     if fuel_pressure_value != 3.0:
                         corrections_applied.append(
                             f":material/check_circle: Pressão Base: {fuel_pressure_value} bar"
@@ -1573,9 +1480,7 @@ with tab1:
                             ":material/check_circle: Pressão Base: 3.0 bar (padrão)"
                         )
 
-                    if st.session_state.get(
-                        f"pressure_compensation_{session_key}", True
-                    ):
+                    if st.session_state.get(f"pressure_compensation_{session_key}", True):
                         corrections_applied.append(
                             ":material/check_circle: Compensação MAP/Pressão (regulador 1:1)"
                         )
@@ -1586,18 +1491,14 @@ with tab1:
                         )
 
                     if corrections_applied:
-                        st.caption(
-                            "Correções aplicadas: " + " | ".join(corrections_applied)
-                        )
+                        st.caption("Correções aplicadas: " + " | ".join(corrections_applied))
 
                     st.caption(
                         f"Valores com 3 casas decimais - Total: {len(active_rpm_values) * len(active_map_values)} valores"
                     )
 
                     # Aplicar estilo à tabela
-                    styled_preview = preview_df.style.format(
-                        "{:.3f}"
-                    ).background_gradient(
+                    styled_preview = preview_df.style.format("{:.3f}").background_gradient(
                         cmap="RdYlBu",  # Removido o _r para inverter as cores
                         axis=None,
                         vmin=preview_df.min().min(),
@@ -1614,17 +1515,11 @@ with tab1:
                         import numpy as np
 
                         with col_min:
-                            st.metric(
-                                "Mínimo", f"{min(all_values):.3f} {map_info['unit']}"
-                            )
+                            st.metric("Mínimo", f"{min(all_values):.3f} {map_info['unit']}")
                         with col_med:
-                            st.metric(
-                                "Médio", f"{np.mean(all_values):.3f} {map_info['unit']}"
-                            )
+                            st.metric("Médio", f"{np.mean(all_values):.3f} {map_info['unit']}")
                         with col_max:
-                            st.metric(
-                                "Máximo", f"{max(all_values):.3f} {map_info['unit']}"
-                            )
+                            st.metric("Máximo", f"{max(all_values):.3f} {map_info['unit']}")
                 else:
                     st.warning("Nenhuma posição ativa para calcular preview")
 
@@ -1642,21 +1537,19 @@ with tab1:
                     ):
                         # Aplicar valores calculados à matriz 3D
                         # Criar nova matriz completa mantendo valores desabilitados
-                        new_matrix = [
-                            [0.0] * len(map_axis) for _ in range(len(rpm_axis))
-                        ]
+                        new_matrix = [[0.0] * len(map_axis) for _ in range(len(rpm_axis))]
 
                         # Preencher com os valores calculados nas posições ativas
                         preview_row_idx = 0
                         for rpm_idx in active_rpm_indices:
                             preview_col_idx = 0
                             for map_idx in active_map_indices:
-                                if preview_row_idx < len(
-                                    preview_matrix
-                                ) and preview_col_idx < len(preview_matrix[0]):
-                                    new_matrix[rpm_idx][map_idx] = preview_matrix[
-                                        preview_row_idx
-                                    ][preview_col_idx]
+                                if preview_row_idx < len(preview_matrix) and preview_col_idx < len(
+                                    preview_matrix[0]
+                                ):
+                                    new_matrix[rpm_idx][map_idx] = preview_matrix[preview_row_idx][
+                                        preview_col_idx
+                                    ]
                                 preview_col_idx += 1
                             preview_row_idx += 1
 
@@ -1797,27 +1690,27 @@ with tab1:
         map_config = config.get(selected_map_type, {})
 
         # Usar valores padrão da configuração se não houver dados salvos
-        default_rpm_enabled = get_map_config_values(
-            selected_map_type, "default_rpm_enabled", grid_size
-        ) or RPM_ENABLED[:grid_size]
-        default_map_enabled = get_map_config_values(
-            selected_map_type, "default_map_enabled", grid_size
-        ) or MAP_ENABLED[:grid_size]
+        default_rpm_enabled = (
+            get_map_config_values(selected_map_type, "default_rpm_enabled", grid_size)
+            or RPM_ENABLED[:grid_size]
+        )
+        default_map_enabled = (
+            get_map_config_values(selected_map_type, "default_map_enabled", grid_size)
+            or MAP_ENABLED[:grid_size]
+        )
 
         # Ajustar tamanhos dos defaults se necessário
         if len(default_rpm_enabled) != grid_size:
             default_rpm_enabled = (
                 default_rpm_enabled[:grid_size]
                 if len(default_rpm_enabled) > grid_size
-                else default_rpm_enabled
-                + [False] * (grid_size - len(default_rpm_enabled))
+                else default_rpm_enabled + [False] * (grid_size - len(default_rpm_enabled))
             )
         if len(default_map_enabled) != grid_size:
             default_map_enabled = (
                 default_map_enabled[:grid_size]
                 if len(default_map_enabled) > grid_size
-                else default_map_enabled
-                + [False] * (grid_size - len(default_map_enabled))
+                else default_map_enabled + [False] * (grid_size - len(default_map_enabled))
             )
 
         # Usar valores salvos ou padrões da configuração
@@ -1840,15 +1733,17 @@ with tab1:
         map_axis = current_data["map_axis"]
 
         if len(rpm_axis) != grid_size:
-            rpm_axis = get_map_config_values(
-                selected_map_type, "default_rpm_values", grid_size
-            ) or DEFAULT_RPM_AXIS[:grid_size]
+            rpm_axis = (
+                get_map_config_values(selected_map_type, "default_rpm_values", grid_size)
+                or DEFAULT_RPM_AXIS[:grid_size]
+            )
             current_data["rpm_axis"] = rpm_axis
 
         if len(map_axis) != grid_size:
-            map_axis = get_map_config_values(
-                selected_map_type, "default_map_values", grid_size
-            ) or DEFAULT_MAP_AXIS[:grid_size]
+            map_axis = (
+                get_map_config_values(selected_map_type, "default_map_values", grid_size)
+                or DEFAULT_MAP_AXIS[:grid_size]
+            )
             current_data["map_axis"] = map_axis
 
         active_rpm_values = get_active_axis_values(rpm_axis, rpm_enabled)
@@ -1861,16 +1756,12 @@ with tab1:
         matrix = current_data["values_matrix"]
 
         # Verificar se a matriz tem o tamanho correto, se não, redimensionar
-        if len(matrix) != grid_size or (
-            len(matrix) > 0 and len(matrix[0]) != grid_size
-        ):
+        if len(matrix) != grid_size or (len(matrix) > 0 and len(matrix[0]) != grid_size):
             # Criar nova matriz com o tamanho correto
             new_matrix = get_default_3d_map_values(selected_map_type, grid_size)
             # Copiar valores existentes se possível
             for i in range(min(len(matrix), grid_size)):
-                for j in range(
-                    min(len(matrix[i]) if i < len(matrix) else 0, grid_size)
-                ):
+                for j in range(min(len(matrix[i]) if i < len(matrix) else 0, grid_size)):
                     new_matrix[i][j] = matrix[i][j]
             matrix = new_matrix
             # Atualizar na sessão
@@ -1878,24 +1769,16 @@ with tab1:
 
         # Verificar se há valores ativos antes de continuar
         if not active_rpm_values or not active_map_values:
-            st.warning(
-                "Nenhuma posição ativa selecionada. Configure os eixos primeiro."
-            )
+            st.warning("Nenhuma posição ativa selecionada. Configure os eixos primeiro.")
         else:
             # Filtrar a matriz para usar apenas as posições ativas
             # Pegar apenas as linhas ativas (RPM) e colunas ativas (MAP)
-            active_rpm_indices = [
-                i for i, enabled in enumerate(rpm_enabled[:grid_size]) if enabled
-            ]
-            active_map_indices = [
-                i for i, enabled in enumerate(map_enabled[:grid_size]) if enabled
-            ]
+            active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled[:grid_size]) if enabled]
+            active_map_indices = [i for i, enabled in enumerate(map_enabled[:grid_size]) if enabled]
 
             # Verificar se os índices estão corretos
             if not active_rpm_indices or not active_map_indices:
-                st.error(
-                    "Erro ao identificar posições ativas. Verifique a configuração dos eixos."
-                )
+                st.error("Erro ao identificar posições ativas. Verifique a configuração dos eixos.")
             else:
                 # Inverter a ordem do RPM para mostrar decrescente (maior para menor)
                 active_rpm_values_reversed = list(reversed(active_rpm_values))
@@ -1972,11 +1855,7 @@ with tab1:
 
                 # Criar colunas com valores de MAP formatados
                 map_columns = [
-                    (
-                        f"{map_val:.2f}"
-                        if isinstance(map_val, (int, float))
-                        else str(map_val)
-                    )
+                    (f"{map_val:.2f}" if isinstance(map_val, (int, float)) else str(map_val))
                     for map_val in active_map_values
                 ]
 
@@ -1987,9 +1866,9 @@ with tab1:
                 )
 
                 # Aplicar estilo ao DataFrame com colunas únicas
-                styled_df = display_df.style.background_gradient(
-                    cmap="RdYlBu", axis=None
-                ).format("{:.3f}")
+                styled_df = display_df.style.background_gradient(cmap="RdYlBu", axis=None).format(
+                    "{:.3f}"
+                )
 
                 # Mostrar versão com gradiente para visualização
                 st.caption(
@@ -2009,13 +1888,8 @@ with tab1:
                 for i, rpm_idx in enumerate(active_rpm_indices_reversed):
                     if i < len(edited_matrix_df.values) and rpm_idx < grid_size:
                         for j, map_idx in enumerate(active_map_indices):
-                            if (
-                                j < len(edited_matrix_df.values[i])
-                                and map_idx < grid_size
-                            ):
-                                full_matrix[rpm_idx][map_idx] = edited_matrix_df.values[
-                                    i
-                                ][j]
+                            if j < len(edited_matrix_df.values[i]) and map_idx < grid_size:
+                                full_matrix[rpm_idx][map_idx] = edited_matrix_df.values[i][j]
 
                 st.session_state[session_key]["values_matrix"] = full_matrix
 
@@ -2053,9 +1927,7 @@ with tab1:
 
                     # Estratégia selecionada
                     strategy_info = STRATEGY_PRESETS[strategy]
-                    st.info(
-                        f"**{strategy_info['name']}**: {strategy_info['description']}"
-                    )
+                    st.info(f"**{strategy_info['name']}**: {strategy_info['description']}")
 
                 with col_calc2:
                     # Fator de segurança
@@ -2075,21 +1947,13 @@ with tab1:
                     col_info1, col_info2 = st.columns(2)
                     with col_info1:
                         st.caption(f"📏 Cilindrada: {vehicle_data['displacement']}L")
-                        st.caption(
-                            f":material/build: Cilindros: {vehicle_data['cylinders']}"
-                        )
-                        st.caption(
-                            f"💉 Vazão: {vehicle_data['injector_flow_lbs']:.1f} lbs/h"
-                        )
+                        st.caption(f":material/build: Cilindros: {vehicle_data['cylinders']}")
+                        st.caption(f"💉 Vazão: {vehicle_data['injector_flow_lbs']:.1f} lbs/h")
                     with col_info2:
                         st.caption(f"⛽ Combustível: {vehicle_data['fuel_type']}")
-                        st.caption(
-                            f"🚗 Tipo: {'Turbo' if vehicle_data['turbo'] else 'Aspirado'}"
-                        )
+                        st.caption(f"🚗 Tipo: {'Turbo' if vehicle_data['turbo'] else 'Aspirado'}")
                         if vehicle_data["turbo"]:
-                            st.caption(
-                                f"💨 Boost: {vehicle_data['boost_pressure']:.1f} bar"
-                            )
+                            st.caption(f"💨 Boost: {vehicle_data['boost_pressure']:.1f} bar")
 
                 st.divider()
 
@@ -2127,9 +1991,7 @@ with tab1:
                             )
 
                             # Salvar preview no session_state
-                            st.session_state[f"preview_matrix_{session_key}"] = (
-                                preview_matrix
-                            )
+                            st.session_state[f"preview_matrix_{session_key}"] = preview_matrix
                             st.session_state[f"show_preview_{session_key}"] = True
                         else:
                             st.error("Configure eixos com valores ativos primeiro")
@@ -2170,18 +2032,14 @@ with tab1:
                             active_rpm_indices = [
                                 i
                                 for i, enabled in enumerate(
-                                    current_data.get("rpm_enabled", [True] * grid_size)[
-                                        :grid_size
-                                    ]
+                                    current_data.get("rpm_enabled", [True] * grid_size)[:grid_size]
                                 )
                                 if enabled
                             ]
                             active_map_indices = [
                                 i
                                 for i, enabled in enumerate(
-                                    current_data.get("map_enabled", [True] * grid_size)[
-                                        :grid_size
-                                    ]
+                                    current_data.get("map_enabled", [True] * grid_size)[:grid_size]
                                 )
                                 if enabled
                             ]
@@ -2195,16 +2053,12 @@ with tab1:
                                         i < calculated_matrix.shape[0]
                                         and j < calculated_matrix.shape[1]
                                     ):
-                                        full_matrix[map_idx, rpm_idx] = (
-                                            calculated_matrix[i, j]
-                                        )
+                                        full_matrix[map_idx, rpm_idx] = calculated_matrix[i, j]
 
                             # Aplicar à matriz do session_state
                             st.session_state[session_key]["values_matrix"] = full_matrix
                             st.session_state[f"show_calculator_{session_key}"] = False
-                            st.success(
-                                f"Matriz calculada com estratégia {strategy_info['name']}!"
-                            )
+                            st.success(f"Matriz calculada com estratégia {strategy_info['name']}!")
                             st.rerun()
                         else:
                             st.error("Configure eixos com valores ativos primeiro")
@@ -2227,14 +2081,14 @@ with tab1:
                         key=f"toggle_preview_3d_{session_key}",
                         use_container_width=True,
                     ):
-                        st.session_state[f"show_preview_3d_{session_key}"] = not st.session_state.get(
-                            f"show_preview_3d_{session_key}", False
+                        st.session_state[f"show_preview_3d_{session_key}"] = (
+                            not st.session_state.get(f"show_preview_3d_{session_key}", False)
                         )
-                    
-                    preview_matrix = st.session_state.get(
-                        f"preview_matrix_{session_key}"
-                    )
-                    if preview_matrix is not None and st.session_state.get(f"show_preview_3d_{session_key}", False):
+
+                    preview_matrix = st.session_state.get(f"preview_matrix_{session_key}")
+                    if preview_matrix is not None and st.session_state.get(
+                        f"show_preview_3d_{session_key}", False
+                    ):
                         st.divider()
                         st.markdown("#### :material/analytics: Visualização 3D do Preview")
 
@@ -2284,10 +2138,7 @@ with tab1:
                                         titleside="right",
                                         tickmode="linear",
                                         tick0=np.min(preview_matrix),
-                                        dtick=(
-                                            np.max(preview_matrix)
-                                            - np.min(preview_matrix)
-                                        )
+                                        dtick=(np.max(preview_matrix) - np.min(preview_matrix))
                                         / 10,
                                     ),
                                 )
@@ -2333,25 +2184,19 @@ with tab1:
                                 rpm_idx_in_full = [
                                     i
                                     for i, enabled in enumerate(
-                                        current_data.get(
-                                            "rpm_enabled", [True] * grid_size
-                                        )
+                                        current_data.get("rpm_enabled", [True] * grid_size)
                                     )
                                     if enabled
                                 ][selected_rpm_idx]
                                 map_idx_in_full = [
                                     i
                                     for i, enabled in enumerate(
-                                        current_data.get(
-                                            "map_enabled", [True] * grid_size
-                                        )
+                                        current_data.get("map_enabled", [True] * grid_size)
                                     )
                                     if enabled
                                 ][map_idx]
                                 current_slice.append(
-                                    current_data["values_matrix"][rpm_idx_in_full][
-                                        map_idx_in_full
-                                    ]
+                                    current_data["values_matrix"][rpm_idx_in_full][map_idx_in_full]
                                 )
 
                             # Criar gráfico de comparação
@@ -2409,25 +2254,19 @@ with tab1:
                                 rpm_idx_in_full = [
                                     i
                                     for i, enabled in enumerate(
-                                        current_data.get(
-                                            "rpm_enabled", [True] * grid_size
-                                        )
+                                        current_data.get("rpm_enabled", [True] * grid_size)
                                     )
                                     if enabled
                                 ][rpm_idx]
                                 map_idx_in_full = [
                                     i
                                     for i, enabled in enumerate(
-                                        current_data.get(
-                                            "map_enabled", [True] * grid_size
-                                        )
+                                        current_data.get("map_enabled", [True] * grid_size)
                                     )
                                     if enabled
                                 ][selected_map_idx]
                                 current_slice.append(
-                                    current_data["values_matrix"][rpm_idx_in_full][
-                                        map_idx_in_full
-                                    ]
+                                    current_data["values_matrix"][rpm_idx_in_full][map_idx_in_full]
                                 )
 
                             # Criar gráfico de comparação
@@ -2470,9 +2309,7 @@ with tab1:
         col_ops1, col_ops2, col_ops3 = st.columns(3)
 
         with col_ops1:
-            if st.button(
-                "Suavizar Matriz", use_container_width=True, key=f"smooth_{session_key}"
-            ):
+            if st.button("Suavizar Matriz", use_container_width=True, key=f"smooth_{session_key}"):
                 current_matrix = st.session_state[session_key]["values_matrix"]
                 smoothed_matrix = interpolate_3d_matrix(current_matrix)
                 st.session_state[session_key]["values_matrix"] = smoothed_matrix
@@ -2503,18 +2340,14 @@ with tab1:
                 # Usar eixos ativos para gerar matriz
                 active_rpm_enabled = st.session_state[session_key]["rpm_enabled"]
                 active_map_enabled = st.session_state[session_key]["map_enabled"]
-                st.session_state[session_key]["values_matrix"] = (
-                    get_default_3d_map_values(
-                        selected_map_type, active_rpm_enabled, active_map_enabled
-                    )
+                st.session_state[session_key]["values_matrix"] = get_default_3d_map_values(
+                    selected_map_type, active_rpm_enabled, active_map_enabled
                 )
                 st.success("Matriz resetada!")
                 st.rerun()
 
     with edit_tab2:
-        st.caption(
-            f"Configure os eixos X (RPM) e Y (MAP) - {map_info['grid_size']} posições cada"
-        )
+        st.caption(f"Configure os eixos X (RPM) e Y (MAP) - {map_info['grid_size']} posições cada")
 
         col_x, col_y = st.columns(2)
 
@@ -2549,9 +2382,7 @@ with tab1:
                         default=False,
                         width="small",
                     ),
-                    "Posição": st.column_config.TextColumn(
-                        "Posição", disabled=True, width="small"
-                    ),
+                    "Posição": st.column_config.TextColumn("Posição", disabled=True, width="small"),
                     "RPM": st.column_config.NumberColumn(
                         "RPM",
                         help="Valor do RPM",
@@ -2568,9 +2399,7 @@ with tab1:
 
             # Atualizar no session state
             st.session_state[session_key]["rpm_axis"] = edited_rpm_df["RPM"].tolist()
-            st.session_state[session_key]["rpm_enabled"] = edited_rpm_df[
-                "Ativo"
-            ].tolist()
+            st.session_state[session_key]["rpm_enabled"] = edited_rpm_df["Ativo"].tolist()
 
         with col_y:
             st.subheader("Configurar Eixo Y (MAP em bar)")
@@ -2603,9 +2432,7 @@ with tab1:
                         default=False,
                         width="small",
                     ),
-                    "Posição": st.column_config.TextColumn(
-                        "Posição", disabled=True, width="small"
-                    ),
+                    "Posição": st.column_config.TextColumn("Posição", disabled=True, width="small"),
                     "MAP (bar)": st.column_config.NumberColumn(
                         "MAP (bar)",
                         help="Valor do MAP em bar",
@@ -2621,17 +2448,11 @@ with tab1:
             )
 
             # Atualizar no session state
-            st.session_state[session_key]["map_axis"] = edited_map_df[
-                "MAP (bar)"
-            ].tolist()
-            st.session_state[session_key]["map_enabled"] = edited_map_df[
-                "Ativo"
-            ].tolist()
+            st.session_state[session_key]["map_axis"] = edited_map_df["MAP (bar)"].tolist()
+            st.session_state[session_key]["map_enabled"] = edited_map_df["Ativo"].tolist()
 
         # Botão para regenerar matriz baseada nos eixos ativos
-        if st.button(
-            "Regenerar Matriz com Eixos Ativos", key=f"regenerate_matrix_{session_key}"
-        ):
+        if st.button("Regenerar Matriz com Eixos Ativos", key=f"regenerate_matrix_{session_key}"):
             active_rpm_enabled = st.session_state[session_key]["rpm_enabled"]
             active_map_enabled = st.session_state[session_key]["map_enabled"]
             new_matrix = get_default_3d_map_values(
@@ -2659,9 +2480,7 @@ with tab1:
             )
 
         with col_save2:
-            reset_button = st.form_submit_button(
-                "Restaurar Padrão", use_container_width=True
-            )
+            reset_button = st.form_submit_button("Restaurar Padrão", use_container_width=True)
 
         if save_button:
             # Verificar se matrix_valid foi definido, senão assumir como válido
@@ -2679,9 +2498,7 @@ with tab1:
                     values_matrix = np.array(values_matrix)
 
                 # Debug: verificar dados antes de salvar
-                st.write(
-                    f"Salvando mapa: {selected_map_type} para veículo {selected_vehicle_id}"
-                )
+                st.write(f"Salvando mapa: {selected_map_type} para veículo {selected_vehicle_id}")
 
                 success = save_3d_map_data(
                     selected_vehicle_id,
@@ -2703,27 +2520,29 @@ with tab1:
                     time.sleep(0.5)
                     st.rerun()
                 else:
-                    st.error(
-                        "Erro ao salvar o mapa 3D - Verifique o console para mais detalhes"
-                    )
+                    st.error("Erro ao salvar o mapa 3D - Verifique o console para mais detalhes")
             else:
                 st.error("Corrija os erros de validação antes de salvar")
 
         if reset_button:
             # Restaurar valores padrão do arquivo de configuração
-            rpm_axis = get_map_config_values(
-                selected_map_type, "default_rpm_values", grid_size
-            ) or DEFAULT_RPM_AXIS[:grid_size]
-            map_axis = get_map_config_values(
-                selected_map_type, "default_map_values", grid_size
-            ) or DEFAULT_MAP_AXIS[:grid_size]
-            rpm_enabled = get_map_config_values(
-                selected_map_type, "default_rpm_enabled", grid_size
-            ) or RPM_ENABLED[:grid_size]
-            map_enabled = get_map_config_values(
-                selected_map_type, "default_map_enabled", grid_size
-            ) or MAP_ENABLED[:grid_size]
-            
+            rpm_axis = (
+                get_map_config_values(selected_map_type, "default_rpm_values", grid_size)
+                or DEFAULT_RPM_AXIS[:grid_size]
+            )
+            map_axis = (
+                get_map_config_values(selected_map_type, "default_map_values", grid_size)
+                or DEFAULT_MAP_AXIS[:grid_size]
+            )
+            rpm_enabled = (
+                get_map_config_values(selected_map_type, "default_rpm_enabled", grid_size)
+                or RPM_ENABLED[:grid_size]
+            )
+            map_enabled = (
+                get_map_config_values(selected_map_type, "default_map_enabled", grid_size)
+                or MAP_ENABLED[:grid_size]
+            )
+
             st.session_state[session_key] = {
                 "rpm_axis": rpm_axis,
                 "map_axis": map_axis,
@@ -2745,12 +2564,8 @@ with tab2:
         grid_size = map_info["grid_size"]
         rpm_enabled = current_data.get("rpm_enabled", [True] * grid_size)
         map_enabled = current_data.get("map_enabled", [True] * grid_size)
-        active_rpm_values = get_active_axis_values(
-            current_data["rpm_axis"], rpm_enabled
-        )
-        active_map_values = get_active_axis_values(
-            current_data["map_axis"], map_enabled
-        )
+        active_rpm_values = get_active_axis_values(current_data["rpm_axis"], rpm_enabled)
+        active_map_values = get_active_axis_values(current_data["map_axis"], map_enabled)
         values_matrix = current_data["values_matrix"]
 
         # Filtrar a matriz para usar apenas os pontos habilitados
@@ -2763,9 +2578,7 @@ with tab2:
         for rpm_idx in active_rpm_indices:
             row = []
             for map_idx in active_map_indices:
-                if map_idx < len(values_matrix) and rpm_idx < len(
-                    values_matrix[map_idx]
-                ):
+                if map_idx < len(values_matrix) and rpm_idx < len(values_matrix[map_idx]):
                     row.append(values_matrix[map_idx][rpm_idx])
                 else:
                     row.append(0.0)
@@ -2804,24 +2617,16 @@ with tab2:
         col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
 
         with col_stats1:
-            st.metric(
-                "Valor Mínimo", f"{np.min(filtered_values):.3f} {map_info['unit']}"
-            )
+            st.metric("Valor Mínimo", f"{np.min(filtered_values):.3f} {map_info['unit']}")
 
         with col_stats2:
-            st.metric(
-                "Valor Máximo", f"{np.max(filtered_values):.3f} {map_info['unit']}"
-            )
+            st.metric("Valor Máximo", f"{np.max(filtered_values):.3f} {map_info['unit']}")
 
         with col_stats3:
-            st.metric(
-                "Valor Médio", f"{np.mean(filtered_values):.3f} {map_info['unit']}"
-            )
+            st.metric("Valor Médio", f"{np.mean(filtered_values):.3f} {map_info['unit']}")
 
         with col_stats4:
-            st.metric(
-                "Desvio Padrão", f"{np.std(filtered_values):.3f} {map_info['unit']}"
-            )
+            st.metric("Desvio Padrão", f"{np.std(filtered_values):.3f} {map_info['unit']}")
 
         # Gráfico de contorno
         st.subheader("Mapa de Contorno")
@@ -2862,12 +2667,8 @@ with tab3:
         map_enabled = current_data.get("map_enabled", [True] * grid_size)
 
         # Obter índices ativos
-        active_rpm_indices = [
-            i for i, enabled in enumerate(rpm_enabled[:grid_size]) if enabled
-        ]
-        active_map_indices = [
-            i for i, enabled in enumerate(map_enabled[:grid_size]) if enabled
-        ]
+        active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled[:grid_size]) if enabled]
+        active_map_indices = [i for i, enabled in enumerate(map_enabled[:grid_size]) if enabled]
 
         # Inverter a ordem do RPM para mostrar decrescente (maior para menor)
         active_rpm_indices_reversed = list(reversed(active_rpm_indices))
@@ -2880,9 +2681,7 @@ with tab3:
                 row_values = []
                 for map_idx in active_map_indices:
                     if map_idx < len(values_matrix[rpm_idx]):
-                        row_values.append(
-                            format_value_3_decimals(values_matrix[rpm_idx][map_idx])
-                        )
+                        row_values.append(format_value_3_decimals(values_matrix[rpm_idx][map_idx]))
                     else:
                         row_values.append("0.000")
                 ftm_row = "\t".join(row_values)
@@ -2900,12 +2699,8 @@ with tab3:
         # Botão copiar nativo do Streamlit
         col_copy1, col_copy2 = st.columns([1, 3])
         with col_copy1:
-            if st.button(
-                ":material/content_copy: Copiar", key=f"copy_ftm_{session_key}"
-            ):
-                st.success(
-                    ":material/check_circle: Copiado para área de transferência!"
-                )
+            if st.button(":material/content_copy: Copiar", key=f"copy_ftm_{session_key}"):
+                st.success(":material/check_circle: Copiado para área de transferência!")
 
         st.divider()
 
@@ -2925,9 +2720,7 @@ with tab3:
                 st.session_state[f"paste_area_{session_key}"] = ""
                 st.rerun()
 
-        if st.button(
-            ":material/check: Aplicar Valores Colados", key=f"apply_paste_{session_key}"
-        ):
+        if st.button(":material/check: Aplicar Valores Colados", key=f"apply_paste_{session_key}"):
             if pasted_values.strip():
                 try:
                     # Parse valores com TAB e nova linha
@@ -2944,23 +2737,17 @@ with tab3:
                         # Obter índices ativos
                         grid_size = map_info["grid_size"]
                         active_rpm_indices = [
-                            i
-                            for i, enabled in enumerate(rpm_enabled[:grid_size])
-                            if enabled
+                            i for i, enabled in enumerate(rpm_enabled[:grid_size]) if enabled
                         ]
                         active_map_indices = [
-                            i
-                            for i, enabled in enumerate(map_enabled[:grid_size])
-                            if enabled
+                            i for i, enabled in enumerate(map_enabled[:grid_size]) if enabled
                         ]
 
                         # Inverter a ordem do RPM (dados vêm em ordem decrescente)
                         active_rpm_indices_reversed = list(reversed(active_rpm_indices))
 
                         # Criar matriz com valores existentes
-                        full_matrix = st.session_state[session_key][
-                            "values_matrix"
-                        ].copy()
+                        full_matrix = st.session_state[session_key]["values_matrix"].copy()
 
                         # Aplicar valores colados nas posições corretas
                         for i, line in enumerate(lines):
@@ -2980,9 +2767,7 @@ with tab3:
                         else:
                             # Aplicar à matriz
                             st.session_state[session_key]["values_matrix"] = full_matrix
-                            st.success(
-                                ":material/check_circle: Valores aplicados com sucesso!"
-                            )
+                            st.success(":material/check_circle: Valores aplicados com sucesso!")
                             st.rerun()
                     else:
                         st.error(
@@ -3020,13 +2805,10 @@ with tab3:
                         if (
                             len(rpm_data) == map_info["grid_size"]
                             and len(map_data) == map_info["grid_size"]
-                            and matrix_data.shape
-                            == (map_info["grid_size"], map_info["grid_size"])
+                            and matrix_data.shape == (map_info["grid_size"], map_info["grid_size"])
                         ):
 
-                            if st.button(
-                                "Importar JSON 3D", key=f"import_json_3d_{session_key}"
-                            ):
+                            if st.button("Importar JSON 3D", key=f"import_json_3d_{session_key}"):
                                 st.session_state[session_key] = {
                                     "rpm_axis": rpm_data,
                                     "map_axis": map_data,
@@ -3050,9 +2832,7 @@ with tab3:
                     if len(df_import) == expected_size:
                         required_cols = ["rpm", "map", "value"]
                         if all(col in df_import.columns for col in required_cols):
-                            if st.button(
-                                "Importar CSV 3D", key=f"import_csv_3d_{session_key}"
-                            ):
+                            if st.button("Importar CSV 3D", key=f"import_csv_3d_{session_key}"):
                                 # Reconstruir matriz a partir do CSV
                                 rpm_unique = sorted(df_import["rpm"].unique())
                                 map_unique = sorted(df_import["map"].unique())
@@ -3092,12 +2872,8 @@ with tab3:
                 "map_info": map_info,
                 "rpm_axis": current_data["rpm_axis"],
                 "map_axis": current_data["map_axis"],
-                "rpm_enabled": current_data.get(
-                    "rpm_enabled", [True] * map_info["grid_size"]
-                ),
-                "map_enabled": current_data.get(
-                    "map_enabled", [True] * map_info["grid_size"]
-                ),
+                "rpm_enabled": current_data.get("rpm_enabled", [True] * map_info["grid_size"]),
+                "map_enabled": current_data.get("map_enabled", [True] * map_info["grid_size"]),
                 "values_matrix": current_data["values_matrix"].tolist(),
                 "exported_at": pd.Timestamp.now().isoformat(),
             }
@@ -3129,9 +2905,7 @@ with tab3:
             csv_data = []
             for i, map_val in enumerate(active_map_values):
                 for j, rpm_val in enumerate(active_rpm_values):
-                    csv_data.append(
-                        {"rpm": rpm_val, "map": map_val, "value": values_matrix[i, j]}
-                    )
+                    csv_data.append({"rpm": rpm_val, "map": map_val, "value": values_matrix[i, j]})
 
             export_csv_df = pd.DataFrame(csv_data)
 

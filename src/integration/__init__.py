@@ -22,26 +22,27 @@ Author: FuelTune Development Team
 Version: 1.0.0
 """
 
-from .integration_manager import (
-    IntegrationManager,
-    initialize_integration_system,
-    shutdown_integration_system,
-    integration_manager,
-)
-from .workflow import WorkflowManager, workflow_manager
-from .events import EventBus
-from .clipboard import ClipboardManager, clipboard_manager
-from .pipeline import DataPipeline
-from .notifications import NotificationSystem, notification_system
-from .export_import import ExportImportManager, export_import_manager
 from .background import BackgroundTaskManager, task_manager
-from .plugins import PluginSystem, plugin_system
+from .clipboard import ClipboardManager, clipboard_manager
+from .clipboard_manager import ClipboardManager as FTClipboardManager
+from .clipboard_manager import ClipboardResult
+from .events import EventBus
+from .export_import import ExportImportManager, export_import_manager
+from .format_detector import DetectionResult, FormatCandidate, FTManagerFormatDetector
 
 # FTManager Integration Components
 from .ftmanager_bridge import FTManagerIntegrationBridge, IntegrationResult
-from .format_detector import FTManagerFormatDetector, DetectionResult, FormatCandidate
-from .clipboard_manager import ClipboardManager as FTClipboardManager, ClipboardResult
-from .validators import FTManagerValidator, ValidationResult, ValidationIssue
+from .integration_manager import (
+    IntegrationManager,
+    initialize_integration_system,
+    integration_manager,
+    shutdown_integration_system,
+)
+from .notifications import NotificationSystem, notification_system
+from .pipeline import DataPipeline
+from .plugins import PluginSystem, plugin_system
+from .validators import FTManagerValidator, ValidationIssue, ValidationResult
+from .workflow import WorkflowManager, workflow_manager
 
 __all__ = [
     "IntegrationManager",

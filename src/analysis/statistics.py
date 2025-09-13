@@ -9,7 +9,6 @@ Author: A04-ANALYSIS-SCIPY Agent
 Created: 2025-01-02
 """
 
-import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
 
@@ -21,9 +20,7 @@ from scipy.stats import (
     anderson,
     jarque_bera,
     normaltest,
-    pearsonr,
     shapiro,
-    spearmanr,
     ttest_1samp,
     ttest_ind,
     ttest_rel,
@@ -135,10 +132,10 @@ class StatisticalAnalyzer:
                 # For DataFrame, analyze all numeric columns
                 results = {}
                 numeric_columns = data.select_dtypes(include=[np.number]).columns
-                
+
                 for col in numeric_columns:
                     results[col] = self.generate_statistical_summary(data[col], col)
-                
+
                 return results
             else:
                 # For Series, direct analysis

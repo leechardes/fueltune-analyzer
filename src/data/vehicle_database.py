@@ -3,23 +3,22 @@ Database operations for vehicle management - wrapper for database.py functions.
 Converts SQLAlchemy objects to dictionaries for use in Streamlit UI.
 """
 
-from typing import Optional, List, Dict, Any
-from src.data.database import (
-    get_database,
-    create_vehicle as db_create_vehicle,
-    get_vehicle_by_id as db_get_vehicle_by_id,
-    get_all_vehicles as db_get_all_vehicles,
-    update_vehicle as db_update_vehicle,
-    delete_vehicle as db_delete_vehicle,
-    search_vehicles as db_search_vehicles,
-    get_vehicle_statistics as db_get_vehicle_statistics
-)
+from typing import Any, Dict, List, Optional
+
+from src.data.database import create_vehicle as db_create_vehicle
+from src.data.database import delete_vehicle as db_delete_vehicle
+from src.data.database import get_all_vehicles as db_get_all_vehicles
+from src.data.database import get_database
+from src.data.database import get_vehicle_by_id as db_get_vehicle_by_id
+from src.data.database import search_vehicles as db_search_vehicles
+from src.data.database import update_vehicle as db_update_vehicle
+
 
 def vehicle_to_dict(vehicle) -> Dict[str, Any]:
     """Convert Vehicle SQLAlchemy model to dictionary."""
     if not vehicle:
         return None
-    
+
     return {
         "id": vehicle.id,
         "name": vehicle.name,
@@ -69,64 +68,73 @@ def vehicle_to_dict(vehicle) -> Dict[str, Any]:
         "bank_b_dead_time": vehicle.bank_b_dead_time,
         "max_map_pressure": vehicle.max_map_pressure,
         "min_map_pressure": vehicle.min_map_pressure,
-        "boost_pressure": getattr(vehicle, 'boost_pressure', None),
-        "standard_boost_pressure": getattr(vehicle, 'standard_boost_pressure', None),
-        "compression_ratio": getattr(vehicle, 'compression_ratio', None),
-        "camshaft_profile": getattr(vehicle, 'camshaft_profile', None),
-        "bank_b_initial_pressure": getattr(vehicle, 'bank_b_initial_pressure', None),
-        "bsfc_factor": getattr(vehicle, 'bsfc_factor', None),
-        "required_hp_na": getattr(vehicle, 'required_hp_na', None),
-        "required_hp_boost": getattr(vehicle, 'required_hp_boost', None),
-        "required_hp_standard": getattr(vehicle, 'required_hp_standard', None),
-        "max_supported_hp": getattr(vehicle, 'max_supported_hp', None),
-        "hp_margin": getattr(vehicle, 'hp_margin', None),
-        "hp_margin_percent": getattr(vehicle, 'hp_margin_percent', None),
+        "boost_pressure": getattr(vehicle, "boost_pressure", None),
+        "standard_boost_pressure": getattr(vehicle, "standard_boost_pressure", None),
+        "compression_ratio": getattr(vehicle, "compression_ratio", None),
+        "camshaft_profile": getattr(vehicle, "camshaft_profile", None),
+        "bank_b_initial_pressure": getattr(vehicle, "bank_b_initial_pressure", None),
+        "bsfc_factor": getattr(vehicle, "bsfc_factor", None),
+        "required_hp_na": getattr(vehicle, "required_hp_na", None),
+        "required_hp_boost": getattr(vehicle, "required_hp_boost", None),
+        "required_hp_standard": getattr(vehicle, "required_hp_standard", None),
+        "max_supported_hp": getattr(vehicle, "max_supported_hp", None),
+        "hp_margin": getattr(vehicle, "hp_margin", None),
+        "hp_margin_percent": getattr(vehicle, "hp_margin_percent", None),
         "created_at": vehicle.created_at,
         "updated_at": vehicle.updated_at,
         "is_active": vehicle.is_active,
-        "notes": vehicle.notes
+        "notes": vehicle.notes,
     }
+
 
 def get_all_vehicles(active_only: bool = True) -> List[Dict[str, Any]]:
     """Get all vehicles from database as dictionaries."""
     vehicles = db_get_all_vehicles(active_only=active_only)
     return [vehicle_to_dict(v) for v in vehicles]
 
+
 def get_vehicle_by_id(vehicle_id: str) -> Optional[Dict[str, Any]]:
     """Get vehicle by ID as dictionary."""
     vehicle = db_get_vehicle_by_id(vehicle_id)
     return vehicle_to_dict(vehicle) if vehicle else None
 
+
 def create_vehicle(vehicle_data: Dict[str, Any]) -> str:
     """Create a new vehicle."""
     return db_create_vehicle(vehicle_data)
+
 
 def update_vehicle(vehicle_id: str, vehicle_data: Dict[str, Any]) -> bool:
     """Update existing vehicle."""
     return db_update_vehicle(vehicle_id, vehicle_data)
 
+
 def delete_vehicle(vehicle_id: str) -> bool:
     """Delete a vehicle."""
     return db_delete_vehicle(vehicle_id)
+
 
 def search_vehicles(search_term: str, active_only: bool = True) -> List[Dict[str, Any]]:
     """Search vehicles by name, brand, model or nickname."""
     vehicles = db_search_vehicles(search_term, active_only=active_only)
     return [vehicle_to_dict(v) for v in vehicles]
 
+
 def get_vehicle_statistics() -> Dict[str, Any]:
     """Get statistics about vehicles in database."""
     # Get basic statistics about all vehicles
-    db = get_database()
+    get_database()
     all_vehicles = db_get_all_vehicles(active_only=False)
     active_vehicles = db_get_all_vehicles(active_only=True)
-    
-    turbo_vehicles = [v for v in all_vehicles if v.engine_aspiration and "Turbo" in v.engine_aspiration]
-    
+
+    turbo_vehicles = [
+        v for v in all_vehicles if v.engine_aspiration and "Turbo" in v.engine_aspiration
+    ]
+
     return {
         "total": len(all_vehicles),
         "active": len(active_vehicles),
         "inactive": len(all_vehicles) - len(active_vehicles),
         "turbo": len(turbo_vehicles),
-        "naturally_aspirated": len(all_vehicles) - len(turbo_vehicles)
+        "naturally_aspirated": len(all_vehicles) - len(turbo_vehicles),
     }

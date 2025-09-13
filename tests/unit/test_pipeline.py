@@ -5,12 +5,9 @@ Author: FuelTune Development Team
 Version: 1.0.0
 """
 
-import pytest
-import pandas as pd
 import numpy as np
-from unittest.mock import Mock, patch
-import tempfile
-from pathlib import Path
+import pandas as pd
+import pytest
 
 from src.integration.pipeline import DataPipeline, PipelineStage
 

@@ -5,12 +5,11 @@ Tests all analysis functionality including fuel efficiency, performance metrics,
 anomaly detection, correlation analysis, and predictive modeling.
 """
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime, timedelta
-import warnings
 
 # Import analysis modules - handle missing modules gracefully
 analysis_modules = {}
@@ -663,17 +662,17 @@ class TestAnalysisIntegration:
             # Step 1: Statistical analysis
             if "statistics" in analysis_modules:
                 stats_analyzer = analysis_modules["statistics"]()
-                stats_result = stats_analyzer.analyze(realistic_telemetry_data)
+                stats_analyzer.analyze(realistic_telemetry_data)
 
             # Step 2: Use stats for anomaly detection
             if "anomaly" in analysis_modules:
                 anomaly_detector = analysis_modules["anomaly"]()
-                anomalies = anomaly_detector.detect_anomalies(realistic_telemetry_data)
+                anomaly_detector.detect_anomalies(realistic_telemetry_data)
 
             # Step 3: Generate report with all results
             if "reports" in analysis_modules:
                 report_gen = analysis_modules["reports"]()
-                comprehensive_report = report_gen.generate(realistic_telemetry_data)
+                report_gen.generate(realistic_telemetry_data)
 
             # At least one step should complete successfully
             assert True  # If we get here, integration works

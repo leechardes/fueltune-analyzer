@@ -5,13 +5,11 @@ Provides realistic test data for different scenarios including
 normal operation, edge cases, and error conditions.
 """
 
+from datetime import datetime, timedelta
+
 import numpy as np
 import pandas as pd
 import pytest
-from datetime import datetime, timedelta
-from pathlib import Path
-import tempfile
-from typing import Dict, List, Any
 from faker import Faker
 
 fake = Faker("pt_BR")

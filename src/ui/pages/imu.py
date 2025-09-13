@@ -28,7 +28,7 @@ from plotly.subplots import make_subplots
 
 try:
     # Tentar importação relativa primeiro (para quando chamado como módulo)
-    from ...data.database import FuelTechExtendedData, get_database
+    from ...data.database import FuelTechCoreData, get_database
     from ...utils.logging_config import get_logger
     from ..components.metric_card import MetricCard
     from ..components.session_selector import SessionSelector
@@ -36,11 +36,12 @@ except ImportError:
     # Fallback para importação absoluta (quando executado via st.navigation)
     import sys
     from pathlib import Path
+
     sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-    from src.data.database import FuelTechExtendedData, get_database
-    from src.utils.logging_config import get_logger
+    from src.data.database import FuelTechCoreData, get_database
     from src.ui.components.metric_card import MetricCard
     from src.ui.components.session_selector import SessionSelector
+    from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -76,22 +77,22 @@ class IMUAnalysisManager:
         try:
             _self.db.initialize_database()
             with _self.db.get_session() as db_session:
-                # Buscar dados extended que contém informações IMU
-                extended_query = (
-                    db_session.query(FuelTechExtendedData)
-                    .filter(FuelTechExtendedData.session_id == session_id)
-                    .order_by(FuelTechExtendedData.time)
+                # Buscar dados na tabela unificada (core)
+                core_query = (
+                    db_session.query(FuelTechCoreData)
+                    .filter(FuelTechCoreData.session_id == session_id)
+                    .order_by(FuelTechCoreData.time)
                 )
 
-                extended_data = extended_query.all()
+                core_data = core_query.all()
                 # Session is automatically closed by context manager
 
-            if not extended_data:
+            if not core_data:
                 return None
 
             # Converter para DataFrame
             data_list = []
-            for record in extended_data:
+            for record in core_data:
                 data_list.append(
                     {
                         "time": record.time,
@@ -374,7 +375,7 @@ class IMUAnalysisManager:
                 height=500,
             )
 
-            st.plotly_chart(fig_3d, width='stretch')
+            st.plotly_chart(fig_3d, width="stretch")
 
         with col2:
             # Gráfico polar de heading
@@ -403,7 +404,7 @@ class IMUAnalysisManager:
                 height=500,
             )
 
-            st.plotly_chart(fig_polar, width='stretch')
+            st.plotly_chart(fig_polar, width="stretch")
 
     def render_g_force_analysis(self, df: pd.DataFrame) -> None:
         """Renderizar análise de G-forces."""
@@ -512,7 +513,7 @@ class IMUAnalysisManager:
         fig.update_yaxes(title_text="G-Force (g)", row=2, col=1)
         fig.update_yaxes(title_text="G-Force (g)", row=3, col=1)
 
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, width="stretch")
 
     def render_g_force_map(self, df: pd.DataFrame) -> None:
         """Renderizar mapa de calor de G-forces."""
@@ -567,7 +568,7 @@ class IMUAnalysisManager:
             fig_scatter.add_vline(x=0, line_dash="solid", line_color="black", line_width=1)
 
             fig_scatter.update_layout(height=500)
-            st.plotly_chart(fig_scatter, width='stretch')
+            st.plotly_chart(fig_scatter, width="stretch")
 
         with col2:
             # Heatmap 2D das G-forces
@@ -605,7 +606,7 @@ class IMUAnalysisManager:
                 height=500,
             )
 
-            st.plotly_chart(fig_heatmap, width='stretch')
+            st.plotly_chart(fig_heatmap, width="stretch")
 
     def render_g_force_distributions(self, df: pd.DataFrame) -> None:
         """Renderizar distribuições de G-forces."""
@@ -635,7 +636,7 @@ class IMUAnalysisManager:
                     labels={"x": f"{selected_var} (g)"},
                     marginal="box",
                 )
-                st.plotly_chart(fig_hist, width='stretch')
+                st.plotly_chart(fig_hist, width="stretch")
 
             with col2:
                 # Estatísticas
@@ -747,7 +748,7 @@ class IMUAnalysisManager:
                 ),
             )
 
-            st.plotly_chart(fig_events, width='stretch')
+            st.plotly_chart(fig_events, width="stretch")
 
     def render_traction_analysis(self, df: pd.DataFrame) -> None:
         """Renderizar análise de tração."""
@@ -776,7 +777,7 @@ class IMUAnalysisManager:
                         title="Distribuição de Slip de Tração",
                         labels={"x": "Slip (%)"},
                     )
-                    st.plotly_chart(fig_slip, width='stretch')
+                    st.plotly_chart(fig_slip, width="stretch")
 
         with col2:
             # Slip vs velocidade
@@ -795,7 +796,7 @@ class IMUAnalysisManager:
                         },
                         opacity=0.6,
                     )
-                    st.plotly_chart(fig_slip_speed, width='stretch')
+                    st.plotly_chart(fig_slip_speed, width="stretch")
 
         # Métricas de tração
         metrics = self.calculate_imu_metrics(df)

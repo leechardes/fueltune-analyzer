@@ -36,11 +36,12 @@ except ImportError:
     # Fallback para importação absoluta (quando executado via st.navigation)
     import sys
     from pathlib import Path
+
     sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
     from src.data.database import FuelTechCoreData, get_database
-    from src.utils.logging_config import get_logger
     from src.ui.components.metric_card import MetricCard
     from src.ui.components.session_selector import SessionSelector
+    from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -323,14 +324,14 @@ class DataAnalysisManager:
             display_df[col] = display_df[col].round(decimal_places)
 
         # Exibir tabela
-        st.dataframe(display_df, width='stretch', hide_index=True, height=400)
+        st.dataframe(display_df, width="stretch", hide_index=True, height=400)
 
         # Estatísticas básicas
         if st.checkbox("Mostrar estatísticas descritivas"):
             st.markdown("#### Estatísticas Descritivas")
 
             stats_df = display_df.describe()
-            st.dataframe(stats_df, width='stretch')
+            st.dataframe(stats_df, width="stretch")
 
     def render_interactive_charts(self, df: pd.DataFrame) -> None:
         """Renderizar gráficos interativos."""
@@ -439,7 +440,7 @@ class DataAnalysisManager:
             fig.update_yaxes(title_text="Primário", secondary_y=False)
             fig.update_yaxes(title_text="Secundário", secondary_y=True)
 
-            st.plotly_chart(fig, width='stretch')
+            st.plotly_chart(fig, width="stretch")
 
     def render_correlation_analysis(self, df: pd.DataFrame) -> None:
         """Renderizar análise de correlação."""
@@ -464,7 +465,7 @@ class DataAnalysisManager:
         )
 
         fig.update_layout(height=600)
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, width="stretch")
 
         # Top correlações
         st.markdown("#### Correlações Mais Fortes")
@@ -522,12 +523,12 @@ class DataAnalysisManager:
                     title=f"Histograma - {selected_var}",
                     marginal="box",
                 )
-                st.plotly_chart(fig, width='stretch')
+                st.plotly_chart(fig, width="stretch")
 
             with col2:
                 # Box plot
                 fig = px.box(df, y=selected_var, title=f"Box Plot - {selected_var}")
-                st.plotly_chart(fig, width='stretch')
+                st.plotly_chart(fig, width="stretch")
 
             # Estatísticas da distribuição
             st.markdown(f"#### Estatísticas - {selected_var}")
@@ -576,18 +577,63 @@ class DataAnalysisManager:
 
         if x_var and y_var and x_var != y_var:
             # Criar scatter plot
+            # Determinar trendline apenas se statsmodels estiver disponível; caso contrário, aplicar fallback com numpy.polyfit
+            def _ols_trendline_if_available(
+                enable: bool = True, warn_key: str = "analysis_trend_warn"
+            ):
+                if not enable:
+                    return None
+                try:
+                    import statsmodels.api  # type: ignore  # noqa: F401
+
+                    return "ols"
+                except Exception:
+                    # Não interromper; retornaremos None e construiremos uma linha de tendência simples com numpy
+                    if not st.session_state.get(warn_key):
+                        st.info(
+                            "Linha de tendência (OLS) requer 'statsmodels'. Usando fallback linear."
+                        )
+                        st.session_state[warn_key] = True
+                    return None
+
+            trend_enabled = st.checkbox("Linha de tendência")
+            trend_method = _ols_trendline_if_available(trend_enabled)
+
             fig = px.scatter(
                 df,
                 x=x_var,
                 y=y_var,
                 color=color_var if color_var != "Nenhum" else None,
                 title=f"{y_var} vs {x_var}",
-                trendline="ols" if st.checkbox("Linha de tendência") else None,
+                trendline=trend_method,
                 opacity=0.6,
             )
 
+            # Fallback: se o usuário habilitou trendline e não há statsmodels, adicionar regressão linear simples
+            if trend_enabled and trend_method is None:
+                try:
+                    valid = df[[x_var, y_var]].dropna()
+                    if len(valid) >= 2:
+                        # Regressão linear simples y = a*x + b
+                        a, b = np.polyfit(valid[x_var], valid[y_var], 1)
+                        x_line = np.linspace(valid[x_var].min(), valid[x_var].max(), 200)
+                        y_line = a * x_line + b
+                        fig.add_trace(
+                            go.Scatter(
+                                x=x_line,
+                                y=y_line,
+                                mode="lines",
+                                name="Trend (linear)",
+                                line=dict(color="#D62728", dash="dash"),
+                                hoverinfo="skip",
+                            )
+                        )
+                except Exception as _e:  # pragma: no cover (defensivo)
+                    # Silencioso: fallback não deve quebrar a visualização principal
+                    pass
+
             fig.update_layout(height=500)
-            st.plotly_chart(fig, width='stretch')
+            st.plotly_chart(fig, width="stretch")
 
             # Estatísticas da relação
             if st.checkbox("Mostrar estatísticas da relação"):
@@ -632,7 +678,7 @@ class DataAnalysisManager:
             # Box plot comparativo
             fig = px.box(df, x=group_by, y=analyze_var, title=f"{analyze_var} por {group_by}")
 
-            st.plotly_chart(fig, width='stretch')
+            st.plotly_chart(fig, width="stretch")
 
             # Estatísticas por grupo
             grouped_stats = df.groupby(group_by)[analyze_var].agg(
@@ -640,7 +686,7 @@ class DataAnalysisManager:
             )
 
             st.markdown("#### Estatísticas por Grupo")
-            st.dataframe(grouped_stats, width='stretch')
+            st.dataframe(grouped_stats, width="stretch")
 
     def render_export_section(self, df: pd.DataFrame) -> None:
         """Renderizar seção de export."""

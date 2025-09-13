@@ -9,17 +9,13 @@ Author: A04-ANALYSIS-SCIPY Agent
 Created: 2025-01-02
 """
 
-import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from scipy import interpolate, optimize, signal
-from scipy.ndimage import gaussian_filter
-from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LinearRegression
+from scipy import signal
 
 from ..data.cache import cached_analysis as cache_result
 from ..utils.logging_config import get_logger
@@ -139,7 +135,7 @@ class PerformanceAnalyzer:
         """
         try:
             results = {}
-            
+
             # Power/Torque analysis if RPM data available
             if "engine_rpm" in data.columns or "rpm" in data.columns:
                 rpm_col = "engine_rpm" if "engine_rpm" in data.columns else "rpm"
@@ -148,16 +144,20 @@ class PerformanceAnalyzer:
                     results["power_torque"] = power_torque
                 except Exception as e:
                     self.logger.warning(f"Power/torque analysis failed: {e}")
-            
+
             # Acceleration analysis if speed/time data available
-            if ("vehicle_speed" in data.columns or "speed" in data.columns) and "time" in data.columns:
+            if (
+                "vehicle_speed" in data.columns or "speed" in data.columns
+            ) and "time" in data.columns:
                 speed_col = "vehicle_speed" if "vehicle_speed" in data.columns else "speed"
                 try:
-                    acceleration = self.analyze_acceleration(data, speed_col=speed_col, time_col="time")
+                    acceleration = self.analyze_acceleration(
+                        data, speed_col=speed_col, time_col="time"
+                    )
                     results["acceleration"] = acceleration
                 except Exception as e:
                     self.logger.warning(f"Acceleration analysis failed: {e}")
-            
+
             # Thermal analysis if temperature data available
             temp_cols = [col for col in data.columns if "temp" in col.lower()]
             if temp_cols:
@@ -166,13 +166,13 @@ class PerformanceAnalyzer:
                     results["thermal"] = thermal
                 except Exception as e:
                     self.logger.warning(f"Thermal analysis failed: {e}")
-            
+
             if not results:
                 results["warning"] = "No suitable columns found for performance analysis"
                 results["available_columns"] = list(data.columns)
-            
+
             return results
-            
+
         except Exception as e:
             self.logger.error(f"Performance analysis failed: {e}")
             return {"error": str(e)}

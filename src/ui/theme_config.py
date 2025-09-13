@@ -10,7 +10,7 @@ Created: 2025-01-03
 """
 
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Optional
 
 import streamlit as st
 
@@ -18,23 +18,23 @@ import streamlit as st
 @dataclass
 class ThemeColors:
     """Definição das cores do tema corporativo."""
-    
+
     # Primary Colors
     primary: str = "#1976D2"
     primary_light: str = "#42A5F5"
     primary_dark: str = "#1565C0"
-    
-    # Secondary Colors  
+
+    # Secondary Colors
     secondary: str = "#37474F"
     secondary_light: str = "#546E7A"
     secondary_dark: str = "#263238"
-    
+
     # Status Colors
     success: str = "#4CAF50"
     warning: str = "#FF9800"
     error: str = "#F44336"
     info: str = "#2196F3"
-    
+
     # Neutral Colors
     gray_50: str = "#FAFAFA"
     gray_100: str = "#F5F5F5"
@@ -46,18 +46,18 @@ class ThemeColors:
     gray_700: str = "#616161"
     gray_800: str = "#424242"
     gray_900: str = "#212121"
-    
+
     # Text Colors
     text_primary: str = "#212529"
     text_secondary: str = "#6C757D"
     text_muted: str = "#ADB5BD"
-    
+
     # Background Colors
     bg_primary: str = "#FFFFFF"
     bg_secondary: str = "#F8F9FA"
     bg_sidebar: str = "#FAFBFC"
     bg_card: str = "#FFFFFF"
-    
+
     # Border and Shadows
     border_color: str = "#DEE2E6"
     shadow_sm: str = "0 2px 4px rgba(0,0,0,0.1)"
@@ -67,17 +67,17 @@ class ThemeColors:
 
 class ProfessionalTheme:
     """Gerenciador de tema profissional corporativo."""
-    
+
     def __init__(self, colors: Optional[ThemeColors] = None):
         self.colors = colors or ThemeColors()
         self.material_icons_loaded = False
-    
+
     def inject_css(self) -> None:
         """Injetar CSS profissional na aplicação."""
         css = self._generate_professional_css()
         st.markdown(css, unsafe_allow_html=True)
         self.material_icons_loaded = True
-    
+
     def _generate_professional_css(self) -> str:
         """Gerar CSS completo do tema profissional."""
         return f"""
@@ -417,48 +417,52 @@ class ProfessionalTheme:
         }}
         </style>
         """
-    
+
     def create_status_badge(self, status: str, text: str) -> str:
         """Criar badge de status com Material Icons."""
         icon_map = {
             "success": "check_circle",
-            "warning": "warning", 
+            "warning": "warning",
             "error": "error",
-            "info": "info"
+            "info": "info",
         }
-        
+
         color_map = {
             "success": self.colors.success,
             "warning": self.colors.warning,
             "error": self.colors.error,
-            "info": self.colors.info
+            "info": self.colors.info,
         }
-        
+
         icon = icon_map.get(status, "help")
         color = color_map.get(status, self.colors.gray_500)
-        
+
         return f"""
         <div class="status-indicator status-{status}">
             <i class="material-icons" style="color: {color}; font-size: 1.1rem;">{icon}</i>
             <span>{text}</span>
         </div>
         """
-    
+
     def create_icon_button(self, icon: str, text: str, secondary: bool = False) -> str:
         """Criar botão com Material Icon."""
         button_class = "icon-button-secondary" if secondary else "icon-button"
-        
+
         return f"""
         <div class="{button_class}">
             <i class="material-icons">{icon}</i>
             <span>{text}</span>
         </div>
         """
-    
+
     def create_section_header(self, icon: str, title: str, subtitle: str = "") -> str:
         """Criar cabeçalho de seção profissional."""
-        subtitle_html = f'<p style="margin: 0.25rem 0 0 0; color: {self.colors.text_secondary};">{subtitle}</p>' if subtitle else ""
-        
+        subtitle_html = (
+            f'<p style="margin: 0.25rem 0 0 0; color: {self.colors.text_secondary};">{subtitle}</p>'
+            if subtitle
+            else ""
+        )
+
         return f"""
         <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem;">
             <i class="material-icons" style="font-size: 3rem; color: {self.colors.primary};">{icon}</i>

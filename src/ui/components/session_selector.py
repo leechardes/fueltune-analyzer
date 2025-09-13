@@ -119,12 +119,15 @@ class SessionSelector:
         Returns:
             Informações da sessão selecionada
         """
-        st.markdown("""
+        st.markdown(
+            """
         <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
             <i class="material-icons" style="color: #1976D2; font-size: 1.5rem;">folder</i>
             <h3 style="margin: 0; color: #1976D2;">Selecionar Sessão de Dados</h3>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
         # Carregar sessões
         sessions = self._load_sessions()
@@ -189,12 +192,15 @@ class SessionSelector:
         Returns:
             Lista de sessões selecionadas
         """
-        st.markdown("""
+        st.markdown(
+            """
         <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
             <i class="material-icons" style="color: #1976D2; font-size: 1.5rem;">checklist</i>
             <h3 style="margin: 0; color: #1976D2;">Selecionar Múltiplas Sessões</h3>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
         sessions = self._load_sessions()
 
@@ -211,7 +217,7 @@ class SessionSelector:
         # Seletor de sessões
         selected_rows = st.dataframe(
             df,
-            width='stretch',
+            width="stretch",
             key=f"{self.key_prefix}_multi",
             on_select="rerun",
             selection_mode="multi-row",
@@ -234,12 +240,15 @@ class SessionSelector:
     def _apply_filters(self, sessions: List[SessionInfo]) -> List[SessionInfo]:
         """Aplicar filtros às sessões."""
         with st.expander("Filtros", expanded=False):
-            st.markdown("""
+            st.markdown(
+                """
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
                 <i class="material-icons" style="color: #1976D2;">filter_alt</i>
                 <strong style="color: #212529;">Opções de Filtro</strong>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
             col1, col2, col3 = st.columns(3)
 
             with col1:
@@ -303,8 +312,12 @@ class SessionSelector:
         date_str = session.created_at.strftime("%d/%m/%Y %H:%M")
         records_str = f"{session.total_records:,}" if session.total_records else "0"
 
-        quality_icon = "check_circle" if session.quality_score and session.quality_score >= 80 else "warning"
-        quality_color = "#4CAF50" if session.quality_score and session.quality_score >= 80 else "#FF9800"
+        quality_icon = (
+            "check_circle" if session.quality_score and session.quality_score >= 80 else "warning"
+        )
+        quality_color = (
+            "#4CAF50" if session.quality_score and session.quality_score >= 80 else "#FF9800"
+        )
         status_icon = "check_circle" if session.import_status == "completed" else "schedule"
         status_color = "#4CAF50" if session.import_status == "completed" else "#FF9800"
 
@@ -313,12 +326,15 @@ class SessionSelector:
     def _render_session_preview(self, session: SessionInfo) -> None:
         """Renderizar preview da sessão."""
         with st.expander("Detalhes da Sessão", expanded=True):
-            st.markdown("""
+            st.markdown(
+                """
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
                 <i class="material-icons" style="color: #1976D2;">info</i>
                 <strong style="color: #212529;">Detalhes da Sessão</strong>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
             col1, col2, col3 = st.columns(3)
 
             with col1:
@@ -375,40 +391,50 @@ class SessionSelector:
             session1: Primeira sessão
             session2: Segunda sessão
         """
-        st.markdown("""
+        st.markdown(
+            """
         <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
             <i class="material-icons" style="color: #1976D2; font-size: 1.5rem;">compare</i>
             <h3 style="margin: 0; color: #1976D2;">Comparação de Sessões</h3>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
         col1, col2 = st.columns(2)
 
         with col1:
-            st.markdown(f"""
+            st.markdown(
+                f"""
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
                 <i class="material-icons" style="color: #1976D2;">folder</i>
                 <strong style="color: #1976D2; font-size: 1.25rem;">{session1.name}</strong>
             </div>
-            """)
+            """
+            )
             self._render_session_preview(session1)
 
         with col2:
-            st.markdown(f"""
+            st.markdown(
+                f"""
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
                 <i class="material-icons" style="color: #1976D2;">folder</i>
                 <strong style="color: #1976D2; font-size: 1.25rem;">{session2.name}</strong>
             </div>
-            """)
+            """
+            )
             self._render_session_preview(session2)
 
         # Métricas de comparação
-        st.markdown("""
+        st.markdown(
+            """
         <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
             <i class="material-icons" style="color: #1976D2;">analytics</i>
             <h4 style="margin: 0; color: #1976D2;">Análise Comparativa</h4>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
         comp_col1, comp_col2, comp_col3 = st.columns(3)
 

@@ -9,16 +9,17 @@ Author: A04-ANALYSIS-SCIPY Agent
 Created: 2025-01-02
 """
 
-import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Union
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from ..data.cache import cached_analysis as cache_result
+from ..utils.logging_config import get_logger
 from .anomaly import AnomalyDetector
 from .correlation import CorrelationAnalyzer
 from .dynamics import VehicleDynamicsAnalyzer
@@ -27,8 +28,6 @@ from .performance import PerformanceAnalyzer
 from .predictive import PredictiveAnalyzer
 from .statistics import StatisticalAnalyzer
 from .time_series import TimeSeriesAnalyzer
-from ..data.cache import cached_analysis as cache_result
-from ..utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 

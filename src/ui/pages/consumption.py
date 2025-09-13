@@ -27,7 +27,7 @@ import streamlit as st
 
 try:
     # Tentar importação relativa primeiro (para quando chamado como módulo)
-    from ...data.database import FuelTechCoreData, FuelTechExtendedData, get_database
+    from ...data.database import FuelTechCoreData, get_database
     from ...utils.logging_config import get_logger
     from ..components.metric_card import MetricCard
     from ..components.session_selector import SessionSelector
@@ -35,13 +35,31 @@ except ImportError:
     # Fallback para importação absoluta (quando executado via st.navigation)
     import sys
     from pathlib import Path
+
     sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-    from src.data.database import FuelTechCoreData, FuelTechExtendedData, get_database
-    from src.utils.logging_config import get_logger
+    from src.data.database import FuelTechCoreData, get_database
     from src.ui.components.metric_card import MetricCard
     from src.ui.components.session_selector import SessionSelector
+    from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def _ols_trendline_if_available(enable: bool = True, warn_key: str = "consumption_trend_warn"):
+    """Retorna 'ols' se statsmodels estiver disponível e enable=True; caso contrário, None.
+    Mostra um aviso uma única vez se não estiver disponível.
+    """
+    if not enable:
+        return None
+    try:
+        import statsmodels.api  # type: ignore  # noqa: F401
+
+        return "ols"
+    except Exception:
+        if not st.session_state.get(warn_key):
+            st.info("Linha de tendência desativada: pacote 'statsmodels' não está instalado.")
+            st.session_state[warn_key] = True
+        return None
 
 
 class ConsumptionAnalysisManager:
@@ -89,14 +107,7 @@ class ConsumptionAnalysisManager:
 
                 core_data = core_query.all()
 
-                # Buscar dados extended se disponíveis
-                extended_query = (
-                    db_session.query(FuelTechExtendedData)
-                    .filter(FuelTechExtendedData.session_id == session_id)
-                    .order_by(FuelTechExtendedData.time)
-                )
-
-                extended_data = extended_query.all()
+                # Extended data unificado na tabela core
                 # Session is automatically closed by context manager
 
             if not core_data:
@@ -125,29 +136,17 @@ class ConsumptionAnalysisManager:
 
             df = pd.DataFrame(data_list)
 
-            # Adicionar dados extended se disponíveis
-            if extended_data:
-                extended_dict = {}
-                for record in extended_data:
-                    extended_dict[record.time] = {
-                        "total_consumption": record.total_consumption,
-                        "average_consumption": record.average_consumption,
-                        "instant_consumption": record.instant_consumption,
-                        "total_distance": record.total_distance,
-                        "range": record.range,
-                        "traction_speed": record.traction_speed,
-                    }
-
-                # Merge com dados core baseado no tempo
-                for col in [
-                    "total_consumption",
-                    "average_consumption",
-                    "instant_consumption",
-                    "total_distance",
-                    "range",
-                    "traction_speed",
-                ]:
-                    df[col] = df["time"].map(lambda t: extended_dict.get(t, {}).get(col))
+            # Os campos estendidos já estão na tabela core após unificação
+            for col in [
+                "total_consumption",
+                "average_consumption",
+                "instant_consumption",
+                "total_distance",
+                "range",
+                "traction_speed",
+            ]:
+                if hasattr(core_data[0], col):
+                    df[col] = [getattr(r, col, None) for r in core_data]
 
             return df
 
@@ -381,7 +380,7 @@ class ConsumptionAnalysisManager:
             showlegend=True,
         )
 
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, width="stretch")
 
         # Adicionar gráfico de throttle para correlação
         if "throttle_position" in df.columns:
@@ -400,9 +399,11 @@ class ConsumptionAnalysisManager:
                             "throttle_position": "TPS (%)",
                             "flow_bank_a": "Fluxo (L/h)",
                         },
-                        trendline="ols",
+                        trendline=_ols_trendline_if_available(
+                            True, warn_key="consumption_trend_corr"
+                        ),
                     )
-                    st.plotly_chart(fig_corr, width='stretch')
+                    st.plotly_chart(fig_corr, width="stretch")
 
             with col2:
                 # Estatísticas da correlação
@@ -453,7 +454,7 @@ class ConsumptionAnalysisManager:
                 labels={"injector_duty_a": "Duty Cycle (%)"},
                 marginal="box",
             )
-            st.plotly_chart(fig_hist, width='stretch')
+            st.plotly_chart(fig_hist, width="stretch")
 
         with col2:
             # Duty cycle vs RPM
@@ -468,7 +469,7 @@ class ConsumptionAnalysisManager:
                         labels={"rpm": "RPM", "injector_duty_a": "Duty Cycle (%)"},
                         opacity=0.6,
                     )
-                    st.plotly_chart(fig_rpm, width='stretch')
+                    st.plotly_chart(fig_rpm, width="stretch")
 
         # Análise de zones de duty cycle
         st.markdown("#### Análise por Zonas")
@@ -497,7 +498,7 @@ class ConsumptionAnalysisManager:
             )
 
         zone_df = pd.DataFrame(zone_stats)
-        st.dataframe(zone_df, width='stretch', hide_index=True)
+        st.dataframe(zone_df, width="stretch", hide_index=True)
 
         # Alerta para duty cycle alto
         max_duty = valid_data["injector_duty_a"].max()
@@ -552,7 +553,7 @@ class ConsumptionAnalysisManager:
             )
 
             fig.update_xaxes(tickangle=45)
-            st.plotly_chart(fig, width='stretch')
+            st.plotly_chart(fig, width="stretch")
 
         with col2:
             # Scatter plot com linha de tendência
@@ -562,10 +563,10 @@ class ConsumptionAnalysisManager:
                 y="flow_bank_a",
                 title="Consumo vs RPM (Scatter)",
                 labels={"rpm": "RPM", "flow_bank_a": "Fluxo (L/h)"},
-                trendline="ols",
+                trendline=_ols_trendline_if_available(True, warn_key="consumption_trend_rpm"),
                 opacity=0.6,
             )
-            st.plotly_chart(fig_scatter, width='stretch')
+            st.plotly_chart(fig_scatter, width="stretch")
 
         # Análise estatística
         st.markdown("#### Estatísticas por Faixa de RPM")
@@ -595,7 +596,7 @@ class ConsumptionAnalysisManager:
 
         if range_analysis:
             analysis_df = pd.DataFrame(range_analysis)
-            st.dataframe(analysis_df, width='stretch', hide_index=True)
+            st.dataframe(analysis_df, width="stretch", hide_index=True)
 
     def render_efficiency_analysis(self, df: pd.DataFrame) -> None:
         """Renderizar análise de eficiência."""
@@ -644,7 +645,7 @@ class ConsumptionAnalysisManager:
                         title="Distribuição BSFC Estimado",
                         labels={"bsfc_estimate": "BSFC (L/h/kW)"},
                     )
-                    st.plotly_chart(fig_bsfc, width='stretch')
+                    st.plotly_chart(fig_bsfc, width="stretch")
 
         with col2:
             if "afr" in efficiency_data.columns:
@@ -666,7 +667,7 @@ class ConsumptionAnalysisManager:
                         annotation_text="Stoichiometric (14.7)",
                     )
 
-                    st.plotly_chart(fig_afr, width='stretch')
+                    st.plotly_chart(fig_afr, width="stretch")
 
         # Métricas de eficiência
         if "bsfc_estimate" in efficiency_data.columns or "afr" in efficiency_data.columns:
@@ -721,10 +722,12 @@ class ConsumptionAnalysisManager:
                             "load_index": "Índice de Carga (TPS × MAP / 100)",
                             "consumption": "Consumo (L/h)",
                         },
-                        trendline="ols",
+                        trendline=_ols_trendline_if_available(
+                            True, warn_key="consumption_trend_load"
+                        ),
                         opacity=0.6,
                     )
-                    st.plotly_chart(fig_load, width='stretch')
+                    st.plotly_chart(fig_load, width="stretch")
 
                 with col2:
                     # Análise por faixas de carga
@@ -754,7 +757,7 @@ class ConsumptionAnalysisManager:
 
                     if load_analysis:
                         load_df = pd.DataFrame(load_analysis)
-                        st.dataframe(load_df, width='stretch', hide_index=True)
+                        st.dataframe(load_df, width="stretch", hide_index=True)
 
         # Análise por marcha
         if "gear" in df.columns and "flow_bank_a" in df.columns:
@@ -778,7 +781,7 @@ class ConsumptionAnalysisManager:
                     labels={"gear": "Marcha", "mean": "Consumo Médio (L/h)"},
                 )
 
-                st.plotly_chart(fig_gear, width='stretch')
+                st.plotly_chart(fig_gear, width="stretch")
 
 
 def render_consumption_page() -> None:

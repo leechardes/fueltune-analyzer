@@ -197,7 +197,7 @@ class MetricCard:
                     plot_bgcolor="rgba(0,0,0,0)",
                 )
 
-                st.plotly_chart(fig, width='stretch', config={"displayModeBar": False})
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
             else:
                 st.markdown(f"*{trend_label} indisponível*")
 
@@ -268,7 +268,7 @@ class MetricCard:
             plot_bgcolor="rgba(0,0,0,0)",
         )
 
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, width="stretch")
 
     def _format_value(self, value: Union[int, float, str], format_str: Optional[str]) -> str:
         """

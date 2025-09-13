@@ -44,9 +44,9 @@ except ImportError:
     # Fallback para importação absoluta (quando executado via st.navigation)
     import sys
     from pathlib import Path
+
     sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
     from src.data.database import FuelTechCoreData, get_database
-    from src.utils.logging_config import get_logger
     from src.ui.components.chart_builder import (
         ChartBuilder,
         ChartConfig,
@@ -60,6 +60,7 @@ except ImportError:
         create_performance_metrics,
     )
     from src.ui.components.session_selector import SessionSelector, get_available_sessions
+    from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -210,12 +211,15 @@ class DashboardManager:
 
     def render_system_overview(self) -> None:
         """Renderizar overview do sistema."""
-        st.markdown("""
+        st.markdown(
+            """
         <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
             <i class="material-icons" style="color: #1976D2; font-size: 1.5rem;">dashboard</i>
             <h3 style="margin: 0; color: #1976D2;">Status do Sistema</h3>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
         status = self.get_system_status()
 
@@ -272,26 +276,34 @@ class DashboardManager:
                 "Offline": ("error", "#F44336"),
             }
 
-            icon_name, icon_color = health_color_map.get(status['system_health'], ("help", "#757575"))
-            st.markdown(f"""
+            icon_name, icon_color = health_color_map.get(
+                status["system_health"], ("help", "#757575")
+            )
+            st.markdown(
+                f"""
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
                 <strong style="color: var(--text-color);">Status:</strong>
                 <i class="material-icons" style="color: {icon_color}; font-size: 1.2rem;">{icon_name}</i>
                 <span style="color: var(--text-color);">{status['system_health']}</span>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
 
         with col2:
             st.markdown(f"**Última Atualização:** {status['last_update'].strftime('%H:%M:%S')}")
 
     def render_latest_session_metrics(self, session_id: str) -> None:
         """Renderizar métricas da sessão mais recente."""
-        st.markdown("""
+        st.markdown(
+            """
         <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
             <i class="material-icons" style="color: #1976D2; font-size: 1.5rem;">analytics</i>
             <h3 style="margin: 0; color: #1976D2;">Métricas da Sessão Atual</h3>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
         stats = self.calculate_session_statistics(session_id)
 
@@ -316,12 +328,15 @@ class DashboardManager:
             injection_time=stats.get("avg_timing", 0),
         )
 
-        st.markdown("""
+        st.markdown(
+            """
         <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
             <i class="material-icons" style="color: #1976D2; font-size: 1.5rem;">local_gas_station</i>
             <h3 style="margin: 0; color: #1976D2;">Sistema de Combustível</h3>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
         self.metric_card.render_row(fuel_metrics)
 
         # Métricas de performance
@@ -331,22 +346,28 @@ class DashboardManager:
             efficiency=75.0,  # Placeholder
         )
 
-        st.markdown("""
+        st.markdown(
+            """
         <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
             <i class="material-icons" style="color: #1976D2; font-size: 1.5rem;">speed</i>
             <h3 style="margin: 0; color: #1976D2;">Performance</h3>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
         self.metric_card.render_row(performance_metrics)
 
     def render_realtime_charts(self, session_id: str) -> None:
         """Renderizar gráficos em tempo real."""
-        st.markdown("""
+        st.markdown(
+            """
         <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
             <i class="material-icons" style="color: #1976D2; font-size: 1.5rem;">trending_up</i>
             <h3 style="margin: 0; color: #1976D2;">Tendências em Tempo Real</h3>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
         df = self.get_latest_session_data(session_id, limit=500)
 
@@ -438,12 +459,15 @@ class DashboardManager:
 
     def render_recent_sessions(self) -> None:
         """Renderizar sessões recentes."""
-        st.markdown("""
+        st.markdown(
+            """
         <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
             <i class="material-icons" style="color: #1976D2; font-size: 1.5rem;">history</i>
             <h3 style="margin: 0; color: #1976D2;">Sessões Recentes</h3>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
         sessions = get_available_sessions()
 
@@ -456,12 +480,15 @@ class DashboardManager:
 
         for session in recent_sessions:
             with st.expander(f"{session['name']}", expanded=False):
-                st.markdown(f"""
+                st.markdown(
+                    f"""
                 <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
                     <i class="material-icons" style="color: #1976D2;">folder</i>
                     <strong style="color: var(--text-color);">{session['name']}</strong>
                 </div>
-                """, unsafe_allow_html=True)
+                """,
+                    unsafe_allow_html=True,
+                )
                 col1, col2, col3, col4 = st.columns(4)
 
                 with col1:
@@ -480,14 +507,17 @@ class DashboardManager:
                 with col4:
                     status_icon = "check_circle" if session["status"] == "completed" else "schedule"
                     status_color = "#4CAF50" if session["status"] == "completed" else "#FF9800"
-                    
-                    st.markdown(f"""
+
+                    st.markdown(
+                        f"""
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
                         <strong style="color: var(--text-color);">Status:</strong>
                         <i class="material-icons" style="color: {status_color}; font-size: 1.1rem;">{status_icon}</i>
                         <span style="color: {status_color};">{session['status'].title()}</span>
                     </div>
-                    """, unsafe_allow_html=True)
+                    """,
+                        unsafe_allow_html=True,
+                    )
 
                 # Botão para abrir sessão
                 if st.button(f"Abrir {session['name']}", key=f"open_{session['id']}"):
@@ -506,9 +536,10 @@ def render_dashboard_page() -> None:
         layout="wide",
         initial_sidebar_state="expanded",
     )
-    
+
     # Professional CSS
-    st.markdown("""
+    st.markdown(
+        """
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
     .material-icons {
@@ -524,10 +555,13 @@ def render_dashboard_page() -> None:
         direction: ltr;
     }
     </style>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     # Título da página
-    st.markdown("""
+    st.markdown(
+        """
     <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem;">
         <i class="material-icons" style="font-size: 3rem; color: #1976D2;">dashboard</i>
         <div>
@@ -535,7 +569,9 @@ def render_dashboard_page() -> None:
             <p style="margin: 0.25rem 0 0 0; color: #6C757D;">Monitor e analise dados automotivos em tempo real</p>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
     st.markdown("---")
 
     # Inicializar manager
@@ -543,12 +579,15 @@ def render_dashboard_page() -> None:
 
     # Sidebar para controles
     with st.sidebar:
-        st.markdown("""
+        st.markdown(
+            """
         <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
             <i class="material-icons" style="color: #1976D2;">settings</i>
             <h3 style="margin: 0;">Controles</h3>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
         # Seletor de sessão
         selector = SessionSelector(key_prefix="dashboard", show_preview=False, show_filters=False)
@@ -557,13 +596,19 @@ def render_dashboard_page() -> None:
         # Auto-refresh
         auto_refresh = st.checkbox("Atualização Automática", value=False)
         if auto_refresh:
-            st.markdown("<i class='material-icons' style='color: #4CAF50; font-size: 1rem; margin-left: 0.5rem;'>sync</i>", unsafe_allow_html=True)
+            st.markdown(
+                "<i class='material-icons' style='color: #4CAF50; font-size: 1rem; margin-left: 0.5rem;'>sync</i>",
+                unsafe_allow_html=True,
+            )
         if auto_refresh:
             refresh_interval = st.slider("Intervalo (s)", 5, 60, 10)
 
         # Botão de refresh manual
         if st.button("Atualizar Agora"):
-            st.markdown("<i class='material-icons' style='margin-right: 0.5rem; color: #1976D2;'>refresh</i>", unsafe_allow_html=True)
+            st.markdown(
+                "<i class='material-icons' style='margin-right: 0.5rem; color: #1976D2;'>refresh</i>",
+                unsafe_allow_html=True,
+            )
             st.cache_data.clear()
             st.rerun()
 

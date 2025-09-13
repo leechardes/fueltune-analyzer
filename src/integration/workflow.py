@@ -14,21 +14,15 @@ Author: FuelTune Development Team
 Version: 1.0.0
 """
 
-import logging
+import asyncio
 import time
-import traceback
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Type, Union
 from pathlib import Path
-import asyncio
-from concurrent.futures import ThreadPoolExecutor, Future
-
-import streamlit as st
+from typing import Any, Callable, Dict, List, Optional
 
 # Import dos módulos do projeto
-from ..data.database import FuelTechDatabase as DatabaseService
-from ..analysis.analysis import AnalysisEngine
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -427,8 +421,8 @@ class WorkflowManager:
         """Analisar dados CSV."""
         from ..data.csv_parser import CSVParser
 
-        file_path = context.get("file_path")
-        parser = CSVParser()
+        context.get("file_path")
+        CSVParser()
 
         # Simular parsing (implementação completa seria aqui)
         result = {
@@ -443,7 +437,7 @@ class WorkflowManager:
 
     def _validate_data_quality(self, context: WorkflowContext) -> Dict[str, Any]:
         """Validar qualidade dos dados."""
-        parsed_data = context.get("parsed_data", {})
+        context.get("parsed_data", {})
 
         # Simular validação
         result = {

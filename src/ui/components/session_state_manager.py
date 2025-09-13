@@ -406,12 +406,15 @@ class SessionStateManager:
             return
 
         with st.sidebar.expander("Debug - Estado da App", expanded=False):
-            st.markdown("""
+            st.markdown(
+                """
             <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
                 <i class="material-icons" style="color: #1976D2;">build</i>
                 <strong style="color: #212529;">Debug - Estado da App</strong>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
             st.json(self.get_state_summary())
 
             col1, col2 = st.columns(2)

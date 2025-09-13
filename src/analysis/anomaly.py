@@ -9,7 +9,6 @@ Author: A04-ANALYSIS-SCIPY Agent
 Created: 2025-01-02
 """
 
-import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -18,11 +17,11 @@ import pandas as pd
 import plotly.graph_objects as go
 from scipy import stats
 from sklearn.cluster import DBSCAN
+from sklearn.covariance import EllipticEnvelope
+from sklearn.decomposition import PCA
 from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-from sklearn.covariance import EllipticEnvelope
 
 from ..data.cache import cached_analysis as cache_result
 from ..utils.logging_config import get_logger

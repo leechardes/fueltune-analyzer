@@ -6,11 +6,11 @@ database connections, and complex objects.
 """
 
 import sqlite3
+import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
-from unittest.mock import MagicMock, Mock, patch
-import tempfile
+from typing import Any, Dict, Union
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd

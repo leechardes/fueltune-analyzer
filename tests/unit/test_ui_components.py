@@ -8,10 +8,10 @@ Author: UI-FIX Agent
 Created: 2025-01-02
 """
 
-import pytest
-import pandas as pd
-import numpy as np
 from unittest.mock import MagicMock, patch
+
+import pandas as pd
+import pytest
 
 
 class TestMetricCard:
@@ -48,15 +48,16 @@ class TestSessionSelector:
 
     def test_session_selector_import(self):
         """Test that SessionSelector can be imported."""
-        from src.ui.components.session_selector import SessionSelector, SessionInfo
+        from src.ui.components.session_selector import SessionInfo, SessionSelector
 
         assert SessionSelector is not None
         assert SessionInfo is not None
 
     def test_session_info_creation(self):
         """Test SessionInfo dataclass creation."""
-        from src.ui.components.session_selector import SessionInfo
         from datetime import datetime
+
+        from src.ui.components.session_selector import SessionInfo
 
         session = SessionInfo(
             id="test123",

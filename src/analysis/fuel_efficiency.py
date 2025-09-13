@@ -9,20 +9,14 @@ Author: A04-ANALYSIS-SCIPY Agent
 Created: 2025-01-02
 """
 
-import logging
 from dataclasses import dataclass
-from functools import lru_cache
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from scipy import interpolate, optimize
+from scipy import interpolate
 from scipy.ndimage import gaussian_filter
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
 
 from ..data.cache import cached_analysis as cache_result
 from ..utils.logging_config import get_logger

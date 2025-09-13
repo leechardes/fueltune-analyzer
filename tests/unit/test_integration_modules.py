@@ -6,18 +6,16 @@ background processing, export/import, notifications, and plugin system.
 """
 
 import asyncio
-import threading
-import time
-from datetime import datetime, timedelta
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
-import tempfile
 import json
 import queue
+import tempfile
+import threading
+import time
+from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 import pytest
-import numpy as np
 
 # Import integration modules - handle missing modules gracefully
 integration_modules = {}
@@ -913,7 +911,7 @@ class TestIntegrationModulesIntegration:
             try:
                 # Export data
                 if hasattr(exporter, "export"):
-                    success = exporter.export(realistic_telemetry_data, export_path)
+                    exporter.export(realistic_telemetry_data, export_path)
 
                 # Send notification about export
                 if hasattr(notifier, "send"):

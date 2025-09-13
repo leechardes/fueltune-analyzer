@@ -238,17 +238,25 @@ class CSVParser:
                         f"Detectado formato v2.0 com {field_count} campos (variação aceita: 62-66)"
                     )
                 else:
-                    # Provide helpful error message
-                    if field_count < 35:
-                        suggestion = f"Arquivo pode estar truncado ou corrompido. Mínimo esperado: 35 campos."
-                    elif 38 <= field_count <= 61:
-                        suggestion = f"Formato intermediário não suportado. Use v1.0 (35-37 campos) ou v2.0 (62-66 campos)."
+                    # Lenient handling for intermediate field counts: assume v2.0 (parcial)
+                    if 38 <= field_count <= 61:
+                        version = "v2.0"
+                        self.field_mappings = self.FIELD_MAPPINGS_64
+                        logger.warning(
+                            "Contagem intermediária de campos detectada (%d). "
+                            "Assumindo formato v2.0 parcial e prosseguindo com os campos disponíveis.",
+                            field_count,
+                        )
                     else:
-                        suggestion = f"Arquivo pode conter campos extras ou estar corrompido. Máximo suportado: 66 campos."
+                        # Provide helpful error message for clearly invalid counts
+                        if field_count < 35:
+                            suggestion = "Arquivo pode estar truncado ou corrompido. Mínimo esperado: 35 campos."
+                        else:
+                            suggestion = "Arquivo pode conter campos extras ou estar corrompido. Máximo suportado: 66 campos."
 
-                    raise CSVParsingError(
-                        f"Formato não suportado: {field_count} campos. {suggestion}"
-                    )
+                        raise CSVParsingError(
+                            f"Formato não suportado: {field_count} campos. {suggestion}"
+                        )
 
                 self.detected_version = version
                 return version, field_count
@@ -468,7 +476,7 @@ class CSVParser:
 
         # Normalize headers
         df.columns = self.normalize_headers(df.columns.tolist())
-        
+
         # Clean invalid data (infinities and extreme values)
         df = self._clean_invalid_data(df)
 
@@ -503,7 +511,7 @@ class CSVParser:
 
             # Clean invalid data
             chunk = self._clean_invalid_data(chunk)
-            
+
             # Apply data types if requested
             if validate_types:
                 chunk = self._apply_data_types(chunk)
@@ -519,46 +527,46 @@ class CSVParser:
     def _clean_invalid_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Remove linhas com dados inválidos (infinitos ou valores extremos).
-        
+
         Args:
             df: DataFrame para limpar
-            
+
         Returns:
             DataFrame limpo sem linhas com valores inválidos
         """
         import numpy as np
-        
+
         initial_rows = len(df)
-        
+
         # Remover linhas com valores infinitos
         df = df.replace([np.inf, -np.inf], np.nan)
-        
+
         # Para colunas numéricas, verificar valores extremos
         numeric_columns = df.select_dtypes(include=[np.number]).columns
-        
+
         # Definir limites razoáveis para RPM e outros valores
         limits = {
-            'rpm': (0, 20000),  # RPM entre 0 e 20000
-            'throttle_position': (-5, 105),  # TPS entre -5 e 105%
-            'map': (-1, 5),  # MAP entre -1 e 5 bar
-            'engine_temp': (-50, 200),  # Temperatura entre -50 e 200°C
-            'o2_general': (0, 2),  # Lambda entre 0 e 2
+            "rpm": (0, 20000),  # RPM entre 0 e 20000
+            "throttle_position": (-5, 105),  # TPS entre -5 e 105%
+            "map": (-1, 5),  # MAP entre -1 e 5 bar
+            "engine_temp": (-50, 200),  # Temperatura entre -50 e 200°C
+            "o2_general": (0, 2),  # Lambda entre 0 e 2
         }
-        
+
         # Marcar linhas para remoção
         rows_to_remove = pd.Series([False] * len(df))
-        
+
         for col in df.columns:
             # Normalizar nome da coluna para comparação
             col_lower = col.lower()
-            
+
             # Verificar se a coluna tem limites definidos
             for key, (min_val, max_val) in limits.items():
                 if key in col_lower and col in numeric_columns:
                     # Marcar linhas com valores fora do limite
                     mask = (df[col] < min_val) | (df[col] > max_val) | df[col].isna()
                     rows_to_remove = rows_to_remove | mask
-                    
+
                     # Log de valores inválidos encontrados
                     invalid_count = mask.sum()
                     if invalid_count > 0:
@@ -566,17 +574,17 @@ class CSVParser:
                             f"Encontrados {invalid_count} valores inválidos em '{col}' "
                             f"(fora do intervalo [{min_val}, {max_val}])"
                         )
-        
+
         # Remover linhas marcadas
         df_clean = df[~rows_to_remove].copy()
-        
+
         rows_removed = initial_rows - len(df_clean)
         if rows_removed > 0:
             logger.info(
                 f"Removidas {rows_removed} linhas com dados inválidos "
                 f"({rows_removed/initial_rows*100:.1f}% do total)"
             )
-        
+
         return df_clean
 
     def _apply_data_types(self, df: pd.DataFrame) -> pd.DataFrame:

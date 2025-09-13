@@ -11,7 +11,7 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
 from sqlalchemy import create_engine
-from src.data.models import Base, Vehicle, DataSession, FuelTechCoreData, FuelTechExtendedData, DataQualityCheck
+from src.data.models import Base, Vehicle, DataSession, FuelTechCoreData, DataQualityCheck
 
 def init_database():
     """Inicializa o banco de dados com todas as tabelas."""

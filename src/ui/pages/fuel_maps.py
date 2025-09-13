@@ -22,7 +22,6 @@ import logging
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -127,9 +126,7 @@ def render_unified_interface(
     with col2:
         # Seletor de banco (condicional baseado no tipo de mapa)
         if has_bank_selection(map_type):
-            bank_id = st.radio(
-                "Bancada", ["A", "B"], key="selected_unified_bank", horizontal=True
-            )
+            bank_id = st.radio("Bancada", ["A", "B"], key="selected_unified_bank", horizontal=True)
         else:
             bank_id = "shared"
             st.info("Mapa único para todo o motor")
@@ -152,9 +149,7 @@ def render_unified_interface(
             view_options = ["Gráfico 2D", "Editor Linear"]
             st.info("📈 Mapa Bidimensional")
 
-        view_mode = st.radio(
-            "Modo de Visualização", view_options, key="unified_view_mode"
-        )
+        view_mode = st.radio("Modo de Visualização", view_options, key="unified_view_mode")
 
         # Configurações avançadas
         with st.expander("Configurações Avançadas"):
@@ -197,9 +192,7 @@ def render_unified_interface(
         )
 
     with tab3:
-        render_import_export_tab(
-            map_type, map_config, vehicle_id, bank_id, vehicle_data, dimension
-        )
+        render_import_export_tab(map_type, map_config, vehicle_id, bank_id, vehicle_data, dimension)
 
 
 def render_edit_tab(
@@ -230,13 +223,9 @@ def render_edit_tab(
 
     with subtab2:
         if dimension == "3D":
-            render_3d_axes_editor(
-                map_type, map_config, vehicle_id, bank_id, vehicle_data
-            )
+            render_3d_axes_editor(map_type, map_config, vehicle_id, bank_id, vehicle_data)
         else:
-            render_2d_axes_editor(
-                map_type, map_config, vehicle_id, bank_id, vehicle_data
-            )
+            render_2d_axes_editor(map_type, map_config, vehicle_id, bank_id, vehicle_data)
 
     with subtab3:
         # Ferramentas para ambos 2D e 3D
@@ -350,9 +339,7 @@ def render_by_dimension_3d(
         if persistence_manager.create_default_map(
             vehicle_id, map_type, bank_id, vehicle_data, grid_size
         ):
-            map_data = persistence_manager.load_3d_map_data(
-                vehicle_id, map_type, bank_id
-            )
+            map_data = persistence_manager.load_3d_map_data(vehicle_id, map_type, bank_id)
         else:
             st.error("Erro ao criar mapa 3D padrão")
             return
@@ -366,13 +353,9 @@ def render_by_dimension_3d(
 
     # Renderizar interface baseada no modo 3D
     if view_mode == "3D Surface":
-        render_3d_view(
-            values_matrix, rpm_axis, map_axis, map_type, map_config, show_statistics
-        )
+        render_3d_view(values_matrix, rpm_axis, map_axis, map_type, map_config, show_statistics)
     elif view_mode == "2D Heatmap":
-        render_2d_view(
-            values_matrix, rpm_axis, map_axis, map_type, map_config, show_statistics
-        )
+        render_2d_view(values_matrix, rpm_axis, map_axis, map_type, map_config, show_statistics)
     else:  # Editor
         render_editor_view(
             values_matrix,
@@ -411,9 +394,7 @@ def render_by_dimension_2d(
     if map_data is None:
         st.warning("Mapa 2D não encontrado. Gerando padrão...")
         # Criar mapa padrão usando o persistence manager
-        if create_default_2d_map(
-            vehicle_id, map_type, bank_id, vehicle_data, map_config
-        ):
+        if create_default_2d_map(vehicle_id, map_type, bank_id, vehicle_data, map_config):
             map_data = load_2d_map_data_local(vehicle_id, map_type, bank_id)
         else:
             st.error("Erro ao criar mapa 2D padrão")
@@ -468,9 +449,7 @@ def render_2d_chart_view(
 
     # Preparar dados para o gráfico (apenas valores habilitados)
     enabled_indices = [
-        i
-        for i, e in enumerate(enabled)
-        if e and i < len(axis_values) and i < len(values)
+        i for i, e in enumerate(enabled) if e and i < len(axis_values) and i < len(values)
     ]
     chart_axis = [axis_values[i] for i in enabled_indices]
     chart_values = [values[i] for i in enabled_indices]
@@ -589,7 +568,6 @@ def render_3d_chart_view_for_visualize(
 
     # z deve ter shape [len(Y)][len(X)] => transpor e reordenar colunas conforme X
     z_trans = values_active.T  # [rpm][map]
-    import numpy as np
     z_plot = z_trans[:, map_idx_sorted_desc]
 
     fig = go.Figure(
@@ -649,16 +627,13 @@ def render_2d_editor_view(
         cols = st.columns(4)
         new_values = values.copy()
         new_enabled = enabled.copy()
-        values_changed = False
 
         for i in range(len(axis_values)):
             col_idx = i % 4
 
             with cols[col_idx]:
                 # Checkbox para habilitar/desabilitar
-                new_enabled[i] = st.checkbox(
-                    f"#{i+1}", value=enabled[i], key=f"2d_enabled_{i}"
-                )
+                new_enabled[i] = st.checkbox(f"#{i+1}", value=enabled[i], key=f"2d_enabled_{i}")
 
                 # Input para valor
                 if new_enabled[i]:
@@ -677,7 +652,6 @@ def render_2d_editor_view(
 
         # Verificar alterações
         if new_values != values or new_enabled != enabled:
-            values_changed = True
             st.success("Valores modificados")
 
             if auto_save:
@@ -741,9 +715,7 @@ def render_2d_axis_config(
 
     # Opções de modificação
     with st.expander("Modificar Eixo"):
-        st.info(
-            "Funcionalidade de modificação de eixo 2D será implementada em versão futura"
-        )
+        st.info("Funcionalidade de modificação de eixo 2D será implementada em versão futura")
 
 
 def render_2d_values_editor(
@@ -761,9 +733,7 @@ def render_2d_values_editor(
 
     if map_data is None:
         st.warning("Mapa 2D não encontrado. Gerando padrão...")
-        if create_default_2d_map(
-            vehicle_id, map_type, bank_id, vehicle_data, map_config
-        ):
+        if create_default_2d_map(vehicle_id, map_type, bank_id, vehicle_data, map_config):
             map_data = load_2d_map_data_local(vehicle_id, map_type, bank_id)
         else:
             st.error("Erro ao criar mapa 2D padrão")
@@ -773,7 +743,7 @@ def render_2d_values_editor(
     axis_values = map_data.get("axis_values", [])
     values = map_data.get("values", [])
     enabled = map_data.get("enabled", [True] * len(values))
-    unit = map_config.get("unit", "")
+    map_config.get("unit", "")
     axis_type = map_config.get("axis_type", "RPM")
 
     st.subheader("Editor de Valores")
@@ -784,7 +754,6 @@ def render_2d_values_editor(
     active_axis = [axis_values[i] for i in active_indices]
     active_values = [values[i] for i in active_indices]
 
-    import numpy as np
     import pandas as pd
 
     last_result: Dict[str, Any] = {}
@@ -837,7 +806,13 @@ def render_2d_values_editor(
         for idx, new_val in zip(res.get("_active_indices", active_indices), new_edited_values):
             new_values[idx] = new_val
         if save_2d_map_data(
-            vehicle_id, map_type, bank_id, res.get("_axis_values", axis_values), new_values, res.get("_enabled", enabled), map_config
+            vehicle_id,
+            map_type,
+            bank_id,
+            res.get("_axis_values", axis_values),
+            new_values,
+            res.get("_enabled", enabled),
+            map_config,
         ):
             st.success("Mapa salvo com sucesso!")
             st.rerun()
@@ -854,7 +829,10 @@ def render_2d_values_editor(
     def _on_validate_2d():
         res = last_result.get("res", {})
         edited_values = res.get("_edited_values", active_values)
-        if all(map_config.get("min_value", 0) <= v <= map_config.get("max_value", 100) for v in edited_values):
+        if all(
+            map_config.get("min_value", 0) <= v <= map_config.get("max_value", 100)
+            for v in edited_values
+        ):
             st.success("Todos os valores estão dentro dos limites!")
         else:
             st.error("Alguns valores estão fora dos limites permitidos!")
@@ -1180,6 +1158,7 @@ def render_ftmanager_copy(
         map_data = persistence_manager.load_3d_map_data(vehicle_id, map_type, bank_id)
         if map_data:
             import numpy as _np
+
             rpm_axis = map_data.get("rpm_axis", [])
             map_axis = map_data.get("map_axis", [])
             values_matrix = _np.array(map_data.get("values_matrix", []), dtype=float)
@@ -1313,6 +1292,7 @@ def render_data_export(
 
         if export_format == "JSON":
             import json
+
             st.download_button(
                 ":material/download: Baixar JSON",
                 json.dumps(map_data, indent=2, ensure_ascii=False),
@@ -1320,7 +1300,9 @@ def render_data_export(
                 "application/json",
             )
         elif export_format == "CSV":
-            import io, csv
+            import csv
+            import io
+
             buf = io.StringIO()
             writer = csv.writer(buf)
             if dimension == "2D":
@@ -1333,6 +1315,7 @@ def render_data_export(
                     writer.writerow([a, f"{float(v):.3f}", int(bool(e))])
             else:
                 import numpy as _np
+
                 rpm_axis = map_data.get("rpm_axis", [])
                 map_axis = map_data.get("map_axis", [])
                 values_matrix = _np.array(map_data.get("values_matrix", []), dtype=float)
@@ -1366,6 +1349,7 @@ def render_data_export(
                 formatted = "\t".join([f"{float(v):.3f}" for v in values])
             else:
                 import numpy as _np
+
                 rpm_axis = map_data.get("rpm_axis", [])
                 map_axis = map_data.get("map_axis", [])
                 values_matrix = _np.array(map_data.get("values_matrix", []), dtype=float)
@@ -1411,9 +1395,7 @@ def save_2d_map_data_local(
 ) -> bool:
     """Salva dados de mapa 2D usando o persistence manager."""
     try:
-        return save_2d_map_data(
-            vehicle_id, map_type, bank_id, axis_values, values, enabled
-        )
+        return save_2d_map_data(vehicle_id, map_type, bank_id, axis_values, values, enabled)
     except Exception as e:
         logger.error(f"Erro ao salvar mapa 2D: {e}")
         return False
@@ -1438,9 +1420,7 @@ def validate_2d_map(
 
     for i, (value, is_enabled) in enumerate(zip(values, enabled)):
         if is_enabled and (value < min_val or value > max_val):
-            errors.append(
-                f"Valor na posição {i+1} fora dos limites ({min_val}-{max_val}): {value}"
-            )
+            errors.append(f"Valor na posição {i+1} fora dos limites ({min_val}-{max_val}): {value}")
 
     # Verificar ordem crescente do eixo (para alguns tipos)
     axis_type = map_config.get("axis_type", "")
@@ -1485,9 +1465,7 @@ def render_3d_view(
                 y=y_axis,
                 colorscale="RdYlBu",
                 showscale=False,
-                hovertemplate=(
-                    "<b>X:</b> %{x}<br>" "<b>Y:</b> %{y}<br>" "<extra></extra>"
-                ),
+                hovertemplate=("<b>X:</b> %{x}<br>" "<b>Y:</b> %{y}<br>" "<extra></extra>"),
             )
         ]
     )
@@ -1551,7 +1529,6 @@ def render_editor_view(
     """Renderiza o grid do editor 3D e retorna dados úteis ao chamador."""
 
     # Editor de matriz 3D com duas visualizações
-    import numpy as np
     import pandas as pd
 
     # Filtrar apenas valores ativos
@@ -1645,9 +1622,7 @@ def render_editor_view(
                 for j, map_idx in enumerate(active_map_indices):
                     if j < len(edited_matrix_df.values[i]) and map_idx < map_grid_size:
                         # Corrigir indexação: matriz é [map][rpm]
-                        modified_matrix[map_idx][rpm_idx] = edited_matrix_df.values[i][
-                            j
-                        ]
+                        modified_matrix[map_idx][rpm_idx] = edited_matrix_df.values[i][j]
 
         # Salvar automaticamente se habilitado
         if auto_save:
@@ -1701,12 +1676,11 @@ def render_tools(
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
             if st.button(
-                ":material/refresh: Recalcular VE 3D pelos eixos", key=f"regen_ve3d_{vehicle_id}_{bank_id}"
+                ":material/refresh: Recalcular VE 3D pelos eixos",
+                key=f"regen_ve3d_{vehicle_id}_{bank_id}",
             ):
                 if map_type == "ve_table_3d_map":
-                    ok = persistence_manager.regenerate_ve_table_3d_map(
-                        vehicle_id, bank_id
-                    )
+                    ok = persistence_manager.regenerate_ve_table_3d_map(vehicle_id, bank_id)
                 else:
                     ok = persistence_manager.regenerate_ve_3d_map(vehicle_id, bank_id)
                 if ok:
@@ -1715,9 +1689,7 @@ def render_tools(
                 else:
                     st.error("Falha ao recalcular VE 3D")
         with col_btn2:
-            st.info(
-                "Use também 'Aplicar Cálculo' abaixo para salvar a prévia calculada"
-            )
+            st.info("Use também 'Aplicar Cálculo' abaixo para salvar a prévia calculada")
         st.divider()
 
     # Presets de estratégias de tuning
@@ -1894,8 +1866,8 @@ def render_tools(
                 # Preparar listas ativas para uso no preview gráfico
                 active_rpm_indices = [i for i, e in enumerate(rpm_enabled) if e]
                 active_map_indices = [i for i, e in enumerate(map_enabled) if e]
-                active_rpm_values = [rpm_axis[i] for i in active_rpm_indices]
-                active_map_values = [map_axis[i] for i in active_map_indices]
+                [rpm_axis[i] for i in active_rpm_indices]
+                [map_axis[i] for i in active_map_indices]
 
                 if show_debug:
                     st.write(f"- calculated_matrix shape: {calculated_matrix.shape}")
@@ -1909,14 +1881,10 @@ def render_tools(
                     st.divider()
 
                 # Filtrar apenas valores ativos
-                active_rpm_indices = [
-                    i for i, enabled in enumerate(rpm_enabled) if enabled
-                ]
-                active_map_indices = [
-                    i for i, enabled in enumerate(map_enabled) if enabled
-                ]
-                active_rpm_values = [rpm_axis[i] for i in active_rpm_indices]
-                active_map_values = [map_axis[i] for i in active_map_indices]
+                active_rpm_indices = [i for i, enabled in enumerate(rpm_enabled) if enabled]
+                active_map_indices = [i for i, enabled in enumerate(map_enabled) if enabled]
+                [rpm_axis[i] for i in active_rpm_indices]
+                [map_axis[i] for i in active_map_indices]
 
                 # Criar matriz filtrada para preview
                 # NOTA: calculated_matrix é indexada como [map_idx][rpm_idx]
@@ -2013,7 +1981,7 @@ def render_tools(
                             before_enabled,
                             axis_type,
                             unit,
-                            key=f"prev2d_before_{map_type}_{bank_id}"
+                            key=f"prev2d_before_{map_type}_{bank_id}",
                         )
                 # Depois (prévia calculada)
                 with col_after:
@@ -2024,7 +1992,7 @@ def render_tools(
                         enabled,
                         axis_type,
                         unit,
-                        key=f"prev2d_after_{map_type}_{bank_id}"
+                        key=f"prev2d_after_{map_type}_{bank_id}",
                     )
             else:
                 # 3D antes (salvo)
@@ -2043,7 +2011,7 @@ def render_tools(
                             before_matrix,
                             before_rpm_enabled,
                             before_map_enabled,
-                            key=f"prev3d_before_{map_type}_{bank_id}"
+                            key=f"prev3d_before_{map_type}_{bank_id}",
                         )
                 # 3D depois (prévia)
                 with col_after:
@@ -2054,7 +2022,7 @@ def render_tools(
                         np.array(calculated_matrix),
                         rpm_enabled,
                         map_enabled,
-                        key=f"prev3d_after_{map_type}_{bank_id}"
+                        key=f"prev3d_after_{map_type}_{bank_id}",
                     )
         except Exception as e:
             st.error(f"Erro ao gerar gráfico: {e}")
@@ -2076,6 +2044,7 @@ def render_3d_statistics(values_matrix: np.ndarray, map_config: Dict[str, Any]):
         st.metric("Média", format_value_3_decimals(stats["mean"]), delta=None)
     with col4:
         st.metric("Desvio Padrão", format_value_3_decimals(stats["std"]), delta=None)
+
 
 def render_values_layout_common(
     map_type: str,
@@ -2179,8 +2148,9 @@ def render_gradient_table(
     index_name: Optional[str] = None,
     hide_index: bool = True,
 ):
-    import pandas as _pd
     import numpy as _np
+    import pandas as _pd
+
     try:
         df = _pd.DataFrame(values, columns=x_labels, index=y_labels)
         # Formatar apenas colunas numéricas para evitar erro de formatação com strings
@@ -2218,37 +2188,37 @@ def render_vehicle_info_metrics(vehicle_data_session: Dict[str, Any]):
     with col1:
         st.metric("Cilindrada", f"{vehicle_data_session.get('displacement', 2.0):.1f}L")
     with col2:
-        st.metric("Cilindros", vehicle_data_session.get('cylinders', 4))
+        st.metric("Cilindros", vehicle_data_session.get("cylinders", 4))
     with col3:
-        flow_lbs = vehicle_data_session.get('injector_flow_lbs') or 0.0
+        flow_lbs = vehicle_data_session.get("injector_flow_lbs") or 0.0
         st.metric("Vazão Total (lb/h)", f"{flow_lbs:.1f} lb/h")
 
     # Segunda linha: Combustível, Boost/Aspiração
     col4, col5 = st.columns(2)
     with col4:
-        ft_raw = str(vehicle_data_session.get('fuel_type', 'Flex'))
+        ft_raw = str(vehicle_data_session.get("fuel_type", "Flex"))
         ft = ft_raw.lower()
-        if 'ethanol' in ft or 'etanol' in ft:
-            ft_disp = 'Etanol'
-        elif 'e85' in ft:
-            ft_disp = 'E85'
-        elif 'gas' in ft or 'gasoline' in ft or 'gasolina' in ft:
-            ft_disp = 'Gasolina'
-        elif 'diesel' in ft:
-            ft_disp = 'Diesel'
-        elif 'methanol' in ft or 'metanol' in ft:
-            ft_disp = 'Metanol'
-        elif 'nitromethane' in ft or 'nitro' in ft or 'nitrometano' in ft:
-            ft_disp = 'Nitrometano'
-        elif 'gnv' in ft or 'cng' in ft:
-            ft_disp = 'GNV'
-        elif 'flex' in ft:
-            ft_disp = 'Flex'
+        if "ethanol" in ft or "etanol" in ft:
+            ft_disp = "Etanol"
+        elif "e85" in ft:
+            ft_disp = "E85"
+        elif "gas" in ft or "gasoline" in ft or "gasolina" in ft:
+            ft_disp = "Gasolina"
+        elif "diesel" in ft:
+            ft_disp = "Diesel"
+        elif "methanol" in ft or "metanol" in ft:
+            ft_disp = "Metanol"
+        elif "nitromethane" in ft or "nitro" in ft or "nitrometano" in ft:
+            ft_disp = "Nitrometano"
+        elif "gnv" in ft or "cng" in ft:
+            ft_disp = "GNV"
+        elif "flex" in ft:
+            ft_disp = "Flex"
         else:
             ft_disp = ft_raw
         st.metric("Combustível", ft_disp)
     with col5:
-        if vehicle_data_session.get('turbo', False):
+        if vehicle_data_session.get("turbo", False):
             st.metric("Boost", f"{vehicle_data_session.get('boost_pressure', 1.0):.1f} bar")
         else:
             st.metric("Aspiração", "Natural")
@@ -2264,8 +2234,11 @@ def render_2d_line_chart_inline(
     key: Optional[str] = None,
 ):
     import plotly.graph_objects as go
+
     # Filtrar habilitados
-    enabled_indices = [i for i, e in enumerate(enabled) if e and i < len(axis_values) and i < len(values)]
+    enabled_indices = [
+        i for i, e in enumerate(enabled) if e and i < len(axis_values) and i < len(values)
+    ]
     chart_axis = [axis_values[i] for i in enabled_indices]
     chart_values = [values[i] for i in enabled_indices]
     if not chart_axis or not chart_values:
@@ -2305,7 +2278,18 @@ def render_2d_line_chart_inline(
         if axis_type.upper() == "MAP" and any(x > 0 for x in chart_axis):
             cut_color = "#FFFFFF66" if str(theme_base).lower() == "dark" else "#00000066"
             shapes = list(fig.layout.shapes) if fig.layout.shapes else []
-            shapes.append(dict(type="line", xref="x", yref="paper", x0=0, x1=0, y0=0, y1=1, line=dict(color=cut_color, width=2, dash="dash")))
+            shapes.append(
+                dict(
+                    type="line",
+                    xref="x",
+                    yref="paper",
+                    x0=0,
+                    x1=0,
+                    y0=0,
+                    y1=1,
+                    line=dict(color=cut_color, width=2, dash="dash"),
+                )
+            )
             fig.update_layout(shapes=shapes)
     except Exception:
         pass
@@ -2324,6 +2308,7 @@ def render_3d_surface_inline(
 ):
     import numpy as _np
     import plotly.graph_objects as go
+
     # Filtrar por enabled
     active_rpm_indices = [i for i, e in enumerate(rpm_enabled) if e]
     active_map_indices = [i for i, e in enumerate(map_enabled) if e]
@@ -2339,7 +2324,17 @@ def render_3d_surface_inline(
     y_axis_plot = rpm_axis_active
     z_plot = values_active.T[:, map_idx_sorted_desc]
     fig = go.Figure(data=[go.Surface(z=z_plot, x=x_axis_plot, y=y_axis_plot, colorscale="RdYlBu")])
-    fig.update_layout(scene=dict(xaxis_title="MAP (bar)", yaxis_title="RPM", zaxis_title="", zaxis=dict(visible=False), camera=dict(eye=dict(x=1.2, y=1.2, z=0.8))), height=600, margin=dict(l=0, r=0, t=20, b=0))
+    fig.update_layout(
+        scene=dict(
+            xaxis_title="MAP (bar)",
+            yaxis_title="RPM",
+            zaxis_title="",
+            zaxis=dict(visible=False),
+            camera=dict(eye=dict(x=1.2, y=1.2, z=0.8)),
+        ),
+        height=600,
+        margin=dict(l=0, r=0, t=20, b=0),
+    )
     st.plotly_chart(fig, use_container_width=True, key=key)
 
 
@@ -2360,19 +2355,27 @@ def render_specific_controls_for_map(
     show_injection_controls_2d = dimension == "2D" and map_type == "main_fuel_2d_map"
     col_check1, col_check2 = st.columns(2)
     with col_check1:
-        boost_enabled = st.checkbox(
-            "Aplicar pressão de admissão (MAP) no PW",
-            value=True,
-            key=f"boost_enabled_{dimension}_{map_type}_{bank_id}",
-            help="Considera a pressão absoluta do ar (P_abs) no cálculo. Com boost, a massa de ar por admissão aumenta e o PW tende a subir. Desative para simular PW em regime atmosférico (P_abs=1,0 bar).",
-        ) if (show_injection_controls_3d or show_injection_controls_2d) else False
+        boost_enabled = (
+            st.checkbox(
+                "Aplicar pressão de admissão (MAP) no PW",
+                value=True,
+                key=f"boost_enabled_{dimension}_{map_type}_{bank_id}",
+                help="Considera a pressão absoluta do ar (P_abs) no cálculo. Com boost, a massa de ar por admissão aumenta e o PW tende a subir. Desative para simular PW em regime atmosférico (P_abs=1,0 bar).",
+            )
+            if (show_injection_controls_3d or show_injection_controls_2d)
+            else False
+        )
     with col_check2:
-        fuel_correction_enabled = st.checkbox(
-            "Correção de Combustível",
-            value=True,
-            key=f"fuel_corr_{dimension}_{map_type}_{bank_id}",
-            help="ON: usa AFR estequiométrico do combustível (ex.: Etanol 9.0). OFF: usa 14.7 (gasolina) para isolar variações.",
-        ) if (show_injection_controls_3d or show_injection_controls_2d) else False
+        fuel_correction_enabled = (
+            st.checkbox(
+                "Correção de Combustível",
+                value=True,
+                key=f"fuel_corr_{dimension}_{map_type}_{bank_id}",
+                help="ON: usa AFR estequiométrico do combustível (ex.: Etanol 9.0). OFF: usa 14.7 (gasolina) para isolar variações.",
+            )
+            if (show_injection_controls_3d or show_injection_controls_2d)
+            else False
+        )
 
     regulator_11 = True
     if show_injection_controls_3d or show_injection_controls_2d:
@@ -2383,7 +2386,9 @@ def render_specific_controls_for_map(
             help="ON: ΔP constante (P_base). OFF: ΔP = P_base − MAP_rel (fluxo cai em boost e o PW tende a subir).",
         )
 
-    cl_factor_value = safety_factor if (dimension == "3D" and map_type == "lambda_target_3d_map") else 1.0
+    cl_factor_value = (
+        safety_factor if (dimension == "3D" and map_type == "lambda_target_3d_map") else 1.0
+    )
     use_lambda = False
     if show_injection_controls_3d:
         use_lambda = st.checkbox(
@@ -2429,7 +2434,9 @@ def compute_preview_2d(
     map_ref: Optional[float] = None,
 ):
     import pandas as pd
+
     from src.core.fuel_maps.calculations import calculate_map_values_universal
+
     map_data = load_2d_map_data_local(vehicle_id, map_type, bank_id)
     if not map_data:
         return None
@@ -2440,11 +2447,15 @@ def compute_preview_2d(
         # Determinar RPM de referência: usar ref_rpm se fornecido, senão mediana dos eixos 3D (se existirem) ou 3000
         rrpm = ref_rpm
         if rrpm is None:
-            m3d = persistence_manager.load_3d_map_data(vehicle_id, "main_fuel_3d_map", bank_id) or \
-                  persistence_manager.load_3d_map_data(vehicle_id, "ve_3d_map", bank_id)
+            m3d = persistence_manager.load_3d_map_data(
+                vehicle_id, "main_fuel_3d_map", bank_id
+            ) or persistence_manager.load_3d_map_data(vehicle_id, "ve_3d_map", bank_id)
             if m3d and m3d.get("rpm_axis"):
-                arr = [v for v, e in zip(m3d.get("rpm_axis", []), [True]*len(m3d.get("rpm_axis", [])))]
-                rrpm = float(arr[len(arr)//2]) if arr else 3000.0
+                arr = [
+                    v
+                    for v, e in zip(m3d.get("rpm_axis", []), [True] * len(m3d.get("rpm_axis", [])))
+                ]
+                rrpm = float(arr[len(arr) // 2]) if arr else 3000.0
             else:
                 rrpm = 3000.0
         preview_values_all = calculate_map_values_universal(
@@ -2462,11 +2473,12 @@ def compute_preview_2d(
         mref = map_ref
         if mref is None:
             # inferir mediana dos MAPs do 3D
-            m3d = persistence_manager.load_3d_map_data(vehicle_id, "main_fuel_3d_map", bank_id) or \
-                  persistence_manager.load_3d_map_data(vehicle_id, "ve_3d_map", bank_id)
+            m3d = persistence_manager.load_3d_map_data(
+                vehicle_id, "main_fuel_3d_map", bank_id
+            ) or persistence_manager.load_3d_map_data(vehicle_id, "ve_3d_map", bank_id)
             if m3d and m3d.get("map_axis"):
                 arr = m3d.get("map_axis", [])
-                mref = float(arr[len(arr)//2]) if arr else 0.0
+                mref = float(arr[len(arr) // 2]) if arr else 0.0
             else:
                 mref = 0.0
         preview_values_all = calculate_map_values_universal(
@@ -2522,7 +2534,6 @@ def compute_preview_3d(
     cl_factor_value: float,
     use_lambda: bool = False,
 ):
-    import numpy as np
     map_data = persistence_manager.load_3d_map_data(vehicle_id, map_type, bank_id)
     if not map_data:
         return None
@@ -2533,10 +2544,15 @@ def compute_preview_3d(
 
     if map_type == "ve_3d_map":
         from src.core.fuel_maps.calculations import generate_ve_3d_matrix
+
         calculated_matrix = generate_ve_3d_matrix(rpm_axis, map_axis)
         unit = "VE"
     else:
-        from src.core.fuel_maps.calculations import calculate_3d_map_values_universal, calculate_lambda_target_closed_loop
+        from src.core.fuel_maps.calculations import (
+            calculate_3d_map_values_universal,
+            calculate_lambda_target_closed_loop,
+        )
+
         kwargs = dict(
             strategy=selected_strategy,
             safety_factor=safety_factor,
@@ -2547,10 +2563,11 @@ def compute_preview_3d(
         # Aplicar λ alvo por célula quando solicitado
         if map_type == "main_fuel_3d_map" and use_lambda:
             lam = calculate_lambda_target_closed_loop(
-                rpm_axis, map_axis,
+                rpm_axis,
+                map_axis,
                 strategy=selected_strategy,
                 cl_factor=cl_factor_value,
-                fuel_type=str(vehicle_data_session.get('fuel_type', 'ethanol'))
+                fuel_type=str(vehicle_data_session.get("fuel_type", "ethanol")),
             )
             kwargs["lambda_matrix"] = lam
         calculated_matrix = calculate_3d_map_values_universal(
@@ -2570,8 +2587,9 @@ def compute_preview_3d(
 
 
 def render_preview_table_common(preview_obj: Dict[str, Any], dimension: str):
-    import pandas as pd
     import numpy as np
+    import pandas as pd
+
     if dimension == "2D":
         df = preview_obj.get("preview_df")
         if df is not None:
@@ -2581,15 +2599,31 @@ def render_preview_table_common(preview_obj: Dict[str, Any], dimension: str):
             df2.insert(0, axis_type, [unit])
             styled = df2.style.background_gradient(cmap="RdYlBu", axis=1)
             # Formatar apenas colunas numéricas
-            numeric_cols = [
-                c for c in df2.columns if np.issubdtype(df2[c].dtype, np.number)
-            ]
+            numeric_cols = [c for c in df2.columns if np.issubdtype(df2[c].dtype, np.number)]
             if numeric_cols:
                 styled = styled.format({c: "{:.2f}" for c in numeric_cols})
-            styled = styled.set_table_styles([
-                {"selector": "th", "props": [("min-width", "36px"), ("max-width", "36px"), ("padding", "0 4px"), ("font-size", "11px")]},
-                {"selector": "td", "props": [("min-width", "36px"), ("max-width", "36px"), ("padding", "0 4px"), ("font-size", "11px")]},
-            ])
+            styled = styled.set_table_styles(
+                [
+                    {
+                        "selector": "th",
+                        "props": [
+                            ("min-width", "36px"),
+                            ("max-width", "36px"),
+                            ("padding", "0 4px"),
+                            ("font-size", "11px"),
+                        ],
+                    },
+                    {
+                        "selector": "td",
+                        "props": [
+                            ("min-width", "36px"),
+                            ("max-width", "36px"),
+                            ("padding", "0 4px"),
+                            ("font-size", "11px"),
+                        ],
+                    },
+                ]
+            )
             st.dataframe(styled, use_container_width=True, height=70)
     else:
         # 3D: construir DataFrame linhas=RPM desc; colunas=MAP ativos
@@ -2609,7 +2643,11 @@ def render_preview_table_common(preview_obj: Dict[str, Any], dimension: str):
                 else:
                     row.append(np.nan)
             rows.append(row)
-        df = pd.DataFrame(rows, columns=[f"{map_axis[i]:.2f}" for i in active_map_indices], index=[f"{int(rpm_axis[i])}" for i in reversed(active_rpm_indices)])
+        df = pd.DataFrame(
+            rows,
+            columns=[f"{map_axis[i]:.2f}" for i in active_map_indices],
+            index=[f"{int(rpm_axis[i])}" for i in reversed(active_rpm_indices)],
+        )
         styled = df.style.background_gradient(cmap="RdYlBu", axis=None)
         numeric_cols = [c for c in df.columns if np.issubdtype(df[c].dtype, np.number)]
         if numeric_cols:

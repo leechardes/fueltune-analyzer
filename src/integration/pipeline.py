@@ -18,15 +18,15 @@ import asyncio
 import time
 import traceback
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import pandas as pd
+from typing import Any, Callable, Dict, List, Optional, Union
+
 import numpy as np
+import pandas as pd
 
 from ..utils.logger import get_logger
-from .events import event_bus, DataEvent
 
 logger = get_logger(__name__)
 
@@ -157,7 +157,6 @@ class DataTransformer(ABC):
     @abstractmethod
     def transform(self, data: Any, context: PipelineContext) -> Any:
         """Transformar dados."""
-        pass
 
     def validate_input(self, data: Any) -> bool:
         """Validar dados de entrada."""
@@ -578,12 +577,11 @@ class DataPipeline:
     def _register_common_transformers(self) -> None:
         """Registrar transformadores comuns."""
         # Pipelines pré-configurados para dados de telemetria
-        pass
 
     def _emit_pipeline_start_event(self, input_data: Any) -> None:
         """Disparar evento de início do pipeline."""
         try:
-            from .events import event_bus, DataEvent
+            from .events import DataEvent, event_bus
 
             event = DataEvent(
                 source=f"pipeline_{self.pipeline_id}",
@@ -601,7 +599,7 @@ class DataPipeline:
     def _emit_pipeline_end_event(self, result: PipelineResult) -> None:
         """Disparar evento de fim do pipeline."""
         try:
-            from .events import event_bus, DataEvent
+            from .events import DataEvent, event_bus
 
             event = DataEvent(
                 source=f"pipeline_{self.pipeline_id}",
@@ -621,7 +619,7 @@ class DataPipeline:
     def _emit_pipeline_error_event(self, error: Exception) -> None:
         """Disparar evento de erro do pipeline."""
         try:
-            from .events import event_bus, ErrorEvent
+            from .events import ErrorEvent, event_bus
 
             event = ErrorEvent(
                 component=f"pipeline_{self.pipeline_id}",
